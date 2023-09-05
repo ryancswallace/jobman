@@ -7,21 +7,29 @@ import platform
 import hashlib
 from typing import Optional, List, Union
 import psutil
+import string
+import random
+import logging
+
+from rotating_stdio import RotatingIOWrapper
+from nohup import nohupify
+import base_logger
 
 
 def get_host_id():
     system_info = platform.uname()
-    system_info_str = ";".join([
-        system_info.node,
-        system_info.system,
-        system_info.release,
-        system_info.version,
-        system_info.machine,
-        system_info.processor,
-    ])
-    host_id = hashlib.sha256(system_info_str.encode()).hexdigest()
+    system_info_str = ";".join(
+        [
+            system_info.node,
+            system_info.system,
+            system_info.release,
+            system_info.version,
+            system_info.machine,
+            system_info.processor,
+        ]
+    )
+    host_id = hashlib.sha256(system_info_str.encode()).hexdigest()[:12]
     return host_id
-
 
 @dataclass
 class NotificationSink:
@@ -30,16 +38,16 @@ class NotificationSink:
 
 @dataclass
 class JobmanConfig:
-    db_path: Union[str, Path] = "~/.jobman_db"
-    log_path: Union[str, Path] = "~/.jobman_log"
+    storage_path: Union[str, Path] = "~/.jobman"
     notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
 
     def __post_init__(self):
-        self.db_path = Path(self.db_path).expanduser()
-        self.log_path = Path(self.log_path).expanduser()
+        self.storage_path = Path(self.storage_path).expanduser()
+        self.db_path = self.storage_path / "db"
+        self.stdio_path = self.storage_path / "stdio"
+        self.log_path = self.storage_path / "log"
 
-jobman_config = JobmanConfig()
-print(jobman_config)
+
 
 @dataclass
 class Job:
@@ -70,8 +78,42 @@ class Job:
     quiet: bool = False
     verbose: bool = False
 
+    @staticmethod
+    def _generate_random_id():
+        id_len = 8
+        return "".join(random.choices(string.hexdigits, k=id_len)).lower()
+
+    def __post_init__(self):
+        self.jobman_config = jobman_config
+        self.host_id = get_host_id()
+        self.job_id = self._generate_random_id()
+
+        self.job_stdio_path = self.jobman_config.stdio_path / self.host_id / self.job_id
+
+        host_log_path = self.jobman_config.log_path / self.host_id
+        host_log_path.mkdir(parents=True, exist_ok=True)
+        self.logger = base_logger.make_logger(host_log_path / self.job_id, "INFO")
+
     def start(self) -> None:
-        print("running", self)
+        print(self.job_id)
+
+        nohupify()
+
+        run_id = 0
+        run_stdio_path = self.job_stdio_path / str(run_id)
+        run_stdio_path.mkdir(parents=True)
+        out_file_path = run_stdio_path / "out.txt"
+        err_file_path = run_stdio_path / "err.txt"
+
+        job_run = JobRun(
+            self.command,
+            out_file_path,
+            err_file_path,
+            self.logger,
+        )
+        job_run.start()
+        if job_run.proc:
+            job_run.proc.wait()
 
 
 def procs_are_same(proc_1: psutil.Process, proc_2: psutil.Process):
@@ -81,16 +123,35 @@ def procs_are_same(proc_1: psutil.Process, proc_2: psutil.Process):
 
 
 class JobRun:
-    def __init__(self, command: str, proc: Optional[psutil.Process] = None, pid: Optional[int] = None):
+    def __init__(
+        self,
+        command: str,
+        out_file_path: Path,
+        err_file_path: Path,
+        logger: logging.Logger,
+        proc: Optional[psutil.Process] = None,
+        pid: Optional[int] = None,
+    ):
         self.command = command
+        self.out_file_path = out_file_path
+        self.err_file_path = err_file_path
+        self.logger = logger
         self.pid = pid
         self.proc = proc
-        
+
     def start(self):
         if self.proc is not None or self.pid is not None:
             raise RuntimeError("Job has already been run")
         
-        popen_ret = subprocess.Popen(self.command, shell=True)
+        out_fp = RotatingIOWrapper(self.out_file_path)
+        err_fp = RotatingIOWrapper(self.err_file_path)
+
+        out_fp.write("TEST123")
+
+        popen_ret = subprocess.Popen(
+            self.command, shell=True, stdout=out_fp, stderr=err_fp
+        )
+
         self.pid = popen_ret.pid
         try:
             self.proc = psutil.Process(popen_ret.pid)
@@ -111,39 +172,14 @@ class JobRun:
             proc = psutil.Process(self.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
-        
+
         if proc.status() == psutil.STATUS_ZOMBIE:
             return False
 
         return procs_are_same(self.proc, proc)
 
 
-job_run = JobRun("true")
-job_run.start()
-while True:
-    print(f"{job_run.is_running()}")
-    import time; time.sleep(1)
+jobman_config = JobmanConfig()
 
-import sys; sys.exit()
-
-log_root_path = Path("./logs")
-
-job_id = uuid.uuid4()
-
-job_log_path = log_root_path / str(job_id)
-
-
-for run in range(3):
-    run_log_path = job_log_path / str(run)
-    run_log_path.mkdir(parents=True)
-
-    out_file_path = run_log_path / "out.txt"
-    err_file_path = run_log_path / "err.txt"
-
-    with open(out_file_path, "w") as out_fp, open(err_file_path, "w") as err_fp:
-        print(f"{run=}")
-        run_proc = subprocess.Popen("sleep 10", shell=True, stdout=out_fp, stderr=err_fp)
-        proc_rc = None
-        while proc_rc is None:
-            proc_rc = run_proc.poll()
-            time.sleep(1)
+job = Job("sleep 5; echo hi; sleep 5")
+job.start()

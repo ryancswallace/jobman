@@ -5,6 +5,7 @@ Subcommands
 * logs
 * status
 * kill
+* purge (logs|db)
 
 Run options
 * wait
@@ -30,6 +31,6 @@ Run options
 * verbose
 
 Configuration
-* db path
-* log/err path
+* jobman path
 * notification sink
+* gc
