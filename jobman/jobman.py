@@ -40,7 +40,7 @@ class NotificationSink:
 class JobmanConfig:
     storage_path: Union[str, Path] = "~/.jobman"
     notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
-
+    # TOD0: gc config
     def __post_init__(self):
         self.storage_path = Path(self.storage_path).expanduser()
         self.db_path = self.storage_path / "db"
@@ -62,8 +62,6 @@ class Job:
     abort_for_file: List[str] = field(default_factory=lambda: [])
 
     retry_attempts: int = 0
-    retry_successes: int = 0
-    retry_failures: int = 0
     retry_delay: str = ""
 
     notify_on_run_completion: List[str] = field(default_factory=lambda: [])
