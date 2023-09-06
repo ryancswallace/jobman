@@ -1,4 +1,9 @@
 Subcommands
+# TODO
+* help
+* prompt
+
+
 * GLOBAL OPTIONS
     quiet: bool = False
     verbose: bool = False
