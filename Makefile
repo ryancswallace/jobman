@@ -1,5 +1,4 @@
 PYTHON_VERSION ?= 3.11
-SHELL_RC ?= ~/.bashrc
 PYENV ?= pyenv
 POETRY ?= poetry
 GIT ?= git
@@ -22,7 +21,6 @@ all: setup fmt test clean changes build
 # installs in editable mode so code changes are applied without re-installing
 .PHONY: setup
 setup: ## Create and install into virtual environment for development.
-	source $(SHELL_RC)
 	$(PYENV) install --skip-existing $(PYTHON_VERSION)
 	$(PYENV) local $(PYTHON_VERSION)
 	$(POETRY) env use $(PYTHON_VERSION)
@@ -30,7 +28,6 @@ setup: ## Create and install into virtual environment for development.
 
 .PHONY: fmt
 fmt: ## Apply auto code formatting.
-	source $(SHELL_RC)
 	$(POETRY) run autoflake --recursive --exclude=__init__.py --in-place \
 	--remove-unused-variables --remove-all-unused-imports $(PACKAGE_DIR) $(TEST_DIR)
 	$(POETRY) run isort $(PACKAGE_DIR) $(TEST_DIR)
@@ -38,12 +35,10 @@ fmt: ## Apply auto code formatting.
 
 .PHONY: typetest
 typetest: ## Run type hinting tests.
-	source $(SHELL_RC)
 	$(POETRY) run mypy $(PACKAGE_DIR) $(TEST_DIR)
 
 .PHONY: unittest
 unittest: ## Run unit tests and end-to-end tests.
-	source $(SHELL_RC)
 	$(POETRY) run pytest --cov-report term --cov-report html $(TEST_DIR)
 
 .PHONY: test
@@ -65,10 +60,8 @@ changes: ## Check for uncommitted changes.
 
 .PHONY: build
 build: ## Build sdist with poetry
-	source $(SHELL_RC)
 	$(POETRY) build
 
 .PHONY: publish
 publish: ## Publish to PyPI with poetry
-	source $(SHELL_RC)
 	$(POETRY) publish

@@ -251,13 +251,46 @@ def cli_status(
 
 @cli.command("logs")
 @click.argument("job-id", nargs=1)
-@click.option("-o", "--hide-stdout", is_flag=True, default=False, help="Don't display job's stdout")
-@click.option("-e", "--hide-stderr", is_flag=True, default=False, help="Don't display job's stderr")
-@click.option("-f", "--follow", is_flag=True, default=False, help="Display running log messages as output")
-@click.option("-p", "--no-log-prefix", is_flag=True, default=False, help="Don't display leading log timestamp info")
-@click.option("-n", "--tail", type=click.IntRange(min=0), help="Show only the last n lines of log output")
-@click.option("-s", "--since", type=TimeOrDateTime(), help="Don't show logs before this datetime")
-@click.option("-u", "--until", type=TimeOrDateTime(), help="Don't show logs after this datetime")
+@click.option(
+    "-o",
+    "--hide-stdout",
+    is_flag=True,
+    default=False,
+    help="Don't display job's stdout",
+)
+@click.option(
+    "-e",
+    "--hide-stderr",
+    is_flag=True,
+    default=False,
+    help="Don't display job's stderr",
+)
+@click.option(
+    "-f",
+    "--follow",
+    is_flag=True,
+    default=False,
+    help="Display running log messages as output",
+)
+@click.option(
+    "-p",
+    "--no-log-prefix",
+    is_flag=True,
+    default=False,
+    help="Don't display leading log timestamp info",
+)
+@click.option(
+    "-n",
+    "--tail",
+    type=click.IntRange(min=0),
+    help="Show only the last n lines of log output",
+)
+@click.option(
+    "-s", "--since", type=TimeOrDateTime(), help="Don't show logs before this datetime"
+)
+@click.option(
+    "-u", "--until", type=TimeOrDateTime(), help="Don't show logs after this datetime"
+)
 @global_options
 def cli_logs(
     job_id: str,
@@ -282,9 +315,25 @@ SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signa
 
 @cli.command("kill")
 @click.argument("job-id", nargs=-1, required=True)
-@click.option("-s", "--signal", type=click.Choice(SIGNALS), help="Name (e.g., SIGINT) or integer number (e.g., 2) of signal to send to job process")
-@click.option("-r", "--allow-retries", is_flag=True, default=False, help="Don't stop future retries from running if retries remain for the job")
-@click.option("-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation")
+@click.option(
+    "-s",
+    "--signal",
+    type=click.Choice(SIGNALS),
+    help=(
+        "Name (e.g., SIGINT) or integer number (e.g., 2) of signal to send to job"
+        " process"
+    ),
+)
+@click.option(
+    "-r",
+    "--allow-retries",
+    is_flag=True,
+    default=False,
+    help="Don't stop future retries from running if retries remain for the job",
+)
+@click.option(
+    "-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation"
+)
 @global_options
 def cli_kill(
     job_id: Tuple[str, ...],
@@ -306,7 +355,9 @@ def cli_kill(
 
 
 @cli.command("ls")
-@click.option("-a", "--all", "all_", is_flag=True, default=False, help="Include finished jobs")
+@click.option(
+    "-a", "--all", "all_", is_flag=True, default=False, help="Include finished jobs"
+)
 @global_options
 def cli_ls(
     all_: bool,
@@ -321,11 +372,36 @@ def cli_ls(
 
 @cli.command("purge")
 @click.argument("job-id", nargs=-1, required=False)
-@click.option("-a", "--all", "_all", is_flag=True, default=False, help="Delete all jobs. Mutually exclusive with job-id")
-@click.option("-m", "--metadata", is_flag=True, default=False, help="Delete job metadata in addition to logs")
-@click.option("-s", "--since", type=TimeOrDateTime(), help="When using -a/--all, don't delete jobs before this datetime")
-@click.option("-u", "--until", type=TimeOrDateTime(), help="When using -a/--all, don't delete jobs after this datetime")
-@click.option("-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation")
+@click.option(
+    "-a",
+    "--all",
+    "_all",
+    is_flag=True,
+    default=False,
+    help="Delete all jobs. Mutually exclusive with job-id",
+)
+@click.option(
+    "-m",
+    "--metadata",
+    is_flag=True,
+    default=False,
+    help="Delete job metadata in addition to logs",
+)
+@click.option(
+    "-s",
+    "--since",
+    type=TimeOrDateTime(),
+    help="When using -a/--all, don't delete jobs before this datetime",
+)
+@click.option(
+    "-u",
+    "--until",
+    type=TimeOrDateTime(),
+    help="When using -a/--all, don't delete jobs after this datetime",
+)
+@click.option(
+    "-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation"
+)
 @global_options
 def cli_purge(
     job_id: Tuple[str, ...],
@@ -345,7 +421,8 @@ def cli_purge(
         )
     if not force:
         click.confirm(
-            "Purging will permanently delete all specified job history and logs. Continue?",
+            "Purging will permanently delete all specified job history and logs."
+            " Continue?",
             abort=True,
         )
     ret = purge()
@@ -353,7 +430,9 @@ def cli_purge(
 
 
 @cli.command("reset")
-@click.option("-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation")
+@click.option(
+    "-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation"
+)
 @global_options
 def cli_reset(
     force: bool,
