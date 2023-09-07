@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "jobman"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more"
+authors = ["Ryan Wallace <ryancswallace@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -10,7 +10,14 @@ python = "^3.11"
 click = "^8.1.7"
 psutil = "^5.9.5"
 
+[tool.poetry.group.dev.dependencies]
+isort = "^5.12.0"
+autoflake = "^2.2.1"
+black = "^23.7.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+jobman = 'jobman.cli:cli'

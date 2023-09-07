@@ -1,0 +1,2 @@
+def logs():
+    return "logs"

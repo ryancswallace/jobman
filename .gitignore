@@ -1,1 +1,15 @@
-logs
+.python-version
+
+dev/
+
+*.pyc
+__pycache__/
+*.egg-info/
+build/
+
+.coverage
+
+share/
+
+.ipynb_checkpoints
+

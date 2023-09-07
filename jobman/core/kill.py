@@ -1,0 +1,2 @@
+def kill():
+    return "kill"

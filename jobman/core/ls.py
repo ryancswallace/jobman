@@ -1,0 +1,2 @@
+def ls():
+    return "ls"

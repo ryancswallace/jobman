@@ -1,8 +1,8 @@
 Subcommands
 # TODO
 * help
-* prompt
 
+* move all IO to cli.py (e.g., print job id)
 
 * GLOBAL OPTIONS
     quiet: bool = False

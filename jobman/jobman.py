@@ -1,19 +1,17 @@
-import subprocess
-import uuid
-from pathlib import Path
-import time
-from dataclasses import dataclass, field
-import platform
 import hashlib
-from typing import Optional, List, Union
-import psutil
-import string
-import random
 import logging
+import platform
+import random
+import string
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional, Union
 
-from rotating_stdio import RotatingIOWrapper
-from nohup import nohupify
 import base_logger
+import psutil
+from nohup import nohupify
+from rotating_stdio import RotatingIOWrapper
 
 
 def get_host_id():
@@ -31,6 +29,7 @@ def get_host_id():
     host_id = hashlib.sha256(system_info_str.encode()).hexdigest()[:12]
     return host_id
 
+
 @dataclass
 class NotificationSink:
     pass
@@ -40,13 +39,13 @@ class NotificationSink:
 class JobmanConfig:
     storage_path: Union[str, Path] = "~/.jobman"
     notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
+
     # TOD0: gc config
     def __post_init__(self):
         self.storage_path = Path(self.storage_path).expanduser()
         self.db_path = self.storage_path / "db"
         self.stdio_path = self.storage_path / "stdio"
         self.log_path = self.storage_path / "log"
-
 
 
 @dataclass
@@ -140,7 +139,7 @@ class JobRun:
     def start(self):
         if self.proc is not None or self.pid is not None:
             raise RuntimeError("Job has already been run")
-        
+
         out_fp = RotatingIOWrapper(self.out_file_path)
         err_fp = RotatingIOWrapper(self.err_file_path)
 

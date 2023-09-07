@@ -1,13 +1,20 @@
-from typing import Tuple, Optional, List
-from functools import wraps
-from datetime import datetime, time, timedelta
-import signal
-from pathlib import Path
 import re
+import signal
+from datetime import datetime, time, timedelta
+from functools import wraps
+from pathlib import Path
+from typing import Optional, Tuple
 
 import click
 
-from exceptions import JobmanError
+from .core.kill import kill
+from .core.logs import logs
+from .core.ls import ls
+from .core.purge import purge
+from .core.reset import reset
+from .core.run import run
+from .core.status import status
+from .exceptions import JobmanError
 
 
 def strptimedelta(td_str: str) -> timedelta:
@@ -19,20 +26,23 @@ def strptimedelta(td_str: str) -> timedelta:
             durations[unit] = 0
         elif len(unit_v) > 1:
             raise JobmanError(
-                f"Can't convert '{td_str}' to timedelta. Got multiple values for '{unit}'"
+                f"Can't convert '{td_str}' to timedelta. Got multiple values for"
+                f" '{unit}'"
             )
         else:
             try:
                 v = int(unit_v[0])
             except ValueError:
                 raise JobmanError(
-                    f"Can't convert '{td_str}' to timedelta. '{unit_v[0]}' must be an integer."
+                    f"Can't convert '{td_str}' to timedelta. '{unit_v[0]}' must be an"
+                    " integer."
                 )
             durations[unit] = v
             td_str_work = td_str_work.replace(f"{v}{unit}", "")
     if td_str_work.strip():
         raise JobmanError(
-            f"Can't convert '{td_str}' to timedelta. Got uninterpretable characters '{td_str_work.strip()}'"
+            f"Can't convert '{td_str}' to timedelta. Got uninterpretable characters"
+            f" '{td_str_work.strip()}'"
         )
     return timedelta(
         weeks=durations["w"],
@@ -71,15 +81,26 @@ class TimeOrDateTime(click.DateTime):
 
 @click.group()
 def cli():
-    pass
+    """Run and monitor jobs on the command line with support for retries, timeouts,
+    logging, notifications, and more.
+    """
 
 
 def global_options(f):
     @wraps(f)
-    @click.option("-q", "--quiet", is_flag=True, default=False)
-    @click.option("-v", "--verbose", is_flag=True, default=False)
-    @click.option("-m", "--no-color", is_flag=True, default=False)
-    @click.option("-j", "--json", is_flag=True, default=False)
+    @click.option(
+        "-q", "--quiet", is_flag=True, default=False, help="Suppress unnecessary output"
+    )
+    @click.option(
+        "-v", "--verbose", is_flag=True, default=False, help="Show more detail"
+    )
+    @click.option(
+        "-j",
+        "--json",
+        is_flag=True,
+        default=False,
+        help="Show output in machine-readable JSON format",
+    )
     def wrapper(*args, **kwargs):
         return f(*args, **kwargs)
 
@@ -88,24 +109,104 @@ def global_options(f):
 
 @cli.command("run")
 @click.argument("command", nargs=-1, required=True)
-@click.option("--wait-time", type=TimeOrDateTime())
-@click.option("--wait-duration", type=TimedeltaType())
-@click.option("--wait-for-file", type=click.Path(), multiple=True)
-@click.option("--abort-time", type=TimeOrDateTime())
-@click.option("--abort-duration", type=TimedeltaType())
-@click.option("--abort-for-file", type=click.Path(), multiple=True)
-@click.option("--retry-attempts", type=click.IntRange(min=0))
-@click.option("--retry-delay", type=TimedeltaType())
 @click.option(
-    "-c", "--success-code", type=click.IntRange(min=0, max=255), multiple=True
+    "--wait-time",
+    type=TimeOrDateTime(),
+    help="Do not run the command until the specified date or time",
 )
-@click.option("--notify-on-job-completion", type=str, multiple=True)
-@click.option("--notify-on-run-completion", type=str, multiple=True)
-@click.option("--notify-on-job-success", type=str, multiple=True)
-@click.option("--notify-on-run-success", type=str, multiple=True)
-@click.option("--notify-on-job-failure", type=str, multiple=True)
-@click.option("--notify-on-run-failure", type=str, multiple=True)
-@click.option("-f", "--follow", is_flag=True, default=False)
+@click.option(
+    "--wait-duration",
+    type=TimedeltaType(),
+    help="Do not run the command until the specified duration has elapsed",
+)
+@click.option(
+    "--wait-for-file",
+    type=click.Path(),
+    multiple=True,
+    help="Do not run the command until the specified file exists",
+)
+@click.option(
+    "--abort-time",
+    type=TimeOrDateTime(),
+    help="Terminate the command if it's still running at the specified time",
+)
+@click.option(
+    "--abort-duration",
+    type=TimedeltaType(),
+    help=(
+        "Terminate the command if it's still running after the specified duration has"
+        " elapsed"
+    ),
+)
+@click.option(
+    "--abort-for-file",
+    type=click.Path(),
+    multiple=True,
+    help="Terminate the command if it's still running and the specified file exists",
+)
+@click.option(
+    "--retry-attempts",
+    type=click.IntRange(min=0),
+    help="If the command fails, rerun the command up to the specified number",
+)
+@click.option(
+    "--retry-delay",
+    type=TimedeltaType(),
+    help="Wait the specified time before starting retries",
+)
+@click.option(
+    "-c",
+    "--success-code",
+    type=click.IntRange(min=0, max=255),
+    multiple=True,
+    help="Interpret these exit codes as a successful execution",
+)
+@click.option(
+    "--notify-on-job-completion",
+    type=str,
+    multiple=True,
+    help="Send a notification to this callback when the job completes",
+)
+@click.option(
+    "--notify-on-run-completion",
+    type=str,
+    multiple=True,
+    help="Send a notification to this callback when any run of the job completes",
+)
+@click.option(
+    "--notify-on-job-success",
+    type=str,
+    multiple=True,
+    help="Send a notification to this callback when the job completes successfully",
+)
+@click.option(
+    "--notify-on-run-success",
+    type=str,
+    multiple=True,
+    help=(
+        "Send a notification to this callback when any run of the job completes"
+        " successfully"
+    ),
+)
+@click.option(
+    "--notify-on-job-failure",
+    type=str,
+    multiple=True,
+    help="Send a notification to this callback when the job fails",
+)
+@click.option(
+    "--notify-on-run-failure",
+    type=str,
+    multiple=True,
+    help="Send a notification to this callback when a run of the job fails",
+)
+@click.option(
+    "-f",
+    "--follow",
+    is_flag=True,
+    default=False,
+    help="Display a running log of the command's output",
+)
 @global_options
 def cli_run(
     command: Tuple[str, ...],
@@ -127,15 +228,11 @@ def cli_run(
     follow: bool,
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"run")
-    print(f"{notify_on_run_completion=}")
-    print(f"{command=}")
-    print(f"{success_code=}")
-    print(f"{wait_duration=}")
-    print(f"{wait_time=}")
+    """Start a job in the background immune to hangups."""
+    ret = run()
+    click.echo(ret)
 
 
 @cli.command("status")
@@ -145,10 +242,11 @@ def cli_status(
     job_id: Tuple[str, ...],
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"status")
+    """Display the status of a job."""
+    ret = status()
+    click.echo(ret)
 
 
 @cli.command("logs")
@@ -172,10 +270,11 @@ def cli_logs(
     until: Optional[datetime],
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"logs")
+    """Show output from jobs."""
+    ret = logs()
+    click.echo(ret)
 
 
 SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signals]
@@ -194,24 +293,25 @@ def cli_kill(
     force: bool,
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"kill")
-    print(f"{signal=}")
+    """Stop a running job."""
+    ret = kill()
+    click.echo(ret)
 
 
 @cli.command("ls")
-@click.option("-a", "--all", "_all", is_flag=True, default=False)
+@click.option("-a", "--all", "all_", is_flag=True, default=False)
 @global_options
 def cli_ls(
-    _all: bool,
+    all_: bool,
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"ls")
+    """View jobs."""
+    ret = ls()
+    click.echo(ret)
 
 
 @cli.command("purge")
@@ -231,14 +331,19 @@ def cli_purge(
     force: bool,
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"purge")
+    """Delete metadata for historical jobs."""
     if not (bool(job_id) ^ _all):
         raise click.exceptions.UsageError(
             "Must supply either a job-id argument or the -a/--all flag, but not both"
         )
+    click.confirm(
+        "Purging will permanently delete all specified job history and logs. Continue?",
+        abort=True,
+    )
+    ret = purge()
+    click.echo(ret)
 
 
 @cli.command("reset")
@@ -248,10 +353,15 @@ def cli_reset(
     force: bool,
     quiet: bool,
     verbose: bool,
-    no_color: bool,
     json: bool,
 ):
-    print(f"reset")
+    """Destroy and recreate full Jobman metadata database."""
+    click.confirm(
+        "Resetting will permanently delete all job history and logs. Continue?",
+        abort=True,
+    )
+    ret = reset()
+    click.echo(ret)
 
 
 if __name__ == "__main__":

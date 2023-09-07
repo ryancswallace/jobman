@@ -1,0 +1,2 @@
+def purge():
+    return "purge"
