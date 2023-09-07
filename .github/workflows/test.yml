@@ -38,7 +38,7 @@ jobs:
           version: 1.6.1
 
       - name: Install Python dependencies
-         run: make poetrysetup
+        run: make poetrysetup
 
       - name: Run type checks
         run: make typetest
@@ -65,7 +65,7 @@ jobs:
           version: 1.6.1
 
       - name: Install Python dependencies
-         run: make poetrysetup
+        run: make poetrysetup
 
       - name: Run formatting tests
         run: make fmt && make changes
