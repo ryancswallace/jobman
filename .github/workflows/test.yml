@@ -32,11 +32,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.6.1
+
       - name: Run type checks
-        run: make setup && make typetest
+        run: poetry --version  # make typetest
 
       - name: Run unit tests
-        run: make setup && make unittest
+        run: make unittest
 
   lint:
     name: Lint
@@ -52,4 +57,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Run formatting tests
-        run: make setup && make fmt && make changes
+        run: make fmt && make changes
