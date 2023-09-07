@@ -25,6 +25,7 @@ setup: ## Create and install into virtual environment for development.
 	source $(SHELL_RC)
 	$(PYENV) install --skip-existing $(PYTHON_VERSION)
 	$(PYENV) local $(PYTHON_VERSION)
+	$(POETRY) env use $(PYTHON_VERSION)
 	$(POETRY) install --no-interaction
 
 .PHONY: fmt

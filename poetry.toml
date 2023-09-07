@@ -1,3 +1,0 @@
-# Ensures the poetry virtual environment is created in project root
-[virtualenvs]
-in-project = true

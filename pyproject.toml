@@ -10,10 +10,11 @@ homepage = "https://ryancswallace.github.io/jobman"
 repository = "https://github.com/ryancswallace/jobman"
 documentation = "https://ryancswallace.github.io/jobman"
 keywords = ["python", "cli", "command-line", "background-jobs", "supervisor", "retry", "cli-app", "command-line-tool", "nohup"]
-classifiers =
-    Natural Language :: English
-    Programming Language :: Python :: 3
-    Topic :: Utilities
+classifiers = [
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities"
+]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/ryancswallace/jobman/issues"
