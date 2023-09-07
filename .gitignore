@@ -13,3 +13,6 @@ share/
 
 .ipynb_checkpoints
 
+.tox
+
+dist

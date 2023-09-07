@@ -163,7 +163,7 @@ class JobRun:
         2) still exists in the process table, AND
         3) is not a zombie
         """
-        if self.pid is None:
+        if self.proc is None:
             return False
 
         try:

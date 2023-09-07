@@ -12,7 +12,7 @@ class RotatingIOWrapper(io.TextIOWrapper):
         print("WRITING")
         record = LogRecord(
             name="",
-            level="INFO",
+            level=1,
             pathname="jobman",
             lineno=0,
             msg=line,

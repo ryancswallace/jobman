@@ -16,8 +16,8 @@ help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
 .PHONY: all
-all: ## Setup, generate docs, format, test, run and clean.
-all: setup fmt test clean changes
+all: ## Setup, generate docs, format, test, run and clean. Does *not* publish to PyPI
+all: setup fmt test clean changes build
 
 # installs in editable mode so code changes are applied without re-installing
 .PHONY: setup
@@ -62,3 +62,13 @@ changes: ## Check for uncommitted changes.
 	@$(GIT) status --porcelain=v1 2>/dev/null | grep -v search.js | grep -q '.*' \
 	&& { $(PRINT) "\nFAILED: Uncommitted changes. Changes to docs or formatting?\n"; exit 1; } \
 	|| { $(PRINT) "\nSUCCESS: Ready to release.\n"; exit 0; }
+
+.PHONY: build
+build: ## Build sdist with poetry
+	source $(SHELL_RC)
+	$(POETRY) build
+
+.PHONY: publish
+publish: ## Publish to PyPI with poetry
+	source $(SHELL_RC)
+	$(POETRY) publish
