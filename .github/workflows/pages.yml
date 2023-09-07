@@ -1,5 +1,5 @@
 ---
-name: Docs site
+name: pages-docs-site
 
 on:
   push:
