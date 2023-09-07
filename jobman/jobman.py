@@ -8,10 +8,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Union
 
-import base_logger
 import psutil
-from nohup import nohupify
-from rotating_stdio import RotatingIOWrapper
+
+from . import base_logger
+from .nohup import nohupify
+from .rotating_stdio import RotatingIOWrapper
 
 
 def get_host_id():

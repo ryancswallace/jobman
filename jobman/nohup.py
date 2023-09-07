@@ -4,7 +4,7 @@ Code to mimic the behavior of the common command line pattern
 """
 import os
 
-from exceptions import JobmanForkError
+from .exceptions import JobmanForkError
 
 
 def nohupify():

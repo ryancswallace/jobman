@@ -37,13 +37,13 @@ fmt: ## Apply auto code formatting.
 
 .PHONY: typetest
 typetest: ## Run type hinting tests.
-	$(VENV_ACTIVATE) \
-	&& mypy $(PACKAGE)/ tests/
+	source $(SHELL_RC)
+	$(POETRY) run mypy $(PACKAGE_DIR) $(TEST_DIR)
 
 .PHONY: unittest
 unittest: ## Run unit tests and end-to-end tests.
-	$(VENV_ACTIVATE) \
-	&& pytest --cov-report term --cov-report html tests/
+	source $(SHELL_RC)
+	$(POETRY) run pytest --cov-report term --cov-report html $(TEST_DIR)
 
 .PHONY: test
 test: ## Run all tests: type tests, unit tests, and end-to-end tests.

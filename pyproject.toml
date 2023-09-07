@@ -2,8 +2,24 @@
 name = "jobman"
 version = "0.1.0"
 description = "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more"
+license = "MIT"
 authors = ["Ryan Wallace <ryancswallace@gmail.com>"]
+maintainers = ["Ryan Wallace <ryancswallace@gmail.com>"]
 readme = "README.md"
+homepage = "https://ryancswallace.github.io/jobman"
+repository = "https://github.com/ryancswallace/jobman"
+documentation = "https://ryancswallace.github.io/jobman"
+keywords = ["python", "cli", "command-line", "background-jobs", "supervisor", "retry", "cli-app", "command-line-tool", "nohup"]
+classifiers =
+    Natural Language :: English
+    Programming Language :: Python :: 3
+    Topic :: Utilities
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/ryancswallace/jobman/issues"
+
+[tool.poetry.scripts]
+jobman = 'jobman.cli:cli'
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -15,9 +31,24 @@ isort = "^5.12.0"
 autoflake = "^2.2.1"
 black = "^23.7.0"
 
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.1"
+mypy = "^1.5.1"
+pytest-cov = "^4.1.0"
+types-psutil = "^5.9.5.16"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.scripts]
-jobman = 'jobman.cli:cli'
+[tool.pytest.ini_options]
+addopts = "--cov=jobman"
+testpaths = [
+    "tests",
+]
+
+[tool.mypy]
+mypy_path = "jobman"
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
