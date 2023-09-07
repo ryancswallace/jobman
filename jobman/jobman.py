@@ -177,7 +177,8 @@ class JobRun:
         return procs_are_same(self.proc, proc)
 
 
-jobman_config = JobmanConfig()
+if __name__ == "__main__":
+    jobman_config = JobmanConfig()
 
-job = Job("sleep 5; echo hi; sleep 5")
-job.start()
+    job = Job("sleep 5; echo hi; sleep 5")
+    job.start()
