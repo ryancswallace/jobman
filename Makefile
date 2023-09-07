@@ -26,7 +26,7 @@ setup: ## Create and install into virtual environment for development.
 	$(POETRY) install --no-interaction
 
 .PHONY: poetrysetup
-setup: ## Set up Poetry
+poetrysetup: ## Set up Poetry
 	$(POETRY) install --no-interaction
 
 .PHONY: fmt
