@@ -34,21 +34,23 @@ Jobman will retry the program up to five times until there's one successful run,
 
 If the job succeeds, jobman will send a notification email. If the job fails, jobman will send an SMS message.
 ```bash
-jobman \
-    -wait.timedelta 60s -wait.file data.csv -wait.abort-datetime "2032-03-05T17:00:00" \
-    -retries.num-successes 1 -retries.num-runs 5 -retries.success-codes 0,42 -retries.delay 10s \
-    -notify.on-success my-email -notify.on-failure my-cell \
+$ jobman \
+    --wait-duration 60s --wait-for-file data.csv \
+    --abort-time "2032-03-05T17:00:00" \
+    --retry-attempts 5 --retry-delay 10s -c 0 -c 42  \
+    --notify-on-job-success my-email --notify-on-job-failure my-cell \
     train.py
+12e4b604
 ```
 
 After submitting the `train.py` job above, use `jobman show` to display details on job progress:
 ```bash
-jobman show train.py
+jobman show 12e4b604
 ```
 
-To view a running log of the consolidated stdout and stderr streams of the latest run of the `train.py` job, use `jobman logs`:
+To view a running log of the consolidated stdout and stderr streams of the latest run of the job, use `jobman logs`:
 ```bash
-jobman logs train.py --follow
+jobman logs 12e4b604 --follow
 ```
 
 # Alternatives
