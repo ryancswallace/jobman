@@ -21,8 +21,6 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
-      # You can use PyPy versions in python-version.
-      # For example, pypy2.7 and pypy3.9
       matrix:
         python-version: ["3.9", "3.10", "3.11"]
 
@@ -34,5 +32,24 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Display Python version
-        run: python -c "import sys; print(sys.version)"
+      - name: Run type checks
+        run: make setup && make typetest
+
+      - name: Run unit tests
+        run: make setup && make unittest
+
+  lint:
+    name: Lint
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run formatting tests
+        run: make setup && make fmt && make changes
