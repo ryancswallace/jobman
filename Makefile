@@ -18,12 +18,15 @@ help: ## Show this help.
 all: ## Setup, generate docs, format, test, run and clean. Does *not* publish to PyPI
 all: setup fmt test clean changes build
 
-# installs in editable mode so code changes are applied without re-installing
 .PHONY: setup
 setup: ## Create and install into virtual environment for development.
 	$(PYENV) install --skip-existing $(PYTHON_VERSION)
 	$(PYENV) local $(PYTHON_VERSION)
 	$(POETRY) env use $(PYTHON_VERSION)
+	$(POETRY) install --no-interaction
+
+.PHONY: poetrysetup
+setup: ## Set up Poetry
 	$(POETRY) install --no-interaction
 
 .PHONY: fmt
