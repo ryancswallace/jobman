@@ -12,9 +12,9 @@ permalink: /
 A command line job manager with flexible support for retries, timeouts, logging, notifications, and more.
 {: .fs-6 .fw-300 }
 
-<div align="center">
+<p style="text-align: center;">
 [Install from PyPI][Jobman PyPI]{: .btn .fs-5 .mb-4 .mb-md-0 }
-</div>
+</p>
 
 This is a *bare-minimum* template to create a Jekyll site that uses the [Just the Docs] theme. You can easily set the created site to be published on [GitHub Pages] – the [README] file explains how to do that, along with other details.
 
