@@ -64,7 +64,13 @@ Alternative tools for similar use cases include:
 # Developing
 Jobman uses pyenv for Python version management and poetry for builds. Before working on Jobman, ensure you have `pyenv` and `poetry` installed.
 
-The `Makefile` defines targets for common operations during development, including setting up and installing the package (`make setup`), running the autoformatters (`make fmt`), running the type tests and unit test suite (`make test`), and building the jobman wheel (`make build`).
+The `Makefile` defines targets for common operations during development, including the following:
+* `make setup`: set up and install the package
+* `make fmt`: run the autoformatters
+* `make test`: run the type tests and unit test suite
+* `make build`: build the jobman wheel
+
+To release a new version of the package, use the `bumpver.sh` script. For example, to update to version 1.2.3, run `./bumpver.sh 1.2.3`.
 
 # Contributing
 Feature requests, bug reports, and pull requests are welcome! See [CONTRIBUTING.md](https://github.com/ryancswallace/jobman/blob/main/CONTRIBUTING.md) for details on how to contribute to jobman.
