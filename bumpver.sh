@@ -39,8 +39,8 @@ sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+.*"/version = "'"$VERSION"'"/g' py
 
 # check that pyproject.toml changed
 git status --porcelain=v1 2>/dev/null | grep -q 'M pyproject.toml'
-TOML_CHANGED=$?
-if [ "$TOML_CHANGED" -ne 1 ]; then
+TOML_UNCHANGED=$?
+if [ "$TOML_UNCHANGED" -ne 0 ]; then
     echo "Version number unchanged. Aborting."
     exit 1
 fi
