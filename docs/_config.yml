@@ -4,3 +4,23 @@ remote_theme: just-the-docs/just-the-docs
 
 plugins:
   - jekyll-sitemap
+
+logo: "/assets/logo.png"
+favicon_ico: "/assets/favicon.ico"
+
+aux_links:
+  "Jobman on GitHub":
+    - "//github.com/ryancswallace/jobman"
+aux_links_new_tab: true
+
+footer_content: "Copyright &copy; Ryan Wallace. Distributed under an <a href=\"https://github.com/ryancswallace/jobman/tree/main/LICENSE\">MIT license.</a>"
+last_edit_timestamp: false
+
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub."
+gh_edit_repository: "https://github.com/ryancswallace/jobman"
+gh_edit_branch: "main"
+gh_edit_source: docs
+gh_edit_view_mode: "tree"
+
+color_scheme: dark
