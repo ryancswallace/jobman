@@ -20,14 +20,6 @@ gh_edit_branch: "main"
 gh_edit_source: docs
 gh_edit_view_mode: "tree"
 
-nav_external_links:
-  - title: Jobman on GitHub
-    url: https://github.com/ryancswallace/jobman
-    hide_icon: false
-  - title: Jobman on PyPI
-    url: https://pypi.org/project/jobman
-    hide_icon: false
-
 footer_content: "Copyright &copy; Ryan Wallace. Distributed under an <a href=\"https://github.com/ryancswallace/jobman/tree/main/LICENSE\">MIT license.</a>"
 last_edit_timestamp: false
 
@@ -48,6 +40,9 @@ collections:
   contributing:
     permalink: "/:collection/:path/"
     output: true
+  about:
+    permalink: "/:collection/:path/"
+    output: true
 
 just_the_docs:
   collections:
@@ -57,5 +52,9 @@ just_the_docs:
       search_exclude: 
     contributing:
       name: Contributing
+      nav_exclude: false
+      search_exclude: false
+    about:
+      name: About
       nav_exclude: false
       search_exclude: false
