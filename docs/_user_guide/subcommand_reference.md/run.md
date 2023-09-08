@@ -1,10 +1,8 @@
 ---
 layout: default
-title: Run
+title: run
 parent: Command Reference
 nav_order: 1
 ---
 
-# Run
-
-Describe `run` subcommand
+# run

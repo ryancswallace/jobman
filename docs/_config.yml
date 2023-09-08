@@ -6,7 +6,7 @@ plugins:
   - jekyll-sitemap
 
 logo: "/assets/logo.png"
-favicon_ico: "/assets/favicon.ico"
+favicon_ico: "/assets/favicon.png"
 
 aux_links:
   "Jobman on GitHub":
