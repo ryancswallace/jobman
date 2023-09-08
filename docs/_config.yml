@@ -40,7 +40,7 @@ collections:
   contributing:
     permalink: "/:collection/:path/"
     output: true
-  about:
+  other:
     permalink: "/:collection/:path/"
     output: true
 
@@ -54,7 +54,7 @@ just_the_docs:
       name: Contributing
       nav_exclude: false
       search_exclude: false
-    about:
-      name: About
+    other:
+      name: Other
       nav_exclude: false
       search_exclude: false
