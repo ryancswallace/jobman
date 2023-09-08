@@ -31,7 +31,7 @@ fi
 # calculate the version and tag
 VERSION=$1
 TAG="v$VERSION"
-echo "Updating to version $VERSION with tag $TAG..."
+echo -e "\nUpdating to version $VERSION with tag $TAG..."
 
 # update pyproject.toml
 echo "Updating version in pyproject.toml..."
@@ -41,10 +41,11 @@ sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+.*"/version = "'"$VERSION"'"/g' py
 git status --porcelain=v1 2>/dev/null | grep -q 'M pyproject.toml'
 TOML_UNCHANGED=$?
 if [ "$TOML_UNCHANGED" -ne 0 ]; then
-    echo "Version number unchanged! Aborting."
+    echo -e "\nVersion number unchanged! Aborting."
     exit 1
 fi
 
+echo -e "\nTo commit, tag, and publish the new version run the following commands:"
 echo "git add pyproject.toml \\"
 echo "  && git commit -m "chore: bump to version $VERSION" \\"
 echo "  && git push origin HEAD \\"
