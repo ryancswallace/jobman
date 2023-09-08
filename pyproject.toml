@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jobman"
-version = "0.3.0"
+version = "0.4.0"
 description = "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more"
 license = "MIT"
 authors = ["Ryan Wallace <ryancswallace@gmail.com>"]
