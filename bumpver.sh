@@ -45,7 +45,8 @@ if [ "$TOML_UNCHANGED" -ne 0 ]; then
     exit 1
 fi
 
-# git add pyproject.toml
-# git commit -m "chore: bump to version $VERSION"
-# git tag -a "$TAG" -m "release version $VERSION"
-# git push origin "$TAG"
+echo "git add pyproject.toml \\"
+echo "&& git commit -m "chore: bump to version $VERSION" \\"
+echo "&& git push origin HEAD \\"
+echo "&& git tag -a "$TAG" -m "release version $VERSION" \\"
+echo "&& git push origin "$TAG""
