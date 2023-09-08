@@ -2,5 +2,5 @@
 title: User Guide
 layout: default
 nav_order: 2
-has_children: 2
+has_children: true
 ---
