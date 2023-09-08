@@ -19,10 +19,20 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
+# check that working tree is clean
+git status --porcelain=v1 2>/dev/null | grep -q '.*' > /dev/null
+WORKTREE_CLEAN=$?
+if [ "$WORKTREE_CLEAN" -ne 1 ]; then
+    echo "Uncommitted changes in the working tree. Commit or stash changes before bumping the version."
+    exit 1
+fi
+
+
 VERSION=$1
 TAG="v$VERSION"
 
 echo "Updating to version $VERSION with tag $TAG"
+
 
 # sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+.*"/version = "'"$VERSION"'"/g' pyproject.toml
 
