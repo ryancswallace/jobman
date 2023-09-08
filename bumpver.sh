@@ -49,5 +49,5 @@ echo -e "\nTo commit, tag, and publish the new version run the following command
 echo "git add pyproject.toml \\"
 echo "  && git commit -m \"chore: bump to version $VERSION\" \\"
 echo "  && git push origin HEAD \\"
-echo "  && git tag -a "$TAG" -m \"release version $VERSION\" \\"
-echo "  && git push origin "$TAG""
+echo "  && git tag -a \""$TAG"\" -m \"release version $VERSION\" \\"
+echo "  && git push origin \""$TAG"\""
