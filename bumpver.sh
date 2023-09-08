@@ -24,14 +24,14 @@ fi
 git status --porcelain=v1 2>/dev/null | grep -q '.*' > /dev/null
 WORKTREE_CLEAN=$?
 if [ "$WORKTREE_CLEAN" -ne 1 ]; then
-    echo "Uncommitted changes in the working tree! Commit or stash changes before bumping the version. Aborting."
+    echo -e "\nUncommitted changes in the working tree! Commit or stash changes before bumping the version. Aborting."
     exit 1
 fi
 
 # calculate the version and tag
 VERSION=$1
 TAG="v$VERSION"
-echo -e "\nUpdating to version $VERSION with tag $TAG..."
+echo "Updating to version $VERSION with tag $TAG..."
 
 # update pyproject.toml
 echo "Updating version in pyproject.toml..."
