@@ -13,15 +13,23 @@ aux_links:
     - "//github.com/ryancswallace/jobman"
 aux_links_new_tab: true
 
-footer_content: "Copyright &copy; Ryan Wallace. Distributed under an <a href=\"https://github.com/ryancswallace/jobman/tree/main/LICENSE\">MIT license.</a>"
-last_edit_timestamp: false
-
 gh_edit_link: true
 gh_edit_link_text: "Edit this page on GitHub."
 gh_edit_repository: "https://github.com/ryancswallace/jobman"
 gh_edit_branch: "main"
 gh_edit_source: docs
 gh_edit_view_mode: "tree"
+
+nav_external_links:
+  - title: Jobman on GitHub
+    url: https://github.com/ryancswallace/jobman
+    hide_icon: false
+  - title: Jobman on PyPI
+    url: https://pypi.org/project/jobman
+    hide_icon: false
+
+footer_content: "Copyright &copy; Ryan Wallace. Distributed under an <a href=\"https://github.com/ryancswallace/jobman/tree/main/LICENSE\">MIT license.</a>"
+last_edit_timestamp: false
 
 kramdown:
   syntax_highlighter_opts:
