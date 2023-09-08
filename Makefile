@@ -57,7 +57,7 @@ clean: ## Delete runtime files.
 # meaningful changes to docs will be reflected in Markdown versions
 .PHONY: changes
 changes: ## Check for uncommitted changes.
-	@$(GIT) status --porcelain=v1 2>/dev/null | grep -v search.js | grep -q '.*' \
+	@$(GIT) status --porcelain=v1 2>/dev/null | grep -q '.*' \
 	&& { $(PRINT) "\nFAILED: Uncommitted changes. Changes to docs or formatting?\n"; exit 1; } \
 	|| { $(PRINT) "\nSUCCESS: Ready to release.\n"; exit 0; }
 
