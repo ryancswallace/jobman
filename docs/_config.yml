@@ -40,3 +40,22 @@ back_to_top: true
 back_to_top_text: "Back to top"
 
 color_scheme: dark
+
+collections:
+  user_guide:
+    permalink: "/:collection/:path/"
+    output: true
+  contributing:
+    permalink: "/:collection/:path/"
+    output: true
+
+just_the_docs:
+  collections:
+    user_guide:
+      name: User Guide
+      nav_exclude: false
+      search_exclude: 
+    contributing:
+      name: Contributing
+      nav_exclude: false
+      search_exclude: false
