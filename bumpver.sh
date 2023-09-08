@@ -14,6 +14,7 @@
 ### 3. Print out the git push command to run to publish the change to GitHub (and, by extension, PyPI)
 ###
 
+# validate arguments
 if [ "$#" -ne 1 ]; then
     echo "Must provide exactly one argument: the version number to update to."
     exit 1
@@ -27,14 +28,14 @@ if [ "$WORKTREE_CLEAN" -ne 1 ]; then
     exit 1
 fi
 
-
+# calculate the version and tag
 VERSION=$1
 TAG="v$VERSION"
-
 echo "Updating to version $VERSION with tag $TAG"
 
-
-# sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+.*"/version = "'"$VERSION"'"/g' pyproject.toml
+# update pyproject.toml
+echo "Updating version in pyproject.toml"
+sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+.*"/version = "'"$VERSION"'"/g' pyproject.toml
 
 # git add pyproject.toml
 # git commit -m "chore: bump to version $VERSION"
