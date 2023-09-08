@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Run
-parent: Usage
+parent: Subcommand Reference
 nav_order: 1
 ---
 

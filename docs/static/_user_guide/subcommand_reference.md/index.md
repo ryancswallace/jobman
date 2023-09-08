@@ -1,9 +1,9 @@
 ---
 layout: default
-title: Usage
+title: Subcommand Reference
 nav_order: 2
 has_children: true
-permalink: /docs/usage
+parent: User Guide
 ---
 
 # Usage
