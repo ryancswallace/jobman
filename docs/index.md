@@ -5,7 +5,6 @@ nav_order: 1
 description: "Jobman is a command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
 permalink: /
 ---
-
 # Jobman
 {: .fs-9 }
 
@@ -14,6 +13,8 @@ A command line job manager with flexible support for retries, timeouts, logging,
 
 [Package on PyPI][Jobman PyPI]{: .btn .fs-5 .mb-4 .mb-md-0 .text-center }
 [Code on GitHub][Jobman repo]{: .btn .fs-5 .mb-4 .mb-md-0 .text-center }
+
+----
 
 Jobman automates the process of running and monitoring jobs on the command line. Jobman supports
 * running commands in the background immune to hangups
@@ -62,14 +63,12 @@ jobman logs 12e4b604 --follow
 ```
 
 ## Alternatives
-Jobman aims to be reliable and fully-featured. It operates *without* requiring a system service/daemon for orchestration.
+Jobman aims to be reliable and fully-featured. It operates *without* requiring a system service or daemon for orchestration.
 
 Alternative tools for similar use cases include:
 * **cron**: for scheduling repeated executions of a job
 * **Airflow**, **Prefect**, and **Dagster**: for managing dependencies between multiple jobs
 * **supervisord**: for daemon-based job management
-
-----
 
 [Jobman repo]: https://github.com/ryancswallace/jobman
 [Jobman PyPI]: https://pypi.org/project/jobman
