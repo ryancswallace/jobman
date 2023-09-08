@@ -23,4 +23,12 @@ gh_edit_branch: "main"
 gh_edit_source: docs
 gh_edit_view_mode: "tree"
 
+kramdown:
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
 color_scheme: dark
