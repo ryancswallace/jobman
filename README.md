@@ -22,7 +22,7 @@ Jobman requires Python3.9+.
 # Installation
 Install or upgrade from PyPI with
 ```
-$ pip install jobman
+$ pip install -U jobman
 ```
 
 # Example
