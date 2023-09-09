@@ -1,6 +1,7 @@
 PYTHON_VERSION ?= 3.11
 PYENV ?= pyenv
 POETRY ?= poetry
+PYINSTALLER ?= pyinstaller
 GIT ?= git
 PRINT ?= printf
 
@@ -62,8 +63,9 @@ changes: ## Check for uncommitted changes.
 	|| { $(PRINT) "\nSUCCESS: Ready to release.\n"; exit 0; }
 
 .PHONY: build
-build: ## Build sdist with poetry
+build: ## Build wheel with poetry and single executable with PyInstaller
 	$(POETRY) build
+	$(PYINSTALLER) --onefile -n $(PACKAGE) installer/jobman_pyinstaller_wrapper.py
 
 .PHONY: publish
 publish: ## Publish to PyPI with poetry

@@ -1,6 +1,7 @@
 dev/
 
 # Python and Python tooling (e.g., Poetry, pyenv, pytest)
+jobman.spec
 .python-version
 .coverage
 .ipynb_checkpoints
