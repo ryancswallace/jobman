@@ -16,9 +16,9 @@ A command line job manager with flexible support for retries, timeouts, logging,
 
 ----
 
-Jobman automates the process of running and monitoring jobs on the command line. Jobman supports
-* running commands in the background immune to hangups
-* logging command output
+Jobman saves you time and frustration on the command line. Using Jobman to **run** a command, your command
+* runs in the background immune to hangups
+* logs stdout and stderr
 * retrying commands
 * aborting commands after timeout
 * delaying command execution for a specified time or event
@@ -61,14 +61,6 @@ To view a running log of the consolidated stdout and stderr streams of the lates
 ```bash
 jobman logs 12e4b604 --follow
 ```
-
-## Alternatives
-Jobman aims to be reliable and fully-featured. It operates *without* requiring a system service or daemon for orchestration.
-
-Alternative tools for similar use cases include:
-* **cron**: for scheduling repeated executions of a job
-* **Airflow**, **Prefect**, and **Dagster**: for managing dependencies between multiple jobs
-* **supervisord**: for daemon-based job management
 
 [Jobman repo]: https://github.com/ryancswallace/jobman
 [Jobman PyPI]: https://pypi.org/project/jobman

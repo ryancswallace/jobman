@@ -5,11 +5,10 @@ Please note we have a PR process and a code of conduct; please follow both in yo
 
 ## Pull Request Process
 
-0. Discuss the change you wish to make by [opening an *issue*](https://github.com/ryancswallace/jobman/issues). 
+0. For large or significant changes, discuss the change you wish to make by [opening an *issue*](https://github.com/ryancswallace/jobman/issues). 
 1. Update the README and documentation with details of changes as required.
-2. Bump the version number in `pyproject.toml`. We use the [SemVer](http://semver.org/) versioning scheme.
-3. [Open a *Pull Request* (PR)](https://github.com/ryancswallace/gojobman/pulls) and ensure all automated tests pass. Add a project maintainer as a reviewer.
-4. Merge the PR after it's approved by a maintainer.
+2. [Open a *Pull Request* (PR)](https://github.com/ryancswallace/gojobman/pulls) and ensure all automated tests pass. Add a project maintainer as a reviewer.
+3. Merge the PR after it's approved by a maintainer.
 
 ## Code of Conduct
 
