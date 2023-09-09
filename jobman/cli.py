@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 import click
 
+from .core.install_completions import install_completions
 from .core.kill import kill
 from .core.logs import logs
 from .core.ls import ls
@@ -53,6 +54,11 @@ def strptimedelta(td_str: str) -> timedelta:
     )
 
 
+def complete_job_id(ctx, param, incomplete):
+    # TODO
+    return ["123", "456"]
+
+
 class TimedeltaType(click.ParamType):
     name = "timedelta"
 
@@ -79,7 +85,36 @@ class TimeOrDateTime(click.DateTime):
         )
 
 
-@click.group()
+class JobmanGroup(click.Group):
+    """
+    Typical click Group class, but displays the usage epilog without an indent.
+    """
+
+    def format_epilog(self, ctx, formatter):
+        if self.epilog:
+            formatter.write_paragraph()
+            for line in self.epilog.split("\n"):
+                formatter.write_text(line)
+
+
+EXAMPLES = """\
+Examples:
+  Run an echo command with a delay and retry attempts.
+    $ jobman run --wait-duration 60s --retry-attempts 5 echo hi
+  Wrap a command containing special shell characters in single quotes.
+    $ jobman run 'myutil < file.txt | grep 123'
+  Show the status of a job.
+    $ jobman status abcdef12
+  View and follow the stderr output only for a job.
+    $ jobman logs --follow --hide-stdout 123456ab
+  List all active jobs.
+    $ jobman list
+"""
+CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+
+
+@click.group(cls=JobmanGroup, context_settings=CONTEXT_SETTINGS, epilog=EXAMPLES)
+@click.version_option(None, "--version", "-V")
 def cli():
     """Run and monitor jobs on the command line with support for retries, timeouts,
     logging, notifications, and more.
@@ -99,7 +134,20 @@ def global_options(f):
         "--json",
         is_flag=True,
         default=False,
-        help="Show output in machine-readable JSON format",
+        help=(
+            "Show output in machine-readable JSON format. Mutually exclusive with"
+            " -p/--plain"
+        ),
+    )
+    @click.option(
+        "-p",
+        "--plain",
+        is_flag=True,
+        default=False,
+        help=(
+            "Show output in plain machine-readable format. Mutually exclusive with"
+            " -j/--json"
+        ),
     )
     def wrapper(*args, **kwargs):
         return f(*args, **kwargs)
@@ -107,7 +155,7 @@ def global_options(f):
     return wrapper
 
 
-@cli.command("run")
+@cli.command("run", context_settings=CONTEXT_SETTINGS)
 @click.argument("command", nargs=-1, required=True)
 @click.option(
     "--wait-time",
@@ -229,28 +277,30 @@ def cli_run(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Start a job in the background immune to hangups."""
     ret = run()
     click.echo(ret)
 
 
-@cli.command("status")
-@click.argument("job-id", nargs=-1, required=True)
+@cli.command("status", context_settings=CONTEXT_SETTINGS)
+@click.argument("job-id", nargs=-1, required=True, shell_complete=complete_job_id)
 @global_options
 def cli_status(
     job_id: Tuple[str, ...],
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Display the status of a job(s) JOB_ID."""
     ret = status()
     click.echo(ret)
 
 
-@cli.command("logs")
-@click.argument("job-id", nargs=1)
+@cli.command("logs", context_settings=CONTEXT_SETTINGS)
+@click.argument("job-id", nargs=1, shell_complete=complete_job_id)
 @click.option(
     "-o",
     "--hide-stdout",
@@ -273,7 +323,7 @@ def cli_status(
     help="Display running log messages as output",
 )
 @click.option(
-    "-p",
+    "-x",
     "--no-log-prefix",
     is_flag=True,
     default=False,
@@ -304,6 +354,7 @@ def cli_logs(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Show output from job(s) JOB_ID."""
     ret = logs()
@@ -313,8 +364,8 @@ def cli_logs(
 SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signals]
 
 
-@cli.command("kill")
-@click.argument("job-id", nargs=-1, required=True)
+@cli.command("kill", context_settings=CONTEXT_SETTINGS)
+@click.argument("job-id", nargs=-1, required=True, shell_complete=complete_job_id)
 @click.option(
     "-s",
     "--signal",
@@ -343,6 +394,7 @@ def cli_kill(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Stop running job JOB_ID."""
     if not force:
@@ -354,7 +406,7 @@ def cli_kill(
     click.echo(ret)
 
 
-@cli.command("ls")
+@cli.command("ls", context_settings=CONTEXT_SETTINGS)
 @click.option(
     "-a", "--all", "all_", is_flag=True, default=False, help="Include finished jobs"
 )
@@ -364,14 +416,15 @@ def cli_ls(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """View jobs."""
     ret = ls()
     click.echo(ret)
 
 
-@cli.command("purge")
-@click.argument("job-id", nargs=-1, required=False)
+@cli.command("purge", context_settings=CONTEXT_SETTINGS)
+@click.argument("job-id", nargs=-1, required=False, shell_complete=complete_job_id)
 @click.option(
     "-a",
     "--all",
@@ -413,6 +466,7 @@ def cli_purge(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Delete metadata for historical job(s) JOB_ID."""
     if not (bool(job_id) ^ _all):
@@ -429,7 +483,7 @@ def cli_purge(
     click.echo(ret)
 
 
-@cli.command("reset")
+@cli.command("reset", context_settings=CONTEXT_SETTINGS)
 @click.option(
     "-f", "--force", is_flag=True, default=False, help="Don't prompt for confirmation"
 )
@@ -439,6 +493,7 @@ def cli_reset(
     quiet: bool,
     verbose: bool,
     json: bool,
+    plain: bool,
 ):
     """Destroy and recreate full Jobman metadata database."""
     if not force:
@@ -447,6 +502,20 @@ def cli_reset(
             abort=True,
         )
     ret = reset()
+    click.echo(ret)
+
+
+@cli.command("install-completions", context_settings=CONTEXT_SETTINGS)
+@click.argument(
+    "shell",
+    nargs=1,
+    required=False,
+    default=None,
+    shell_complete=lambda *_: ["bash", "zsh", "fish"],
+)
+def cli_install_completions(shell: Optional[str]):
+    """Configure shell for command, argument, and option completions."""
+    ret = install_completions(shell)
     click.echo(ret)
 
 

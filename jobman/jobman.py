@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import platform
 import random
 import string
@@ -36,9 +37,14 @@ class NotificationSink:
     pass
 
 
+CONFIG_HOME = Path(
+    os.environ.get("JOBMAN_CONFIG_HOME", "~/.config/jobman/")
+).expanduser()
+
+
 @dataclass
 class JobmanConfig:
-    storage_path: Union[str, Path] = "~/.jobman"
+    storage_path: Union[str, Path] = "~/.local/share/jobman"
     notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
 
     # TOD0: gc config
