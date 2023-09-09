@@ -26,7 +26,7 @@ $ pip install -U jobman
 ```
 
 # Example
-The example below uses jobman to run a Python script `train.py` in the background and immune to hangups (e.g., a SIGHUP from an SHH timeout).
+The example below uses jobman to run a Python script `train.py` in the background and immune to hangups (e.g., a SIGHUP from an SSH timeout).
 
 Jobman will ensure 60 seconds have passed *and* that the file `data.csv` exists before starting the program. If those conditions haven't been met by 5:00PM on March 5, 2032, jobman will abort the job.
 
