@@ -1,5 +1,7 @@
+import os
 import re
 import signal
+import sys
 from datetime import datetime, time, timedelta
 from functools import wraps
 from pathlib import Path
@@ -282,6 +284,7 @@ def cli_run(
     """Start a job in the background immune to hangups."""
     ret = run()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("status", context_settings=CONTEXT_SETTINGS)
@@ -297,6 +300,7 @@ def cli_status(
     """Display the status of a job(s) JOB_ID."""
     ret = status()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)
@@ -359,6 +363,7 @@ def cli_logs(
     """Show output from job(s) JOB_ID."""
     ret = logs()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signals]
@@ -404,6 +409,7 @@ def cli_kill(
         )
     ret = kill()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("ls", context_settings=CONTEXT_SETTINGS)
@@ -421,6 +427,7 @@ def cli_ls(
     """View jobs."""
     ret = ls()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)
@@ -481,6 +488,7 @@ def cli_purge(
         )
     ret = purge()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("reset", context_settings=CONTEXT_SETTINGS)
@@ -503,6 +511,7 @@ def cli_reset(
         )
     ret = reset()
     click.echo(ret)
+    sys.exit(os.EX_OK)
 
 
 @cli.command("install-completions", context_settings=CONTEXT_SETTINGS)
@@ -516,7 +525,8 @@ def cli_reset(
 def cli_install_completions(shell: Optional[str]):
     """Configure shell for command, argument, and option completions."""
     ret = install_completions(shell)
-    click.echo(ret)
+    click.secho(ret, fg="green")
+    sys.exit(os.EX_OK)
 
 
 if __name__ == "__main__":
