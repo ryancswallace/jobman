@@ -4,17 +4,21 @@ Convenience method for installing jobman shell completion scripts.
 
 import os
 import sys
-from collections import namedtuple
 from pathlib import Path
-from typing import Optional
+from typing import Dict, NamedTuple, Optional
 
 from ..display import Displayer, DisplayStyle
 from ..exceptions import JobmanError
 
-Shell = namedtuple("Shell", "name config_path completion_script")
+
+class Shell(NamedTuple):
+    name: str
+    config_path: Path
+    completion_script: str
+
 
 COMPLETION_FLAG = "managed by jobman install-completions"
-COMPLETION_SUPPORTED_SHELLS = {
+COMPLETION_SUPPORTED_SHELLS: Dict[str, Shell] = {
     "bash": Shell(
         name="bash",
         config_path=Path("~/.bashrc").expanduser(),

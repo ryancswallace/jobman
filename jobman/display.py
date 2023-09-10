@@ -3,7 +3,7 @@ import sys
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional, TextIO, Union
+from typing import Dict, Optional, TextIO, Union
 
 from rich.console import Console
 
@@ -94,7 +94,8 @@ class RichDisplayer(Displayer):
 
         console = stdout if stream == sys.stdout else stderr
         if self.json:
-            console.print_json(json.dumps({"message": text}))
+            text_json: Dict[str, str] = {"message": text}
+            console.print_json(json.dumps(text_json))
         else:
             console.print(text, style=rich_style)
 
