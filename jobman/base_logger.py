@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Union
 
 
-def make_logger(log_file_path: Union[str, Path], log_level: str):
+def make_logger(log_file_path: Union[str, Path], log_level: str) -> logging.Logger:
     handler = logging.FileHandler(log_file_path)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

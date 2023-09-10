@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, time, timedelta
 from functools import wraps
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Union, Callable, TypeVar
 
 import click
 
@@ -60,7 +60,7 @@ def strptimedelta(td_str: str) -> timedelta:
     )
 
 
-def complete_job_id(ctx, param, incomplete):
+def complete_job_id(ctx: click.Context, param: Optional[click.Parameter], incomplete: str) -> List[str]:
     # TODO
     return ["123", "456"]
 
@@ -68,7 +68,7 @@ def complete_job_id(ctx, param, incomplete):
 class TimedeltaType(click.ParamType):
     name = "timedelta"
 
-    def convert(self, value, param, ctx):
+    def convert(self, value: Union[str, timedelta], param: Optional[click.Parameter], ctx: Optional[click.Context]) -> timedelta:
         if isinstance(value, timedelta):
             return value
 
@@ -79,12 +79,13 @@ class TimedeltaType(click.ParamType):
 
 
 class TimeOrDateTime(click.DateTime):
-    def convert(self, value, param, ctx):
+    def convert(self, value: str, param: Optional[click.Parameter], ctx: Optional[click.Context]) -> datetime:
         today = datetime.today()
         try:
             tm = time.fromisoformat(value)
         except ValueError:
-            return super().convert(value, param, ctx)
+            dt: datetime = super().convert(value, param, ctx)
+            return dt
 
         return today.replace(
             hour=tm.hour, minute=tm.minute, second=tm.second, microsecond=0
@@ -96,7 +97,7 @@ class JobmanGroup(click.Group):
     Typical click Group class, but displays the usage epilog without an indent.
     """
 
-    def format_epilog(self, ctx, formatter):
+    def format_epilog(self, ctx: Optional[click.Context], formatter: click.HelpFormatter) -> None:
         if self.epilog:
             formatter.write_paragraph()
             for line in self.epilog.split("\n"):
@@ -121,13 +122,17 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 @click.group(cls=JobmanGroup, context_settings=CONTEXT_SETTINGS, epilog=EXAMPLES)
 @click.version_option(None, "--version", "-V")
-def cli():
+def cli() -> None:
     """Run and monitor jobs on the command line with support for retries, timeouts,
     logging, notifications, and more.
     """
 
 
-def global_options(f):
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
     @wraps(f)
     @click.option(
         "-q", "--quiet", is_flag=True, default=False, help="Suppress unnecessary output"
@@ -155,7 +160,7 @@ def global_options(f):
             " -j/--json"
         ),
     )
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
         return f(*args, **kwargs)
 
     return wrapper

@@ -4,10 +4,10 @@ Code to mimic the behavior of the common command line pattern
 """
 import os
 
-from .exceptions import JobmanForkError
+from .exceptions import JobmanError
 
 
-def nohupify():
+def nohupify() -> None:
     """
     Double fork to detach process from the controlling terminal and run it
     in the background.
@@ -15,7 +15,7 @@ def nohupify():
     try:
         pid = os.fork()
     except OSError as e:
-        raise JobmanForkError(e, exit_code=os.EX_OSERR)
+        raise JobmanError(str(e), exit_code=os.EX_OSERR)
 
     if pid != 0:
         # os._exit is preferred over os.exit since _exit doesn't invoke the
@@ -30,7 +30,7 @@ def nohupify():
     try:
         pid = os.fork()
     except OSError as e:
-        raise JobmanForkError(e, exit_code=os.EX_OSERR)
+        raise JobmanError(str(e), exit_code=os.EX_OSERR)
 
     if pid != 0:
         os._exit(0)

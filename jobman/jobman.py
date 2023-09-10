@@ -16,7 +16,7 @@ from .nohup import nohupify
 from .rotating_stdio import RotatingIOWrapper
 
 
-def get_host_id():
+def get_host_id() -> str:
     system_info = platform.uname()
     system_info_str = ";".join(
         [
@@ -48,7 +48,7 @@ class JobmanConfig:
     notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
 
     # TOD0: gc config
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.storage_path = Path(self.storage_path).expanduser()
         self.db_path = self.storage_path / "db"
         self.stdio_path = self.storage_path / "stdio"
@@ -83,11 +83,11 @@ class Job:
     verbose: bool = False
 
     @staticmethod
-    def _generate_random_id():
+    def _generate_random_id() -> str:
         id_len = 8
         return "".join(random.choices(string.hexdigits, k=id_len)).lower()
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.jobman_config = jobman_config
         self.host_id = get_host_id()
         self.job_id = self._generate_random_id()
@@ -120,7 +120,7 @@ class Job:
             job_run.proc.wait()
 
 
-def procs_are_same(proc_1: psutil.Process, proc_2: psutil.Process):
+def procs_are_same(proc_1: psutil.Process, proc_2: psutil.Process) -> bool:
     same_pid = proc_1.pid == proc_2.pid
     same_create_time = proc_1.create_time() == proc_2.create_time()
     return same_pid and same_create_time
@@ -143,7 +143,7 @@ class JobRun:
         self.pid = pid
         self.proc = proc
 
-    def start(self):
+    def start(self) -> None:
         if self.proc is not None or self.pid is not None:
             raise RuntimeError("Job has already been run")
 
@@ -162,7 +162,7 @@ class JobRun:
         except psutil.NoSuchProcess:
             print("Terminated before getting proc")
 
-    def is_running(self):
+    def is_running(self) -> bool:
         """
         Return whether the process for this JobRun:
         1) has been started, AND

@@ -32,25 +32,25 @@ class Displayer(ABC):
 
     def display(
         self,
-        text,
+        text: str,
         stream: TextIO,
         level: Optional[DisplayLevel] = None,
         style: Optional[DisplayStyle] = None,
-    ):
+    ) -> None:
         raise NotImplementedError("Displayer class is an ABC")
 
 
 class SimpleDisplayer(Displayer):
     """Displays all output unformatted to stdout."""
 
-    def display(self, text, *args, **kwargs):
+    def display(self, text: str, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         print(text)
 
 
 class AntiDisplayer(Displayer):
     """A displayer that swallows display messages."""
 
-    def display(self, text, *args, **kwargs):
+    def display(self, text: str, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         pass
 
 
@@ -65,7 +65,7 @@ class RichDisplayer(Displayer):
 
     def display(
         self,
-        text,
+        text: str,
         stream: TextIO,
         level: Optional[DisplayLevel] = DisplayLevel.NORMAL,
         style: Optional[Union[DisplayStyle, str]] = DisplayStyle.NORMAL,
@@ -98,7 +98,7 @@ class RichDisplayer(Displayer):
         else:
             console.print(text, style=rich_style)
 
-    def display_exception(self, e: Exception):
+    def display_exception(self, e: Exception) -> None:
         """
         Display an interpretable error message for the specified exception.
         """
