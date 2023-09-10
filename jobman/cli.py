@@ -17,6 +17,7 @@ from .core.purge import purge
 from .core.reset import reset
 from .core.run import run
 from .core.status import status
+from .display import RichDisplayer
 from .exceptions import JobmanError
 
 
@@ -30,7 +31,8 @@ def strptimedelta(td_str: str) -> timedelta:
         elif len(unit_v) > 1:
             raise JobmanError(
                 f"Can't convert '{td_str}' to timedelta. Got multiple values for"
-                f" '{unit}'"
+                f" '{unit}'",
+                exit_code=os.EX_USAGE,
             )
         else:
             try:
@@ -38,14 +40,16 @@ def strptimedelta(td_str: str) -> timedelta:
             except ValueError:
                 raise JobmanError(
                     f"Can't convert '{td_str}' to timedelta. '{unit_v[0]}' must be an"
-                    " integer."
+                    " integer.",
+                    exit_code=os.EX_USAGE,
                 )
             durations[unit] = v
             td_str_work = td_str_work.replace(f"{v}{unit}", "")
     if td_str_work.strip():
         raise JobmanError(
             f"Can't convert '{td_str}' to timedelta. Got uninterpretable characters"
-            f" '{td_str_work.strip()}'"
+            f" '{td_str_work.strip()}'",
+            exit_code=os.EX_USAGE,
         )
     return timedelta(
         weeks=durations["w"],
@@ -280,11 +284,35 @@ def cli_run(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Start a job in the background immune to hangups."""
-    ret = run()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(
+            run(
+                command,
+                wait_time,
+                wait_duration,
+                wait_for_file,
+                abort_time,
+                abort_duration,
+                abort_for_file,
+                retry_attempts,
+                retry_delay,
+                success_code,
+                notify_on_run_completion,
+                notify_on_job_completion,
+                notify_on_job_success,
+                notify_on_run_success,
+                notify_on_job_failure,
+                notify_on_run_failure,
+                follow,
+                displayer,
+            )
+        )
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("status", context_settings=CONTEXT_SETTINGS)
@@ -296,11 +324,14 @@ def cli_status(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Display the status of a job(s) JOB_ID."""
-    ret = status()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(status(job_id, displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)
@@ -359,11 +390,26 @@ def cli_logs(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Show output from job(s) JOB_ID."""
-    ret = logs()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(
+            logs(
+                job_id,
+                hide_stdout,
+                hide_stderr,
+                follow,
+                no_log_prefix,
+                tail,
+                since,
+                until,
+                displayer,
+            )
+        )
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signals]
@@ -400,16 +446,19 @@ def cli_kill(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Stop running job JOB_ID."""
     if not force:
         click.confirm(
             f"Are you sure you want to stop job {job_id}?",
             abort=True,
         )
-    ret = kill()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(kill(job_id, signal, allow_retries, displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("ls", context_settings=CONTEXT_SETTINGS)
@@ -423,11 +472,14 @@ def cli_ls(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """View jobs."""
-    ret = ls()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(ls(all_, displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)
@@ -474,21 +526,20 @@ def cli_purge(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Delete metadata for historical job(s) JOB_ID."""
-    if not (bool(job_id) ^ _all):
-        raise click.exceptions.UsageError(
-            "Must supply either a job-id argument or the -a/--all flag, but not both"
-        )
     if not force:
         click.confirm(
             "Purging will permanently delete all specified job history and logs."
             " Continue?",
             abort=True,
         )
-    ret = purge()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(purge(job_id, _all, metadata, since, until, displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("reset", context_settings=CONTEXT_SETTINGS)
@@ -502,16 +553,19 @@ def cli_reset(
     verbose: bool,
     json: bool,
     plain: bool,
-):
+) -> None:
     """Destroy and recreate full Jobman metadata database."""
     if not force:
         click.confirm(
             "Resetting will permanently delete all job history and logs. Continue?",
             abort=True,
         )
-    ret = reset()
-    click.echo(ret)
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(reset(displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 @cli.command("install-completions", context_settings=CONTEXT_SETTINGS)
@@ -522,11 +576,21 @@ def cli_reset(
     default=None,
     shell_complete=lambda *_: ["bash", "zsh", "fish"],
 )
-def cli_install_completions(shell: Optional[str]):
+@global_options
+def cli_install_completions(
+    shell: Optional[str],
+    quiet: bool,
+    verbose: bool,
+    json: bool,
+    plain: bool,
+) -> None:
     """Configure shell for command, argument, and option completions."""
-    ret = install_completions(shell)
-    click.secho(ret, fg="green")
-    sys.exit(os.EX_OK)
+    displayer = RichDisplayer(quiet, verbose, json, plain)
+    try:
+        sys.exit(install_completions(shell, displayer))
+    except JobmanError as e:
+        displayer.display_exception(e)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

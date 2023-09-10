@@ -15,7 +15,7 @@ def nohupify():
     try:
         pid = os.fork()
     except OSError as e:
-        raise JobmanForkError(e)
+        raise JobmanForkError(e, exit_code=os.EX_OSERR)
 
     if pid != 0:
         # os._exit is preferred over os.exit since _exit doesn't invoke the
@@ -30,7 +30,7 @@ def nohupify():
     try:
         pid = os.fork()
     except OSError as e:
-        raise JobmanForkError(e)
+        raise JobmanForkError(e, exit_code=os.EX_OSERR)
 
     if pid != 0:
         os._exit(0)

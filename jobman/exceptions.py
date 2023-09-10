@@ -1,7 +1,8 @@
 class JobmanError(Exception):
-    pass
+    def __init__(self, message, exit_code):
+        super().__init__(message)
+        self.exit_code = exit_code
 
 
 class JobmanForkError(JobmanError):
-    def __init__(self, message):
-        super().__init__(f"Failed to fork jobman process: {message}")
+    pass

@@ -3,9 +3,13 @@ Convenience method for installing jobman shell completion scripts.
 """
 
 import os
+import sys
 from collections import namedtuple
 from pathlib import Path
 from typing import Optional
+
+from ..display import Displayer, DisplayStyle
+from ..exceptions import JobmanError
 
 Shell = namedtuple("Shell", "name config_path completion_script")
 
@@ -58,7 +62,10 @@ def _get_shell_name() -> str:
     """
     shell_var = os.environ.get("SHELL")
     if shell_var is None:
-        raise ValueError("TODO")
+        raise JobmanError(
+            f"Can't infer parent shell. Specify the shell explicitly.",
+            exit_code=os.EX_NOTFOUND,
+        )
 
     shell_path = Path(shell_var)
     shell = shell_path.name
@@ -66,18 +73,31 @@ def _get_shell_name() -> str:
     return shell
 
 
-def install_completions(shell_name: Optional[str]) -> str:
+def install_completions(shell_name: Optional[str], displayer: Displayer) -> int:
     """
     Ensure shell completions installed for the specified shell.
     """
     shell_name = shell_name or _get_shell_name()
     shell = COMPLETION_SUPPORTED_SHELLS.get(shell_name)
     if not shell:
-        raise ValueError("TODO SHELL NOT SUPPORTED")
+        raise JobmanError(
+            f"Completions are not supported for {shell_name} shell.",
+            exit_code=os.EX_UNAVAILABLE,
+        )
 
     exists = _search(COMPLETION_FLAG, shell.config_path)
     if not exists:
         _append(shell.completion_script, shell.config_path)
-        return f"Installed completions for {shell.name} shell"
+        displayer.display(
+            f"Installed completions for {shell.name} shell",
+            stream=sys.stderr,
+            style=DisplayStyle.SUCCESS,
+        )
     else:
-        return f"Completions already installed for {shell.name} shell"
+        displayer.display(
+            f"Completions already installed for {shell.name} shell",
+            stream=sys.stderr,
+            style=DisplayStyle.NORMAL,
+        )
+
+    return os.EX_OK
