@@ -3,6 +3,7 @@ from logging import LogRecord
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+
 class RotatingIOWrapper(io.TextIOWrapper):
     def __init__(self, file: Path):
         print("")

@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, time, timedelta
 from functools import wraps
 from pathlib import Path
-from typing import Optional, Tuple, List, Union, Callable, TypeVar
+from typing import Callable, List, Optional, Tuple, TypeVar, Union
 
 import click
 
@@ -60,7 +60,9 @@ def strptimedelta(td_str: str) -> timedelta:
     )
 
 
-def complete_job_id(ctx: click.Context, param: Optional[click.Parameter], incomplete: str) -> List[str]:
+def complete_job_id(
+    ctx: click.Context, param: Optional[click.Parameter], incomplete: str
+) -> List[str]:
     # TODO
     return ["123", "456"]
 
@@ -68,7 +70,12 @@ def complete_job_id(ctx: click.Context, param: Optional[click.Parameter], incomp
 class TimedeltaType(click.ParamType):
     name = "timedelta"
 
-    def convert(self, value: Union[str, timedelta], param: Optional[click.Parameter], ctx: Optional[click.Context]) -> timedelta:
+    def convert(
+        self,
+        value: Union[str, timedelta],
+        param: Optional[click.Parameter],
+        ctx: Optional[click.Context],
+    ) -> timedelta:
         if isinstance(value, timedelta):
             return value
 
@@ -79,7 +86,9 @@ class TimedeltaType(click.ParamType):
 
 
 class TimeOrDateTime(click.DateTime):
-    def convert(self, value: str, param: Optional[click.Parameter], ctx: Optional[click.Context]) -> datetime:
+    def convert(
+        self, value: str, param: Optional[click.Parameter], ctx: Optional[click.Context]
+    ) -> datetime:
         today = datetime.today()
         try:
             tm = time.fromisoformat(value)
@@ -97,7 +106,9 @@ class JobmanGroup(click.Group):
     Typical click Group class, but displays the usage epilog without an indent.
     """
 
-    def format_epilog(self, ctx: Optional[click.Context], formatter: click.HelpFormatter) -> None:
+    def format_epilog(
+        self, ctx: Optional[click.Context], formatter: click.HelpFormatter
+    ) -> None:
         if self.epilog:
             formatter.write_paragraph()
             for line in self.epilog.split("\n"):
