@@ -11,7 +11,8 @@
 ### 0. Check that the working tree is clean
 ### 1. Update the version number in pyproject.toml
 ### 2. Commit and tag the result
-### 3. Print out the git push command to run to publish the change to GitHub (and, by extension, PyPI)
+### 3. Print out all commit messages since the most recent entry in the CHANGELOG
+### 4. Print out the git push command to run to publish the change to GitHub (and, by extension, PyPI)
 ###
 
 # validate arguments
