@@ -70,7 +70,7 @@ The `Makefile` defines targets for common operations during development, includi
 * `make test`: run the type tests and unit test suite
 * `make build`: build the jobman wheel
 
-To release a new version of the package, use the `bumpver.sh` script. For example, to update to version 1.2.3, run `./bumpver.sh 1.2.3`.
+To release a new version of the package, use the `bumpver.sh` script. For example, to update to version 1.2.3, run `./bumpver.sh 1.2.3`. Before committing, be sure to update the [CHANGELOG.md](https://github.com/ryancswallace/jobman/blob/main/CHANGELOG.md) with user-facing changes described in the recent commit log printed out by `bumpver.sh`.
 
 # Contributing
 Feature requests, bug reports, and pull requests are welcome! See [CONTRIBUTING.md](https://github.com/ryancswallace/jobman/blob/main/CONTRIBUTING.md) for details on how to contribute to jobman.
