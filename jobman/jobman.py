@@ -1,17 +1,17 @@
 import hashlib
 import logging
-import os
 import platform
 import random
 import string
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import psutil
 
 from . import base_logger
+from .config import JobmanConfig
 from .nohup import nohupify
 from .rotating_stdio import RotatingIOWrapper
 
@@ -35,24 +35,6 @@ def get_host_id() -> str:
 @dataclass
 class NotificationSink:
     pass
-
-
-CONFIG_HOME = Path(
-    os.environ.get("JOBMAN_CONFIG_HOME", "~/.config/jobman/")
-).expanduser()
-
-
-@dataclass
-class JobmanConfig:
-    storage_path: Union[str, Path] = "~/.local/share/jobman"
-    notification_sinks: List[NotificationSink] = field(default_factory=lambda: [])
-
-    # TOD0: gc config
-    def __post_init__(self) -> None:
-        self.storage_path = Path(self.storage_path).expanduser()
-        self.db_path = self.storage_path / "db"
-        self.stdio_path = self.storage_path / "stdio"
-        self.log_path = self.storage_path / "log"
 
 
 @dataclass
@@ -94,9 +76,9 @@ class Job:
 
         self.job_stdio_path = self.jobman_config.stdio_path / self.host_id / self.job_id
 
-        host_log_path = self.jobman_config.log_path / self.host_id
-        host_log_path.mkdir(parents=True, exist_ok=True)
-        self.logger = base_logger.make_logger(host_log_path / self.job_id, "INFO")
+        host_stdio_path = self.jobman_config.stdio_path / self.host_id
+        host_stdio_path.mkdir(parents=True, exist_ok=True)
+        self.logger = base_logger.make_logger(logging.INFO)
 
     def start(self) -> None:
         print(self.job_id)

@@ -1,12 +1,10 @@
 """Defines a single instance of a logging.logger used across jobman modules.
 """
 import logging
-from pathlib import Path
-from typing import Union
 
 
-def make_logger(log_file_path: Union[str, Path], log_level: str) -> logging.Logger:
-    handler = logging.FileHandler(log_file_path)
+def make_logger(log_level: int) -> logging.Logger:
+    handler = logging.StreamHandler()
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )

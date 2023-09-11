@@ -1,7 +1,9 @@
+import logging
 import os
 from datetime import datetime
 from typing import Optional
 
+from ..config import JobmanConfig
 from ..display import Displayer
 
 
@@ -14,6 +16,8 @@ def logs(
     tail: Optional[int],
     since: Optional[datetime],
     until: Optional[datetime],
+    config: JobmanConfig,
     displayer: Displayer,
+    logger: logging.Logger,
 ) -> int:
     return os.EX_OK

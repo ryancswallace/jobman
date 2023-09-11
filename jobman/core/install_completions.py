@@ -2,11 +2,13 @@
 Convenience method for installing jobman shell completion scripts.
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
 from typing import Dict, NamedTuple, Optional
 
+from ..config import JobmanConfig
 from ..display import Displayer, DisplayStyle
 from ..exceptions import JobmanError
 
@@ -77,11 +79,18 @@ def _get_shell_name() -> str:
     return shell
 
 
-def install_completions(shell_name: Optional[str], displayer: Displayer) -> int:
+def install_completions(
+    shell_name: Optional[str],
+    config: JobmanConfig,
+    displayer: Displayer,
+    logger: logging.Logger,
+) -> int:
     """
     Ensure shell completions installed for the specified shell.
     """
+    logger.info(f"Supplied {shell_name=}")
     shell_name = shell_name or _get_shell_name()
+    logger.info(f"Attempting to install completions for {shell_name=}")
     shell = COMPLETION_SUPPORTED_SHELLS.get(shell_name)
     if not shell:
         raise JobmanError(

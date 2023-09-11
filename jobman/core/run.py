@@ -1,8 +1,10 @@
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
 
+from ..config import JobmanConfig
 from ..display import Displayer
 
 
@@ -24,6 +26,8 @@ def run(
     notify_on_job_failure: Optional[Tuple[str]],
     notify_on_run_failure: Optional[Tuple[str]],
     follow: bool,
+    config: JobmanConfig,
     displayer: Displayer,
+    logger: logging.Logger,
 ) -> int:
     return os.EX_OK

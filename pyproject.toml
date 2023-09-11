@@ -27,6 +27,8 @@ python = ">=3.9,<3.13"
 click = "^8.1.7"
 psutil = "^5.9.5"
 rich = "^13.5.2"
+ruamel-yaml = "^0.17.32"
+pydantic = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

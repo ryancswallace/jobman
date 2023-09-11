@@ -1,9 +1,11 @@
+import logging
 import os
 from datetime import datetime
 from typing import Optional, Tuple
 
 import click
 
+from ..config import JobmanConfig
 from ..display import Displayer
 
 
@@ -13,7 +15,9 @@ def purge(
     metadata: bool,
     since: Optional[datetime],
     until: Optional[datetime],
+    config: JobmanConfig,
     displayer: Displayer,
+    logger: logging.Logger,
 ) -> int:
     if not (bool(job_id) ^ _all):
         raise click.exceptions.UsageError(
