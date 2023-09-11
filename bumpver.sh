@@ -46,6 +46,7 @@ if [ "$TOML_UNCHANGED" -ne 0 ]; then
 fi
 
 # show history of commits since the last changelog entry
+echo -e "\nCommits since the last changelog entry:"
 ./summarize-commits.sh --strip-tab --strip-cherry-pick --since=$(grep -e '## \[.*\] | ' CHANGELOG.md | cut -d'|' -f2 | tr -d ' ' | head -n1)
 
 echo -e "\nTo commit, tag, and publish the new version run the following commands:"
