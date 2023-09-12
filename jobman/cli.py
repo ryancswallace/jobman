@@ -12,14 +12,14 @@ import click
 
 from .base_logger import make_logger
 from .config import load_config
-from .core.install_completions import install_completions
-from .core.kill import kill
-from .core.logs import logs
-from .core.ls import ls
-from .core.purge import purge
-from .core.reset import reset
-from .core.run import run
-from .core.status import status
+from .core.install_completions import display_install_completions
+from .core.kill import display_kill
+from .core.logs import display_logs
+from .core.ls import display_ls
+from .core.purge import display_purge
+from .core.reset import display_reset
+from .core.run import display_run
+from .core.status import display_status
 from .display import RichDisplayer
 from .exceptions import JobmanError
 
@@ -337,7 +337,7 @@ def cli_run(
 ) -> None:
     """Start a job in the background immune to hangups."""
     cli_exec(
-        run,
+        display_run,
         quiet,
         verbose,
         json,
@@ -375,7 +375,7 @@ def cli_status(
     debug: bool,
 ) -> None:
     """Display the status of a job(s) JOB_ID."""
-    cli_exec(status, quiet, verbose, json, plain, debug, job_id)
+    cli_exec(display_status, quiet, verbose, json, plain, debug, job_id)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)
@@ -438,7 +438,7 @@ def cli_logs(
 ) -> None:
     """Show output from job(s) JOB_ID."""
     cli_exec(
-        logs,
+        display_logs,
         quiet,
         verbose,
         json,
@@ -497,7 +497,9 @@ def cli_kill(
             f"Are you sure you want to stop job {job_id}?",
             abort=True,
         )
-    cli_exec(kill, quiet, verbose, json, plain, debug, job_id, signal, allow_retries)
+    cli_exec(
+        display_kill, quiet, verbose, json, plain, debug, job_id, signal, allow_retries
+    )
 
 
 @cli.command("ls", context_settings=CONTEXT_SETTINGS)
@@ -514,7 +516,7 @@ def cli_ls(
     debug: bool,
 ) -> None:
     """View jobs."""
-    cli_exec(ls, quiet, verbose, json, plain, debug, all_)
+    cli_exec(display_ls, quiet, verbose, json, plain, debug, all_)
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)
@@ -572,7 +574,17 @@ def cli_purge(
             abort=True,
         )
     cli_exec(
-        purge, quiet, verbose, json, plain, debug, job_id, _all, metadata, since, until
+        display_purge,
+        quiet,
+        verbose,
+        json,
+        plain,
+        debug,
+        job_id,
+        _all,
+        metadata,
+        since,
+        until,
     )
 
 
@@ -589,13 +601,13 @@ def cli_reset(
     plain: bool,
     debug: bool,
 ) -> None:
-    """Destroy and recreate full Jobman metadata database."""
+    """Destroy and recreate Jobman metadata database. Delete all job logs."""
     if not force:
         click.confirm(
             "Resetting will permanently delete all job history and logs. Continue?",
             abort=True,
         )
-    cli_exec(reset, quiet, verbose, json, plain, debug)
+    cli_exec(display_reset, quiet, verbose, json, plain, debug)
 
 
 @cli.command("install-completions", context_settings=CONTEXT_SETTINGS)
@@ -616,7 +628,7 @@ def cli_install_completions(
     debug: bool,
 ) -> None:
     """Configure shell for command, argument, and option completions."""
-    cli_exec(install_completions, quiet, verbose, json, plain, debug, shell)
+    cli_exec(display_install_completions, quiet, verbose, json, plain, debug, shell)
 
 
 if __name__ == "__main__":

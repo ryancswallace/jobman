@@ -7,7 +7,7 @@ from ..config import JobmanConfig
 from ..display import Displayer
 
 
-def logs(
+def display_logs(
     job_id: str,
     hide_stdout: bool,
     hide_stderr: bool,

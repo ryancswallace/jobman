@@ -6,6 +6,7 @@ from enum import Enum, auto
 from typing import Dict, Optional, TextIO, Union
 
 from rich.console import Console
+from rich.table import Table
 
 stdout = Console()
 stderr = Console(file=sys.stderr)
@@ -32,10 +33,10 @@ class Displayer(ABC):
 
     def display(
         self,
-        text: str,
+        content: Union[str, Table],
         stream: TextIO,
         level: Optional[DisplayLevel] = None,
-        style: Optional[DisplayStyle] = None,
+        style: Optional[Union[DisplayStyle, str]] = None,
     ) -> None:
         raise NotImplementedError("Displayer class is an ABC")
 
@@ -43,14 +44,14 @@ class Displayer(ABC):
 class SimpleDisplayer(Displayer):
     """Displays all output unformatted to stdout."""
 
-    def display(self, text: str, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        print(text)
+    def display(self, content: Union[str, Table], *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        print(content)
 
 
 class AntiDisplayer(Displayer):
     """A displayer that swallows display messages."""
 
-    def display(self, text: str, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def display(self, content: Union[str, Table], *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         pass
 
 
@@ -65,13 +66,13 @@ class RichDisplayer(Displayer):
 
     def display(
         self,
-        text: str,
+        content: Union[str, Table],
         stream: TextIO,
         level: Optional[DisplayLevel] = DisplayLevel.NORMAL,
         style: Optional[Union[DisplayStyle, str]] = DisplayStyle.NORMAL,
     ) -> None:
         """
-        Display text to the specified stream using a customized style.
+        Display content to the specified stream using a customized style.
         """
         if level == DisplayLevel.ALWAYS:
             show = True
@@ -94,10 +95,12 @@ class RichDisplayer(Displayer):
 
         console = stdout if stream == sys.stdout else stderr
         if self.json:
-            text_json: Dict[str, str] = {"message": text}
-            console.print_json(json.dumps(text_json))
+            content_json: Dict[str, str] = {"message": str(content)}
+            console.print_json(json.dumps(content_json))
+        elif self.plain:
+            console.print(content)
         else:
-            console.print(text, style=rich_style)
+            console.print(content, style=rich_style)
 
     def display_exception(self, e: Exception) -> None:
         """

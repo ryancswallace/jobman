@@ -1,0 +1,171 @@
+from datetime import timedelta
+from enum import Enum
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
+
+from peewee import (
+    BooleanField,
+    DateTimeField,
+    FloatField,
+    IntegerField,
+    Model,
+    TextField,
+)
+from playhouse.sqlite_ext import SqliteExtDatabase  # type: ignore
+
+
+class JobmanDatabase(SqliteExtDatabase):  # type: ignore[misc,no-any-unimported]
+    pass
+
+    def build(self) -> None:
+        all_tables = [Job, Run]
+        self.create_tables(all_tables)
+
+
+db = JobmanDatabase(
+    None,
+    pragmas={
+        "journal_mode": "wal",
+        "cache_size": -1 * 64,  # 64KB
+        "foreign_keys": 1,
+        "ignore_check_constraints": 0,
+    },
+)
+
+
+def get_or_create_db(db_path: Path) -> JobmanDatabase:
+    db.init(db_path)
+    db.connect()
+    db.build()
+
+    return db
+
+
+class TimedeltaField(FloatField):
+    def db_value(self, value: Optional[timedelta]) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, timedelta):
+            raise TypeError(
+                f"Received wrong type {type(value)} to serialize to TimedeltaField."
+            )
+        total_secs = value.total_seconds()
+        total_secs_db: str = super().db_value(total_secs)  # type: ignore[no-untyped-call]
+        return total_secs_db
+
+    def python_value(self, value: Optional[str]) -> Optional[timedelta]:
+        if value is None:
+            return None
+        total_secs = super().python_value(value)  # type: ignore[no-untyped-call]
+        return timedelta(seconds=total_secs)
+
+
+class TextTupleField(TextField):
+    delim = "|"
+
+    def db_value(self, value: Optional[Union[List, Tuple]]) -> Optional[str]:  # type: ignore[type-arg]
+        if not value:
+            return None
+        if not (isinstance(value, list) or isinstance(value, tuple)):
+            raise TypeError(
+                f"Received wrong type {type(value)} to serialize to TextTupleField."
+                " Must be a list or tuple."
+            )
+        try:
+            value_str = [str(i) for i in value]
+        except ValueError as e:
+            raise ValueError(
+                "All elements of a TextTupleField must support a string"
+                f" representation: {e}"
+            )
+        for i in value_str:
+            if self.delim in i:
+                raise ValueError(
+                    "Elements of a TextTupleField must not contain the internal"
+                    f" delimiter {self.delim}. Received element {i}."
+                )
+
+        db_value: str = super().db_value(self.delim.join(value_str))  # type: ignore[no-untyped-call]
+        return db_value
+
+    def python_value(self, value: Optional[str]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        return value.split(self.delim)
+
+
+class PathTupleField(TextTupleField):
+    def python_value(self, value: Optional[str]) -> Optional[List[Path]]:  # type: ignore[override]
+        if value is None:
+            return None
+        return [Path(i) for i in value.split(self.delim)]
+
+
+class JobmanModel(Model):
+    class Meta:
+        database = db
+
+    def __str__(self) -> str:
+        args = ", ".join(
+            f"{name}={getattr(self, name)}" for name in self._meta.fields.keys()  # type: ignore[attr-defined]
+        )
+        return f"Job({args})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class JobState(Enum):
+    SUBMITTED = 0
+    RUNNING = 1
+    COMPLETE = 2
+
+
+class RunState(Enum):
+    RUNNING = 1
+    COMPLETE = 2
+
+
+class Job(JobmanModel):
+    job_id = IntegerField(unique=True)
+    host_id = TextField()
+    command = TextField()
+    wait_time = DateTimeField(null=True)
+    wait_duration = TimedeltaField(null=True)
+    wait_for_file = PathTupleField(null=True)
+    abort_time = DateTimeField(null=True)
+    abort_duration = TimedeltaField(null=True)
+    abort_for_file = PathTupleField(null=True)
+    retry_attempts = IntegerField(null=True)
+    retry_delay = TimedeltaField(null=True)
+    success_code = TextTupleField(null=True)
+    notify_on_run_completion = TextTupleField(null=True)
+    notify_on_job_completion = TextTupleField(null=True)
+    notify_on_job_success = TextTupleField(null=True)
+    notify_on_run_success = TextTupleField(null=True)
+    notify_on_job_failure = TextTupleField(null=True)
+    notify_on_run_failure = TextTupleField(null=True)
+    follow = BooleanField(null=True)
+    start_time = DateTimeField(null=True)
+    finish_time = DateTimeField(null=True)
+    state = IntegerField()
+    exit_code = TextField(null=True)
+
+    def is_failed(self) -> bool:
+        return self.exit_code is not None and self.exit_code not in (
+            self.success_code or ["0"]
+        )
+
+    def is_completed(self) -> bool:
+        completed: bool = self.state == JobState.COMPLETE.value
+        return completed
+
+
+class Run(JobmanModel):
+    run_id = IntegerField(unique=True)
+    job_id = IntegerField()
+    attempt = IntegerField()
+    start_time = DateTimeField(null=True)
+    finish_time = DateTimeField(null=True)
+    state = IntegerField()
+    exit_code = IntegerField(null=True)

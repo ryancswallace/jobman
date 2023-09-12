@@ -79,7 +79,7 @@ def _get_shell_name() -> str:
     return shell
 
 
-def install_completions(
+def display_install_completions(
     shell_name: Optional[str],
     config: JobmanConfig,
     displayer: Displayer,

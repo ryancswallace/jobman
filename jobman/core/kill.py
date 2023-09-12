@@ -6,7 +6,7 @@ from ..config import JobmanConfig
 from ..display import Displayer
 
 
-def kill(
+def display_kill(
     job_id: Tuple[str, ...],
     signal: Optional[str],
     allow_retries: bool,

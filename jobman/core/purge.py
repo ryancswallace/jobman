@@ -9,7 +9,7 @@ from ..config import JobmanConfig
 from ..display import Displayer
 
 
-def purge(
+def display_purge(
     job_id: Tuple[str, ...],
     _all: bool,
     metadata: bool,

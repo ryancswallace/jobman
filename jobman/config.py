@@ -1,11 +1,10 @@
 import os
-from dataclasses import field
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
 import ruamel.yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .exceptions import JobmanError
 
@@ -17,7 +16,7 @@ CONFIG_HOME = Path(
 class JobmanConfig(BaseModel):
     storage_path: Path = Path("~/.local/share/jobman")
     gc_expiry_days: timedelta = timedelta(days=7)
-    notification_sinks: List[Dict[str, str]] = field(default_factory=lambda: [])
+    notification_sinks: List[Dict[str, str]] = Field(default_factory=lambda: [])
     db_path: Path = Path()
     stdio_path: Path = Path()
 
@@ -25,7 +24,7 @@ class JobmanConfig(BaseModel):
 
     def model_post_init(self, __config: Any) -> None:
         self.storage_path = self.storage_path.expanduser()
-        self.db_path = self.storage_path / "db"
+        self.db_path = self.storage_path / "jobman.db"
         self.stdio_path = self.storage_path / "stdio"
 
 

@@ -6,7 +6,7 @@ from ..config import JobmanConfig
 from ..display import Displayer
 
 
-def status(
+def display_status(
     job_id: Tuple[str, ...],
     config: JobmanConfig,
     displayer: Displayer,
