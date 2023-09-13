@@ -210,3 +210,4 @@ class Run(JobmanModel):
     finish_time = DateTimeField(null=True)
     state = IntegerField()
     exit_code = IntegerField(null=True)
+    killed = BooleanField(null=True)

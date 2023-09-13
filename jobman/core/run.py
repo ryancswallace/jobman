@@ -132,6 +132,10 @@ def run(
     # job.retry_attempts = 10
     # job.state = JobState.COMPLETE.value
     # job.save()
+
+    # run.state = RunState.RUNNING.value
+    # run.pid = "2953125"
+    # run.save()
     # END TODO REMOVE
 
     return str(job.job_id)

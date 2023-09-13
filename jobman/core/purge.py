@@ -80,7 +80,7 @@ def display_purge(
         for jid in skipped_job_ids:
             displayer.display(f"  🏃 {jid}", stream=sys.stderr)
 
-    return os.EX_OK
+    return os.EX_DATAERR if not _all and skipped_job_ids else os.EX_OK
 
 
 class PurgeResults(NamedTuple):

@@ -1,11 +1,11 @@
 import logging
 import os
 import re
-import signal
 import sys
 from datetime import datetime, time, timedelta
 from functools import wraps
 from pathlib import Path
+from signal import Signals
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import click
@@ -455,7 +455,7 @@ def cli_logs(
     )
 
 
-SIGNALS = [s.name for s in signal.Signals] + [str(s.value) for s in signal.Signals]
+SIGNALS = [s.name for s in Signals] + [str(s.value) for s in Signals]
 
 
 @cli.command("kill", context_settings=CONTEXT_SETTINGS)
