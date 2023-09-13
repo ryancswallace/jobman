@@ -492,9 +492,11 @@ def cli_kill(
     debug: bool,
 ) -> None:
     """Stop running job JOB_ID."""
+    multiple = len(job_id) > 1
     if not force:
         click.confirm(
-            f"Are you sure you want to stop job {job_id}?",
+            "⚠️  Are you sure you want to stop"
+            f" job{'s' if multiple else ''} {', '.join(job_id)}?",
             abort=True,
         )
     cli_exec(
@@ -569,7 +571,7 @@ def cli_purge(
 
     if not force:
         click.confirm(
-            "Purging will permanently delete all specified job history and logs."
+            "⚠️  Purging will permanently delete all specified job history and logs."
             " Continue?",
             abort=True,
         )
@@ -604,7 +606,7 @@ def cli_reset(
     """Destroy and recreate Jobman metadata database. Delete all job logs."""
     if not force:
         click.confirm(
-            "Resetting will permanently delete all job history and logs. Continue?",
+            "⚠️  Resetting will permanently delete all job history and logs. Continue?",
             abort=True,
         )
     cli_exec(display_reset, quiet, verbose, json, plain, debug)

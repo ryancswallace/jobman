@@ -3,6 +3,7 @@ import os
 import random
 import shlex
 import string
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
@@ -10,7 +11,7 @@ from typing import Optional, Tuple
 from ..config import JobmanConfig
 from ..display import Displayer
 from ..host import get_host_id
-from ..models import Job, JobState, get_or_create_db
+from ..models import Job, JobState, Run, RunState, get_or_create_db
 
 
 def display_run(
@@ -56,7 +57,7 @@ def display_run(
         config=config,
         logger=logger,
     )
-    # display(run_out)
+    displayer.display(run_out, stream=sys.stdout, style="bold blue")
 
     return os.EX_OK
 
@@ -115,8 +116,22 @@ def run(
     )
     job.save()
 
-    qry = Job.select()  # type: ignore[no-untyped-call]
-    for o in qry.execute():
-        print(o)
+    attempt = 0
+    run = Run(
+        job_id=job.job_id,
+        attempt=attempt,
+        log_path=config.stdio_path / job.job_id / str(attempt),
+        start_time=datetime.now(),
+        state=RunState.SUBMITTED.value,
+    )
+    run.save()
 
-    return "123"
+    # TODO REMOVE
+    # job.exit_code = "2"
+    # job.wait_duration = timedelta(days=2, minutes=5)
+    # job.retry_attempts = 10
+    # job.state = JobState.COMPLETE.value
+    # job.save()
+    # END TODO REMOVE
+
+    return str(job.job_id)

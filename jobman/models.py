@@ -1,12 +1,13 @@
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from peewee import (
     BooleanField,
     DateTimeField,
     FloatField,
+    ForeignKeyField,
     IntegerField,
     Model,
     TextField,
@@ -101,6 +102,13 @@ class PathTupleField(TextTupleField):
         return [Path(i) for i in value.split(self.delim)]
 
 
+class PathField(TextField):
+    def python_value(self, value: Optional[str]) -> Optional[Path]:
+        if value is None:
+            return None
+        return Path(value)
+
+
 class JobmanModel(Model):
     class Meta:
         database = db
@@ -109,7 +117,8 @@ class JobmanModel(Model):
         args = ", ".join(
             f"{name}={getattr(self, name)}" for name in self._meta.fields.keys()  # type: ignore[attr-defined]
         )
-        return f"Job({args})"
+        class_name = self.__class__.__name__
+        return f"{class_name}({args})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -122,6 +131,7 @@ class JobState(Enum):
 
 
 class RunState(Enum):
+    SUBMITTED = 0
     RUNNING = 1
     COMPLETE = 2
 
@@ -160,11 +170,42 @@ class Job(JobmanModel):
         completed: bool = self.state == JobState.COMPLETE.value
         return completed
 
+    @property
+    def pretty(self) -> Dict[str, Tuple[str, str]]:
+        name_to_pretty = dict()
+        for name in self._meta.fields:  # type: ignore[attr-defined]
+            pretty_name = self._name_to_display_name(name)
+            val = getattr(self, name)
+
+            if val is None:
+                pretty_val = "-"
+            elif name.endswith("_time"):
+                pretty_val = str(val.replace(microsecond=0))
+            elif name == "state":
+                pretty_val = JobState(val).name.title()
+            elif name == "success_code":
+                pretty_val = ", ".join(sorted(val, key=int))
+            elif name.startswith("notify_on_"):
+                pretty_val = ", ".join(sorted(val))
+            elif name.endswith("_for_file"):
+                pretty_val = ", ".join(str(p) for p in sorted(val))
+            else:
+                pretty_val = str(val)
+
+            name_to_pretty[name] = (pretty_name, pretty_val)
+
+        return name_to_pretty
+
+    @staticmethod
+    def _name_to_display_name(name: str) -> str:
+        return name.replace("_", " ").title()
+
 
 class Run(JobmanModel):
-    run_id = IntegerField(unique=True)
-    job_id = IntegerField()
+    job_id = ForeignKeyField(Job, field="job_id", backref="runs")
     attempt = IntegerField()
+    log_path = PathField()
+    pid = IntegerField(null=True)
     start_time = DateTimeField(null=True)
     finish_time = DateTimeField(null=True)
     state = IntegerField()
