@@ -29,8 +29,7 @@ def display_ls(
     # print found jobs
     table = Table()
     table.title = (
-        "[bold blue][not italic]:high_voltage:[/]"
-        f" {'All' if all_ else 'Running'} Jobman Jobs [not italic]:high_voltage:[/]"
+        f"[bold blue]⚡ {'All' if all_ else 'Running'} Jobman Jobs ⚡"
     )
     table.border_style = "bright_yellow"
     table.box = box.SIMPLE_HEAD
