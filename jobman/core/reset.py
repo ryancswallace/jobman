@@ -4,15 +4,24 @@ import shutil
 import sys
 
 from ..config import JobmanConfig
-from ..display import Displayer
-from ..models import get_or_create_db
+from ..display import Displayer, DisplayLevel
+from ..models import init_db_models
 
 
 def display_reset(
     config: JobmanConfig, displayer: Displayer, logger: logging.Logger
 ) -> int:
     reset(config, logger)
-    displayer.display("✨🧹✨  Reset database to factory settings.", stream=sys.stderr)
+    displayer.print(
+        pretty_content="✨🧹✨  Reset database to factory settings",
+        plain_content="Reset database to factory settings",
+        json_content={
+            "result": "success",
+            "message": "Reset database to factory settings",
+        },
+        stream=sys.stderr,
+        level=DisplayLevel.NORMAL,
+    )
 
     return os.EX_OK
 
@@ -26,5 +35,5 @@ def reset(config: JobmanConfig, logger: logging.Logger) -> None:
     config.stdio_path.mkdir()
     logger.warn(f"Deleted all stdout/stderr logs from {config.stdio_path}")
 
-    get_or_create_db(config.db_path)
+    init_db_models(config.db_path)
     logger.info(f"Created new database at {config.db_path}")

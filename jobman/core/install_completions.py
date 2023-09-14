@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, NamedTuple, Optional
 
 from ..config import JobmanConfig
-from ..display import Displayer, DisplayStyle
+from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..exceptions import JobmanError
 
 
@@ -101,16 +101,29 @@ def display_install_completions(
     exists = _search(COMPLETION_FLAG, shell.config_path)
     if not exists:
         _append(shell.completion_script, shell.config_path)
-        displayer.display(
-            f"Installed completions for {shell.name} shell",
+        displayer.print(
+            pretty_content=f"✨  Installed completions for {shell.name} shell",
+            plain_content=f"Installed completions for {shell.name} shell",
+            json_content={
+                "result": "success",
+                "message": "installed",
+                "shell": shell.name,
+            },
             stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
             style=DisplayStyle.SUCCESS,
         )
     else:
-        displayer.display(
-            f"Completions already installed for {shell.name} shell",
+        displayer.print(
+            pretty_content=f"✔️  Completions already installed for {shell.name} shell",
+            plain_content=f"Completions already installed for {shell.name} shell",
+            json_content={
+                "result": "success",
+                "message": "already installed",
+                "shell": shell.name,
+            },
             stream=sys.stderr,
-            style=DisplayStyle.NORMAL,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.SUCCESS,
         )
-
     return os.EX_OK

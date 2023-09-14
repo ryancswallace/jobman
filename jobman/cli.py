@@ -15,13 +15,14 @@ from .config import load_config
 from .core.install_completions import display_install_completions
 from .core.kill import display_kill
 from .core.logs import display_logs
-from .core.ls import display_ls
+from .core.ls import display_ls, ls
 from .core.purge import display_purge
 from .core.reset import display_reset
 from .core.run import display_run
 from .core.status import display_status
 from .display import RichDisplayer
 from .exceptions import JobmanError
+from .gc import bg_gc_logs
 
 
 def strptimedelta(td_str: str) -> timedelta:
@@ -66,26 +67,60 @@ def strptimedelta(td_str: str) -> timedelta:
 def complete_job_id(
     ctx: click.Context, param: Optional[click.Parameter], incomplete: str
 ) -> List[str]:
-    # TODO
-    return ["123", "456"]
+    try:
+        config = load_config()
+        logger = make_logger(DEBUG_TO_LEVEL[False])
+    except JobmanError:
+        # disable autocompletion of job-id if we can't build a
+        # config or logger
+        return []
+
+    jobs = ls(all_=True, config=config, logger=logger)
+    command_name = ctx.command.name
+    if command_name in ["status", "logs"]:
+        # all jobs on the host
+        return [str(j.job_id) for j in jobs if str(j.job_id).startswith(incomplete)]
+    elif command_name == "kill":
+        # all running jobs on the host
+        return [
+            str(j.job_id)
+            for j in jobs
+            if not j.is_completed() and str(j.job_id).startswith(incomplete)
+        ]
+    elif command_name == "purge":
+        # all non-running jobs on the host
+        return [
+            str(j.job_id)
+            for j in jobs
+            if j.is_completed() and str(j.job_id).startswith(incomplete)
+        ]
+    else:
+        return []
 
 
 def cli_exec(  # type: ignore[no-untyped-def]
-    callable: Callable[..., int],
+    fn: Callable[..., int],
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
     *args,
 ) -> None:
     try:
-        displayer = RichDisplayer(quiet, verbose, json, plain)
+        displayer = RichDisplayer(quiet, json, plain)
+    except JobmanError as e:
+        # can't use the displayer to render the error message if we can't
+        # initialize the displayer itself
+        print(f"ERROR! {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
+    try:
         config = load_config()
         logger = make_logger(DEBUG_TO_LEVEL[debug])
-        sys.exit(callable(*args, config, displayer, logger))
+        if fn in [display_logs, display_ls, display_run, display_status]:
+            bg_gc_logs(config, logger)
+        sys.exit(fn(*args, config, displayer, logger))
     except JobmanError as e:
-        displayer.display_exception(e)
+        displayer.print_exception(e)
         sys.exit(e.exit_code)
 
 
@@ -173,9 +208,6 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
     @wraps(f)
     @click.option(
         "-q", "--quiet", is_flag=True, default=False, help="Suppress unnecessary output"
-    )
-    @click.option(
-        "-v", "--verbose", is_flag=True, default=False, help="Show more detail"
     )
     @click.option(
         "-j",
@@ -330,7 +362,6 @@ def cli_run(
     notify_on_run_failure: Optional[Tuple[str]],
     follow: bool,
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
@@ -339,7 +370,6 @@ def cli_run(
     cli_exec(
         display_run,
         quiet,
-        verbose,
         json,
         plain,
         debug,
@@ -369,13 +399,12 @@ def cli_run(
 def cli_status(
     job_id: Tuple[str, ...],
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
 ) -> None:
     """Display the status of a job(s) JOB_ID."""
-    cli_exec(display_status, quiet, verbose, json, plain, debug, job_id)
+    cli_exec(display_status, quiet, json, plain, debug, job_id)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)
@@ -431,7 +460,6 @@ def cli_logs(
     since: Optional[datetime],
     until: Optional[datetime],
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
@@ -440,7 +468,6 @@ def cli_logs(
     cli_exec(
         display_logs,
         quiet,
-        verbose,
         json,
         plain,
         debug,
@@ -486,7 +513,6 @@ def cli_kill(
     allow_retries: bool,
     force: bool,
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
@@ -499,9 +525,7 @@ def cli_kill(
             f" job{'s' if multiple else ''} {', '.join(job_id)}?",
             abort=True,
         )
-    cli_exec(
-        display_kill, quiet, verbose, json, plain, debug, job_id, signal, allow_retries
-    )
+    cli_exec(display_kill, quiet, json, plain, debug, job_id, signal, allow_retries)
 
 
 @cli.command("ls", context_settings=CONTEXT_SETTINGS)
@@ -512,13 +536,12 @@ def cli_kill(
 def cli_ls(
     all_: bool,
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
 ) -> None:
     """View jobs."""
-    cli_exec(display_ls, quiet, verbose, json, plain, debug, all_)
+    cli_exec(display_ls, quiet, json, plain, debug, all_)
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)
@@ -562,7 +585,6 @@ def cli_purge(
     until: Optional[datetime],
     force: bool,
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
@@ -578,7 +600,6 @@ def cli_purge(
     cli_exec(
         display_purge,
         quiet,
-        verbose,
         json,
         plain,
         debug,
@@ -598,7 +619,6 @@ def cli_purge(
 def cli_reset(
     force: bool,
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
@@ -609,7 +629,7 @@ def cli_reset(
             "⚠️  Resetting will permanently delete all job history and logs. Continue?",
             abort=True,
         )
-    cli_exec(display_reset, quiet, verbose, json, plain, debug)
+    cli_exec(display_reset, quiet, json, plain, debug)
 
 
 @cli.command("install-completions", context_settings=CONTEXT_SETTINGS)
@@ -624,13 +644,12 @@ def cli_reset(
 def cli_install_completions(
     shell: Optional[str],
     quiet: bool,
-    verbose: bool,
     json: bool,
     plain: bool,
     debug: bool,
 ) -> None:
     """Configure shell for command, argument, and option completions."""
-    cli_exec(display_install_completions, quiet, verbose, json, plain, debug, shell)
+    cli_exec(display_install_completions, quiet, json, plain, debug, shell)
 
 
 if __name__ == "__main__":

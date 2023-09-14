@@ -15,7 +15,7 @@ CONFIG_HOME = Path(
 
 class JobmanConfig(BaseModel):
     storage_path: Path = Path("~/.local/share/jobman")
-    gc_expiry_days: timedelta = timedelta(days=7)
+    gc_expiry: timedelta = timedelta(days=7)
     notification_sinks: List[Dict[str, str]] = Field(default_factory=lambda: [])
     db_path: Path = Path()
     stdio_path: Path = Path()

@@ -3,14 +3,14 @@ import os
 import shutil
 import sys
 from datetime import datetime
-from typing import List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import click
 
 from ..config import JobmanConfig
-from ..display import Displayer
+from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
-from ..models import Job, JobState, Run, get_or_create_db
+from ..models import Job, JobState, Run, init_db_models
 
 
 def _delete_job(job: Job, metadata: bool, logger: logging.Logger) -> None:
@@ -40,21 +40,97 @@ def display_purge(
     displayer: Displayer,
     logger: logging.Logger,
 ) -> int:
-    purged_job_ids, skipped_job_ids = purge(
+    nonexistent_job_ids, purged_job_ids, skipped_job_ids = purge(
         job_id, _all, metadata, since, until, config, logger
     )
 
+    json_contents: Dict[str, Union[str, List[str]]] = {}
     if since and until and since > until:
-        displayer.display(
-            "⚠️  [bold yellow]Warning:[/ bold yellow] -s/--since date is after"
-            " -u/--until date",
+        displayer.print(
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] -s/--since date is after"
+                " -u/--until date"
+            ),
+            plain_content="Warning: -s/--since date is after -u/--until date",
+            json_content=None,
             stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.FAILURE,
+        )
+        json_contents.update(
+            {
+                "result": "error",
+                "args_message": "-s/--since date is after -u/--until date",
+            }
+        )
+        ""
+
+    if nonexistent_job_ids:
+        multiple = len(nonexistent_job_ids) > 1
+        displayer.print(
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] No such"
+                f" job{'s' if multiple else ''}:"
+            ),
+            plain_content=None,
+            json_content=None,
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+        )
+        for jid in nonexistent_job_ids:
+            displayer.print(
+                pretty_content=f"  {jid}",
+                plain_content=f"No such job {jid}!",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "result": "error",
+                "nonexistent_message": f"No such job{'s' if multiple else ''}",
+                "nonexistent_job_ids": nonexistent_job_ids,
+            }
+        )
+
+    if skipped_job_ids:
+        multiple = len(skipped_job_ids) > 1
+        displayer.print(
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] Skipped running"
+                f" job{'s' if multiple else ''}:"
+            ),
+            plain_content=None,
+            json_content=None,
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+        )
+        for jid in skipped_job_ids:
+            displayer.print(
+                pretty_content=f"  🏃 {jid}",
+                plain_content=f"Skipped purging running job {jid}",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "result": "error",
+                "skipped_message": f"Skipped running job{'s' if multiple else ''}",
+                "skipped_job_ids": skipped_job_ids,
+            }
         )
 
     if not purged_job_ids:
-        displayer.display(
-            "No matching jobs found!", stream=sys.stdout, style="bold blue"
+        displayer.print(
+            pretty_content="No matching jobs found!",
+            plain_content=None,
+            json_content=None,
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.FAILURE,
         )
+        json_contents.update({"message": "No matching jobs found"})
     else:
         multiple = len(purged_job_ids) > 1
         header = (
@@ -66,24 +142,40 @@ def display_purge(
                 f" {len(purged_job_ids)} job{'s' if multiple else ''}:"
             )
         )
-        displayer.display(header, stream=sys.stderr)
-        for jid in purged_job_ids:
-            displayer.display(f"  ❌ {jid}", stream=sys.stderr, style="bold red")
-
-    if skipped_job_ids:
-        multiple = len(skipped_job_ids) > 1
-        displayer.display(
-            "⚠️  [bold yellow]Warning:[/ bold yellow] Skipped running"
-            f" job{'s' if multiple else ''}:",
-            stream=sys.stderr,
+        displayer.print(
+            pretty_content=header,
+            plain_content=None,
+            json_content=None,
+            stream=sys.stdout,
+            level=DisplayLevel.NORMAL,
         )
-        for jid in skipped_job_ids:
-            displayer.display(f"  🏃 {jid}", stream=sys.stderr)
+        for jid in purged_job_ids:
+            displayer.print(
+                pretty_content=f"  🧹 {jid}",
+                plain_content=jid,
+                json_content=None,
+                stream=sys.stdout,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update({"purged_job_ids": purged_job_ids})
+        if "result" not in json_contents:
+            json_contents["result"] = "Success"
+
+    # having collected all the JSON output in json_contents, render the JSON
+    # in one call to print
+    displayer.print(
+        pretty_content=None,
+        plain_content=None,
+        json_content=json_contents,
+        stream=sys.stdout,
+        level=DisplayLevel.NORMAL,
+    )
 
     return os.EX_DATAERR if not _all and skipped_job_ids else os.EX_OK
 
 
 class PurgeResults(NamedTuple):
+    nonexistent_job_ids: List[str]
     purged_job_ids: List[str]
     skipped_job_ids: List[str]
 
@@ -102,7 +194,7 @@ def purge(
             "Must supply either a job-id argument or the -a/--all flag, but not both"
         )
 
-    get_or_create_db(config.db_path)
+    init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     jobs_q = Job.select().where(Job.host_id == get_host_id())  # type: ignore[no-untyped-call]
@@ -127,4 +219,11 @@ def purge(
         _delete_job(job, metadata, logger)
         purged_job_ids.append(job.job_id)
 
-    return PurgeResults(purged_job_ids=purged_job_ids, skipped_job_ids=running_job_ids)
+    nonexistent_job_ids = [
+        jid for jid in job_id if jid not in purged_job_ids + running_job_ids
+    ]
+    return PurgeResults(
+        nonexistent_job_ids=nonexistent_job_ids,
+        purged_job_ids=purged_job_ids,
+        skipped_job_ids=running_job_ids,
+    )

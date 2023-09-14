@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..config import JobmanConfig
-from ..display import Displayer
+from ..display import Displayer, DisplayLevel
 from ..host import get_host_id
-from ..models import Job, JobState, Run, RunState, get_or_create_db
+from ..models import Job, JobState, Run, RunState, init_db_models
 
 
 def display_run(
@@ -36,7 +36,7 @@ def display_run(
     displayer: Displayer,
     logger: logging.Logger,
 ) -> int:
-    run_out = run(
+    job_id = run(
         command=command,
         wait_time=wait_time,
         wait_duration=wait_duration,
@@ -57,8 +57,13 @@ def display_run(
         config=config,
         logger=logger,
     )
-    displayer.display(run_out, stream=sys.stdout, style="bold blue")
-
+    displayer.print(
+        pretty_content=f"🏃  Submitted job [bold blue]{job_id}",
+        plain_content=job_id,
+        json_content={"result": "success", "message": "Job sumitted", "job_id": job_id},
+        stream=sys.stdout,
+        level=DisplayLevel.NORMAL,
+    )
     return os.EX_OK
 
 
@@ -88,7 +93,7 @@ def run(
     config: JobmanConfig,
     logger: logging.Logger,
 ) -> str:
-    get_or_create_db(config.db_path)
+    init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     job = Job(

@@ -1,7 +1,8 @@
+import json
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from peewee import (
     BooleanField,
@@ -12,6 +13,7 @@ from peewee import (
     Model,
     TextField,
 )
+from playhouse.shortcuts import model_to_dict  # type: ignore
 from playhouse.sqlite_ext import SqliteExtDatabase  # type: ignore
 
 
@@ -34,12 +36,10 @@ db = JobmanDatabase(
 )
 
 
-def get_or_create_db(db_path: Path) -> JobmanDatabase:
+def init_db_models(db_path: Path) -> None:
     db.init(db_path)
     db.connect()
     db.build()
-
-    return db
 
 
 class TimedeltaField(FloatField):
@@ -107,6 +107,18 @@ class PathField(TextField):
         if value is None:
             return None
         return Path(value)
+
+
+class JobmanModelEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if hasattr(o, "__dict__"):
+            d = o.__dict__
+            if "__data__" in d:
+                return d["__data__"]
+            else:
+                return d
+        else:
+            return str(o)
 
 
 class JobmanModel(Model):

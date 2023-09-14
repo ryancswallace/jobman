@@ -2,12 +2,12 @@ import logging
 import os
 import sys
 from signal import Signals
-from typing import List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 from ..config import JobmanConfig
-from ..display import Displayer
+from ..display import Displayer, DisplayLevel
 from ..host import get_host_id
-from ..models import Job, Run, RunState, get_or_create_db
+from ..models import Job, Run, RunState, init_db_models
 
 
 def display_kill(
@@ -25,40 +25,122 @@ def display_kill(
         failed_killed_run_ids,
     ) = kill(job_id, signal, allow_retries, config, logger)
 
+    json_contents: Dict[str, Union[str, List[str], List[Tuple[str, int]]]] = {}
     if nonexistent_job_ids:
         multiple = len(nonexistent_job_ids) > 1
-        displayer.display(
-            "⚠️  [bold yellow]Warning:[/ bold yellow] No such"
-            f" job{'s' if multiple else ''}:",
+        displayer.print(
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] No such"
+                f" job{'s' if multiple else ''}:"
+            ),
+            plain_content=None,
+            json_content=None,
             stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
         )
         for jid in nonexistent_job_ids:
-            displayer.display(f"  {jid}", stream=sys.stderr)
+            displayer.print(
+                pretty_content=f"  {jid}",
+                plain_content=f"No such job {jid}!",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "result": "error",
+                "nonexistent_message": f"No such job{'s' if multiple else ''}",
+                "nonexistent_job_ids": nonexistent_job_ids,
+            }
+        )
 
     if nonrunning_job_ids:
         multiple = len(nonrunning_job_ids) > 1
-        displayer.display(
-            "⚠️  [bold yellow]Warning:[/ bold yellow] No active runs for"
-            f" job{'s' if multiple else ''}:",
+        displayer.print(
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] No active runs for"
+                f" job{'s' if multiple else ''}:"
+            ),
+            plain_content=None,
+            json_content=None,
             stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
         )
         for jid in nonrunning_job_ids:
-            displayer.display(f"  {jid}", stream=sys.stderr)
+            displayer.print(
+                pretty_content=f"  {jid}",
+                plain_content=f"No active run for job {jid}!",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "result": "error",
+                "nonrunning_message": (
+                    f"No active runs for job{'s' if multiple else ''}"
+                ),
+                "nonrunning_job_ids": nonrunning_job_ids,
+            }
+        )
 
     if failed_killed_run_ids:
         multiple = len(failed_killed_run_ids) > 1
-        displayer.display(
-            f"⚠️  [bold yellow]Warning:[/ bold yellow] Failed to kill:",
+        displayer.print(
+            pretty_content=f"⚠️  [bold yellow]Warning:[/ bold yellow] Failed to kill:",
+            plain_content=None,
+            json_content=None,
             stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
         )
         for jid, attempt in failed_killed_run_ids:
-            displayer.display(f"  {jid}, attempt {attempt}", stream=sys.stderr)
+            displayer.print(
+                pretty_content=f"  {jid}, attempt {attempt}",
+                plain_content=f"Failed to kill {jid}, attempt {attempt}!",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "result": "error",
+                "failed_message": f"Failed to kill job{'s' if multiple else ''}",
+                "failed_killed_run_ids": failed_killed_run_ids,
+            }
+        )
 
     if killed_run_ids:
         multiple = len(killed_run_ids) > 1
-        displayer.display(f"Killed:", stream=sys.stderr)
+        displayer.print(
+            pretty_content=f"Killed:",
+            plain_content=None,
+            json_content=None,
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+        )
         for jid, attempt in killed_run_ids:
-            displayer.display(f"  ❌ {jid}, attempt {attempt}", stream=sys.stderr)
+            displayer.print(
+                pretty_content=f"  ❌ {jid}, attempt {attempt}",
+                plain_content=f"{jid}, attempt {attempt}",
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+            )
+        json_contents.update(
+            {
+                "killed_run_ids": killed_run_ids,
+            }
+        )
+
+    if "result" not in json_contents:
+        json_contents["result"] = "Success"
+    displayer.print(
+        pretty_content=None,
+        plain_content=None,
+        json_content=json_contents,
+        stream=sys.stdout,
+        level=DisplayLevel.NORMAL,
+    )
 
     failed = nonexistent_job_ids or nonrunning_job_ids or failed_killed_run_ids
     return os.EX_DATAERR if failed else os.EX_OK
@@ -100,7 +182,7 @@ def kill(
     config: JobmanConfig,
     logger: logging.Logger,
 ) -> KillResults:
-    get_or_create_db(config.db_path)
+    init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     # find active runs

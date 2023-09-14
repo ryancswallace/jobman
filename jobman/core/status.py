@@ -6,9 +6,9 @@ from typing import List, Tuple
 from rich.table import Table
 
 from ..config import JobmanConfig
-from ..display import Displayer, DisplayStyle
+from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
-from ..models import Job, get_or_create_db
+from ..models import Job, JobState, init_db_models
 
 
 def display_status(
@@ -17,13 +17,13 @@ def display_status(
     displayer: Displayer,
     logger: logging.Logger,
 ) -> int:
-    status_out = status(job_id, config, logger)
+    jobs = status(job_id, config, logger)
 
     # check that all jobs requested were found
     jobs_not_found = set()
     for requested_job_id in job_id:
         found = False
-        for found_job in status_out:
+        for found_job in jobs:
             if found_job.job_id == requested_job_id:
                 found = True
                 break
@@ -32,20 +32,32 @@ def display_status(
 
     # display message about any jobs not found
     if jobs_not_found:
-        displayer.display(
-            f"No such jobs:", stream=sys.stderr, style=DisplayStyle.FAILURE
+        displayer.print(
+            pretty_content="No such jobs:",
+            plain_content="No such jobs:",
+            json_content=None,
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.FAILURE,
         )
         for jid in jobs_not_found:
-            displayer.display(
-                f"  ❌ {jid}", stream=sys.stderr, style=DisplayStyle.FAILURE
+            displayer.print(
+                pretty_content=f"  ❌ {jid}",
+                plain_content=jid,
+                json_content=None,
+                stream=sys.stderr,
+                level=DisplayLevel.NORMAL,
+                style=DisplayStyle.FAILURE,
             )
 
     # separate not found and found section with empty line
-    if jobs_not_found and status_out:
-        displayer.display("", stream=sys.stderr)
+    if jobs_not_found and jobs:
+        displayer.print(
+            pretty_content="", plain_content="", json_content=None, stream=sys.stderr
+        )
 
     # display found jobs
-    for idx, job in enumerate(status_out):
+    for idx, job in enumerate(jobs):
         table = Table(title_justify="left", show_header=False)
         table.title = (
             f"[not italic]Job [underline][bold blue]{job.job_id}[/ underline][/ bold"
@@ -85,10 +97,34 @@ def display_status(
                 )
             table.add_row(display_name, display_val)
 
-        # add separating line before printing the table unless this is the first table
+        # for pretty printed tables, add separating line before printing the
+        # next table unless this is the first table
         if idx != 0:
-            displayer.display("", stream=sys.stdout)
-        displayer.display(table, stream=sys.stdout)
+            displayer.print(
+                pretty_content="",
+                plain_content=None,
+                json_content=None,
+                stream=sys.stderr,
+            )
+        displayer.print(
+            pretty_content=table,
+            plain_content=f"{job.job_id}: {JobState(job.state).name}",
+            json_content=None,
+            stream=sys.stderr,
+        )
+
+    # display all results as JSON together
+    displayer.print(
+        pretty_content=None,
+        plain_content=None,
+        json_content={
+            "result": "error",
+            "message": "No such jobs",
+            "missing_job_ids": list(jobs_not_found),
+            "jobs": jobs,
+        },
+        stream=sys.stderr,
+    )
 
     return os.EX_UNAVAILABLE if jobs_not_found else os.EX_OK
 
@@ -98,7 +134,7 @@ def status(
     config: JobmanConfig,
     logger: logging.Logger,
 ) -> List[Job]:
-    get_or_create_db(config.db_path)
+    init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     jobs_q = Job.select().where(  # type: ignore[no-untyped-call]
