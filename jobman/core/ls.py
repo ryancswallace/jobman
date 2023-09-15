@@ -55,19 +55,19 @@ def display_ls(
 
     jobs.sort(key=lambda j: (j.start_time is None, j.start_time), reverse=True)
     for job in jobs:
-        col_to_val = dict()
+        field_to_val = dict()
         for name in col_names:
-            col_to_val[name] = job.pretty[name][1]
+            field_to_val[name] = job.pretty[name][1]
 
         # make completed rows dim and colorize exit codes
         exit_code_color = ""
         if job.is_completed():
-            col_to_val["job_id"] = "[dim]" + str(col_to_val["job_id"])
+            field_to_val["job_id"] = "[dim]" + str(field_to_val["job_id"])
             exit_code_color = "[red]" if job.is_failed() else "[green]"
-        if "exit_code" in col_to_val:
-            col_to_val["exit_code"] = exit_code_color + str(col_to_val["exit_code"])
+        if "exit_code" in field_to_val:
+            field_to_val["exit_code"] = exit_code_color + str(field_to_val["exit_code"])
 
-        table.add_row(*col_to_val.values())
+        table.add_row(*field_to_val.values())
 
     displayer.print(
         pretty_content=table,
