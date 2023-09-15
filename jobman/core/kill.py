@@ -41,7 +41,7 @@ def display_kill(
         for jid in nonexistent_job_ids:
             displayer.print(
                 pretty_content=f"  {jid}",
-                plain_content=f"No such job {jid}!",
+                plain_content=f"No such job {jid}",
                 json_content=None,
                 stream=sys.stderr,
                 level=DisplayLevel.NORMAL,
@@ -69,7 +69,7 @@ def display_kill(
         for jid in nonrunning_job_ids:
             displayer.print(
                 pretty_content=f"  {jid}",
-                plain_content=f"No active run for job {jid}!",
+                plain_content=f"No active run for job {jid}",
                 json_content=None,
                 stream=sys.stderr,
                 level=DisplayLevel.NORMAL,
@@ -96,7 +96,7 @@ def display_kill(
         for jid, attempt in failed_killed_run_ids:
             displayer.print(
                 pretty_content=f"  {jid}, attempt {attempt}",
-                plain_content=f"Failed to kill {jid}, attempt {attempt}!",
+                plain_content=f"Failed to kill {jid}, attempt {attempt}",
                 json_content=None,
                 stream=sys.stderr,
                 level=DisplayLevel.NORMAL,
@@ -133,7 +133,7 @@ def display_kill(
         )
 
     if "result" not in json_contents:
-        json_contents["result"] = "Success"
+        json_contents["result"] = "success"
     displayer.print(
         pretty_content=None,
         plain_content=None,
@@ -161,7 +161,7 @@ def get_signal_num(signal: Optional[str]) -> int:
     return signal_num
 
 
-class KillResults(NamedTuple):
+class KiillResult(NamedTuple):
     # jobs specified that don't exist
     nonexistent_job_ids: List[str]
 
@@ -181,7 +181,7 @@ def kill(
     allow_retries: bool,
     config: JobmanConfig,
     logger: logging.Logger,
-) -> KillResults:
+) -> KiillResult:
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
@@ -231,7 +231,7 @@ def kill(
             f" {run.pid} with signal {signal_num}"
         )
 
-    return KillResults(
+    return KiillResult(
         nonexistent_job_ids=nonexistent_job_ids,
         nonrunning_job_ids=nonrunning_job_ids,
         killed_run_ids=killed_run_ids,

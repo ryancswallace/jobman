@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..config import JobmanConfig
-from ..display import Displayer, DisplayLevel
+from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
 from ..models import Job, JobState, Run, RunState, init_db_models
 
@@ -63,6 +63,7 @@ def display_run(
         json_content={"result": "success", "message": "Job sumitted", "job_id": job_id},
         stream=sys.stdout,
         level=DisplayLevel.NORMAL,
+        style=DisplayStyle.SUCCESS,
     )
     return os.EX_OK
 

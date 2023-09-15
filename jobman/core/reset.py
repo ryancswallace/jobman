@@ -4,7 +4,7 @@ import shutil
 import sys
 
 from ..config import JobmanConfig
-from ..display import Displayer, DisplayLevel
+from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..models import init_db_models
 
 
@@ -21,6 +21,7 @@ def display_reset(
         },
         stream=sys.stderr,
         level=DisplayLevel.NORMAL,
+        style=DisplayStyle.SUCCESS,
     )
 
     return os.EX_OK

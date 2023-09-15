@@ -24,19 +24,18 @@ def display_ls(
     # print warning but exit with 0 if there are no jobs
     if not jobs:
         displayer.print(
-            pretty_content="No jobs found",
+            pretty_content="🔎  No jobs found",
             plain_content="No jobs found",
             json_content={"result": "error", "message": "No jobs found"},
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
-            style="bold blue",
         )
         return os.EX_OK
 
     # print found jobs
     table = Table()
     table.title = f"[bold blue]⚡ {'All' if all_ else 'Running'} Jobman Jobs ⚡"
-    table.border_style = "bright_yellow"
+    table.border_style = "blue"
     table.box = box.SIMPLE_HEAD
 
     col_names = [

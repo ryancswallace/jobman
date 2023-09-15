@@ -55,7 +55,6 @@ def display_purge(
             json_content=None,
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
-            style=DisplayStyle.FAILURE,
         )
         json_contents.update(
             {
@@ -80,7 +79,7 @@ def display_purge(
         for jid in nonexistent_job_ids:
             displayer.print(
                 pretty_content=f"  {jid}",
-                plain_content=f"No such job {jid}!",
+                plain_content=f"No such job {jid}",
                 json_content=None,
                 stream=sys.stderr,
                 level=DisplayLevel.NORMAL,
@@ -115,7 +114,6 @@ def display_purge(
             )
         json_contents.update(
             {
-                "result": "error",
                 "skipped_message": f"Skipped running job{'s' if multiple else ''}",
                 "skipped_job_ids": skipped_job_ids,
             }
@@ -123,12 +121,12 @@ def display_purge(
 
     if not purged_job_ids:
         displayer.print(
-            pretty_content="No matching jobs found!",
+            pretty_content="No matching jobs",
             plain_content=None,
             json_content=None,
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
-            style=DisplayStyle.FAILURE,
+            style=DisplayStyle.FAILURE if job_id else DisplayStyle.NORMAL,
         )
         json_contents.update({"message": "No matching jobs found"})
     else:
@@ -159,7 +157,7 @@ def display_purge(
             )
         json_contents.update({"purged_job_ids": purged_job_ids})
         if "result" not in json_contents:
-            json_contents["result"] = "Success"
+            json_contents["result"] = "success"
 
     # having collected all the JSON output in json_contents, render the JSON
     # in one call to print
@@ -174,7 +172,7 @@ def display_purge(
     return os.EX_DATAERR if not _all and skipped_job_ids else os.EX_OK
 
 
-class PurgeResults(NamedTuple):
+class PurgeResult(NamedTuple):
     nonexistent_job_ids: List[str]
     purged_job_ids: List[str]
     skipped_job_ids: List[str]
@@ -188,7 +186,7 @@ def purge(
     until: Optional[datetime],
     config: JobmanConfig,
     logger: logging.Logger,
-) -> PurgeResults:
+) -> PurgeResult:
     if not (bool(job_id) ^ _all):
         raise click.exceptions.UsageError(
             "Must supply either a job-id argument or the -a/--all flag, but not both"
@@ -222,7 +220,7 @@ def purge(
     nonexistent_job_ids = [
         jid for jid in job_id if jid not in purged_job_ids + running_job_ids
     ]
-    return PurgeResults(
+    return PurgeResult(
         nonexistent_job_ids=nonexistent_job_ids,
         purged_job_ids=purged_job_ids,
         skipped_job_ids=running_job_ids,

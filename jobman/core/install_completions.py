@@ -88,6 +88,59 @@ def display_install_completions(
     """
     Ensure shell completions installed for the specified shell.
     """
+    install_completions_result = install_completions(shell_name, config, logger)
+    if install_completions_result.already_installed:
+        displayer.print(
+            pretty_content=(
+                "✔️  Completions already installed for"
+                f" {install_completions_result.shell.name} shell"
+            ),
+            plain_content=(
+                "Completions already installed for"
+                f" {install_completions_result.shell.name} shell"
+            ),
+            json_content={
+                "result": "success",
+                "message": "already installed",
+                "shell": install_completions_result.shell.name,
+            },
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.SUCCESS,
+        )
+    else:
+        displayer.print(
+            pretty_content=(
+                "✨  Installed completions for"
+                f" {install_completions_result.shell.name} shell"
+            ),
+            plain_content=(
+                "Installed completions for"
+                f" {install_completions_result.shell.name} shell"
+            ),
+            json_content={
+                "result": "success",
+                "message": "installed",
+                "shell": install_completions_result.shell.name,
+            },
+            stream=sys.stderr,
+            level=DisplayLevel.NORMAL,
+            style=DisplayStyle.SUCCESS,
+        )
+
+    return os.EX_OK
+
+
+class InstallCompletionsResult(NamedTuple):
+    shell: Shell
+    already_installed: bool
+
+
+def install_completions(
+    shell_name: Optional[str],
+    config: JobmanConfig,
+    logger: logging.Logger,
+) -> InstallCompletionsResult:
     logger.info(f"Supplied {shell_name=}")
     shell_name = shell_name or _get_shell_name()
     logger.info(f"Attempting to install completions for {shell_name=}")
@@ -98,32 +151,8 @@ def display_install_completions(
             exit_code=os.EX_UNAVAILABLE,
         )
 
-    exists = _search(COMPLETION_FLAG, shell.config_path)
-    if not exists:
+    already_installed = _search(COMPLETION_FLAG, shell.config_path)
+    if not already_installed:
         _append(shell.completion_script, shell.config_path)
-        displayer.print(
-            pretty_content=f"✨  Installed completions for {shell.name} shell",
-            plain_content=f"Installed completions for {shell.name} shell",
-            json_content={
-                "result": "success",
-                "message": "installed",
-                "shell": shell.name,
-            },
-            stream=sys.stderr,
-            level=DisplayLevel.NORMAL,
-            style=DisplayStyle.SUCCESS,
-        )
-    else:
-        displayer.print(
-            pretty_content=f"✔️  Completions already installed for {shell.name} shell",
-            plain_content=f"Completions already installed for {shell.name} shell",
-            json_content={
-                "result": "success",
-                "message": "already installed",
-                "shell": shell.name,
-            },
-            stream=sys.stderr,
-            level=DisplayLevel.NORMAL,
-            style=DisplayStyle.SUCCESS,
-        )
-    return os.EX_OK
+
+    return InstallCompletionsResult(shell=shell, already_installed=already_installed)
