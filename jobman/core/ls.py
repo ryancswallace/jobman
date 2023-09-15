@@ -59,14 +59,12 @@ def display_ls(
             col_to_val[name] = job.pretty[name][1]
 
         # make completed rows dim and colorize exit codes
-        color, exit_code_color = "", ""
+        exit_code_color = ""
         if job.is_completed():
-            color = "[dim]"
+            col_to_val["job_id"] = "[dim]" + str(col_to_val["job_id"])
             exit_code_color = "[red]" if job.is_failed() else "[green]"
-        for col, val in col_to_val.items():
-            col_to_val[col] = color + val
         if "exit_code" in col_to_val:
-            col_to_val["exit_code"] = exit_code_color + col_to_val["exit_code"]
+            col_to_val["exit_code"] = exit_code_color + str(col_to_val["exit_code"])
 
         table.add_row(*col_to_val.values())
 

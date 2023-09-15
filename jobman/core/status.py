@@ -9,7 +9,7 @@ from rich.table import Table
 from ..config import JobmanConfig
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
-from ..models import Job, JobState, Run, init_db_models
+from ..models import Job, Run, init_db_models
 
 
 def display_status(
@@ -103,7 +103,7 @@ def display_status(
                     color = (
                         "[green]" if str(job.exit_code) in job.success_code else "[red]"
                     )
-                    display_val = color + display_val
+                    display_val = color + str(display_val)
                 job_table.add_row(display_name, display_val)
             else:
                 null_display_fields.append(display_name)
@@ -123,7 +123,7 @@ def display_status(
             )
         displayer.print(
             pretty_content=job_table,
-            plain_content=f"{job.job_id}: {JobState(job.state).name}",
+            plain_content=f"{job.job_id}: {job.pretty['state'][1]}",
             json_content=None,
             stream=sys.stdout,
         )
@@ -156,11 +156,10 @@ def display_status(
                 if run.is_completed():
                     run_failed = str(run.exit_code) not in job.success_code
                     exit_code_color = "[red]" if run_failed else "[green]"
-                    field_to_val["exit_code"] = (
-                        exit_code_color + field_to_val["exit_code"]
+                    field_to_val["exit_code"] = exit_code_color + str(
+                        field_to_val["exit_code"]
                     )
-                    for field, val in field_to_val.items():
-                        field_to_val[field] = "[dim]" + val
+                    field_to_val["attempt"] = "[dim]" + str(field_to_val["attempt"])
 
                 run_table.add_row(*field_to_val.values())
 

@@ -14,6 +14,15 @@ from ..host import get_host_id
 from ..models import Job, JobState, Run, RunState, init_db_models
 
 
+def preproc_cmd(command: Tuple[str, ...]) -> str:
+    if len(command) == 1:
+        # covers the case of a single-word command, plus the case
+        # of a command enclosed in quotes (double or single)
+        return command[0]
+    else:
+        return shlex.join(command)
+
+
 def display_run(
     command: Tuple[str, ...],
     wait_time: Optional[datetime],
@@ -100,7 +109,7 @@ def run(
     job = Job(
         job_id=_generate_random_job_id(),
         host_id=get_host_id(),
-        command=shlex.join(command),
+        command=preproc_cmd(command),
         wait_time=wait_time,
         wait_duration=wait_duration,
         wait_for_file=wait_for_file,

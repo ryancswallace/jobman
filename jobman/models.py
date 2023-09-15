@@ -15,6 +15,7 @@ from peewee import (
 )
 from playhouse.shortcuts import model_to_dict  # type: ignore
 from playhouse.sqlite_ext import SqliteExtDatabase  # type: ignore
+from rich.syntax import Syntax
 
 
 class JobmanDatabase(SqliteExtDatabase):  # type: ignore[misc,no-any-unimported]
@@ -130,14 +131,20 @@ class JobmanModel(Model):
         return name.replace("_", " ").title()
 
     @property
-    def pretty(self) -> Dict[str, Tuple[str, str]]:
+    def pretty(self) -> Dict[str, Tuple[str, Union[str, Syntax]]]:
         name_to_pretty = dict()
         for name in self._meta.fields:  # type: ignore[attr-defined]
             pretty_name = self._name_to_display_name(name)
             val = getattr(self, name)
 
+            pretty_val: Union[str, Syntax] = str(val)
             if val is None:
                 pretty_val = "-"
+            elif name == "command":
+                # fish shell has the best pygments syntax highlighting support
+                # so we use fish highlighting regardless of the parent shell
+                syntax = Syntax(val, "fish", background_color="default")
+                pretty_val = syntax
             elif name.endswith("_time"):
                 pretty_val = str(val.replace(microsecond=0))
             elif name == "state":
@@ -148,8 +155,6 @@ class JobmanModel(Model):
                 pretty_val = ", ".join(sorted(val))
             elif name.endswith("_for_file"):
                 pretty_val = ", ".join(str(p) for p in sorted(val))
-            else:
-                pretty_val = str(val)
 
             name_to_pretty[name] = (pretty_name, pretty_val)
 
