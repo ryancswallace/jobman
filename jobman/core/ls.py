@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
 from rich import box
 from rich.table import Table
@@ -10,14 +10,19 @@ from ..base_logger import make_logger
 from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel
 from ..host import get_host_id
-from ..models import Job, JobState, init_db_models
+from ..models import Job, JobState, Run, init_db_models
 
 
 def display_ls(
-    all_: bool, config: JobmanConfig, displayer: Displayer, logger: logging.Logger
+    all_: bool,
+    show_runs: bool,
+    config: JobmanConfig,
+    displayer: Displayer,
+    logger: logging.Logger,
 ) -> int:
-    jobs = ls(
+    jobs, runs = ls(
         all_=all_,
+        show_runs=show_runs,
         config=config,
         logger=logger,
     )
@@ -32,6 +37,9 @@ def display_ls(
             level=DisplayLevel.NORMAL,
         )
         return os.EX_OK
+
+    # sort output with most recent jobs first
+    jobs.sort(key=lambda j: (j.start_time is None, j.start_time), reverse=True)
 
     # print found jobs
     table = Table()
@@ -50,24 +58,72 @@ def display_ls(
             "state",
             "exit_code",
         ]
-    for name in col_names:
+    table.add_column("ID", justify="right")
+    for name in col_names[1:]:
         table.add_column(Job._name_to_display_name(name))
 
-    jobs.sort(key=lambda j: (j.start_time is None, j.start_time), reverse=True)
     for job in jobs:
         field_to_val = dict()
         for name in col_names:
             field_to_val[name] = job.pretty[name][1]
 
+        field_to_val["job_id"] = "[bold blue]" + str(field_to_val["job_id"])
         # make completed rows dim and colorize exit codes
-        exit_code_color = ""
-        if job.is_completed():
-            field_to_val["job_id"] = "[dim]" + str(field_to_val["job_id"])
-            exit_code_color = "[red]" if job.is_failed() else "[green]"
+        field_to_val["job_id"] = (
+            "[dim]" + str(field_to_val["job_id"])
+            if job.is_completed()
+            else field_to_val["job_id"]
+        )
         if "exit_code" in field_to_val:
+            exit_code_color = (
+                ""
+                if not job.is_completed()
+                else ("[red]" if job.is_failed() else "[green]")
+            )
             field_to_val["exit_code"] = exit_code_color + str(field_to_val["exit_code"])
 
         table.add_row(*field_to_val.values())
+
+        if show_runs and runs:
+            job_runs = [r for r in runs if r.job_id.job_id == job.job_id]
+            job_runs.sort(
+                key=lambda r: (r.attempt, r.start_time is None, r.start_time),
+                reverse=True,
+            )
+            for run in job_runs:
+                run_col_names = [
+                    "attempt",
+                    "start_time",
+                    "finish_time",
+                    "state",
+                    "exit_code",
+                ]
+                field_to_val = dict()
+                for name in run_col_names:
+                    field_to_val[name] = run.pretty[name][1]
+
+                # field_to_val["attempt"] = "attempt " + field_to_val["attempt"]
+                # make completed rows dim and colorize exit codes
+                field_to_val["attempt"] = (
+                    "[dim]" + str(field_to_val["attempt"])
+                    if run.is_completed()
+                    else field_to_val["attempt"]
+                )
+                if "exit_code" in field_to_val:
+                    exit_code_color = (
+                        ""
+                        if not run.is_completed()
+                        else (
+                            "[red]" if run.exit_code in job.success_codes else "[green]"
+                        )
+                    )
+                    field_to_val["exit_code"] = exit_code_color + str(
+                        field_to_val["exit_code"]
+                    )
+
+                vals = list(field_to_val.values())
+                vals.insert(1, "")
+                table.add_row(*vals)
 
     displayer.print(
         pretty_content=table,
@@ -80,15 +136,21 @@ def display_ls(
     return os.EX_OK
 
 
+class LsResult(NamedTuple):
+    jobs: List[Job]
+    runs: Optional[List[Run]]
+
+
 def ls(
     all_: bool = False,
+    show_runs: bool = False,
     config: Optional[JobmanConfig] = None,
     logger: Optional[logging.Logger] = None,
-) -> List[Job]:
+) -> LsResult:
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
@@ -101,8 +163,14 @@ def ls(
             & (Job.state << [JobState.SUBMITTED.value, JobState.RUNNING.value])
         )
     )
-
     jobs = list(jobs_q)
     logger.info(f"Found {len(jobs)} job(s)")
 
-    return jobs
+    if show_runs:
+        runs_q = Run.select().join(Job).where(Job.job_id << [j.job_id for j in jobs])  # type: ignore[no-untyped-call]
+        runs = list(runs_q)
+        logger.info(f"Found {len(runs)} run(s)")
+    else:
+        runs = None
+
+    return LsResult(jobs=jobs, runs=runs)

@@ -12,7 +12,7 @@ from ..base_logger import make_logger
 from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
-from ..models import Job, JobState, Run, RunState, init_db_models
+from ..models import Job, JobState, init_db_models
 
 
 def preproc_cmd(command: Tuple[str, ...]) -> str:
@@ -107,7 +107,7 @@ def run(
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
@@ -140,58 +140,59 @@ def run(
     )
     job.save()
 
-    attempt = 0
-    run = Run(
-        job_id=job.job_id,
-        attempt=attempt,
-        log_path=config.stdio_path / job.job_id / str(attempt),
-        start_time=datetime.now(),
-        state=RunState.SUBMITTED.value,
-    )
-    run.save()
-
-    # TODO REMOVE
+    # TODO: REMOVE
     # job.exit_code = "2"
     # job.wait_duration = timedelta(days=2, minutes=5)
     # job.retry_attempts = 10
     # job.state = JobState.COMPLETE.value
     # job.save()
 
-    # run.state = RunState.RUNNING.value
-    # run.pid = "2953125"
-    # run.start_time = datetime(2022, 3, 5)
+    # attempt = 0
+    # run = Run(
+    #     job_id=job.job_id,
+    #     attempt=attempt,
+    #     log_path=config.stdio_path / job.job_id / str(attempt),
+    #     start_time=datetime.now(),
+    #     state=RunState.SUBMITTED.value,
+    # )
     # run.save()
 
-    # run2 = Run(
+    # attempt = 1
+    # run = Run(
     #     job_id=job.job_id,
     #     attempt=attempt,
     #     log_path=config.stdio_path / job.job_id / str(attempt),
     #     start_time=datetime.now(),
-    #     state=RunState.SUBMITTED.value,
+    #     pid=1234,
+    #     state=RunState.RUNNING.value,
     # )
-    # run2.attempt = 1
-    # run2.state = RunState.COMPLETE.value
-    # run2.pid = "12345"
-    # run2.start_time = datetime(2022, 3, 5)
-    # run2.finish_time = datetime(2022, 3, 7)
-    # run2.exit_code = "149"
-    # run2.save()
+    # run.save()
 
-    # run3 = Run(
+    # attempt = 2
+    # run = Run(
     #     job_id=job.job_id,
     #     attempt=attempt,
     #     log_path=config.stdio_path / job.job_id / str(attempt),
-    #     start_time=datetime.now(),
-    #     state=RunState.SUBMITTED.value,
+    #     pid=314,
+    #     state=RunState.COMPLETE.value,
+    #     exit_code=149,
+    #     start_time=datetime(2022, 3, 5),
+    #     finish_time=datetime(2022, 3, 7),
     # )
-    # run3.attempt = 2
-    # run3.state = RunState.COMPLETE.value
-    # run3.pid = "123"
-    # run3.start_time = datetime(2022, 3, 7)
-    # run3.finish_time = datetime(2022, 3, 8)
-    # run3.exit_code = "2"
-    # run3.save()
+    # run.save()
 
-    # END TODO REMOVE
+    # attempt = 3
+    # run = Run(
+    #     job_id=job.job_id,
+    #     attempt=attempt,
+    #     log_path=config.stdio_path / job.job_id / str(attempt),
+    #     pid=31459,
+    #     state=RunState.COMPLETE.value,
+    #     exit_code=0,
+    #     start_time=datetime(2022, 3, 6),
+    #     finish_time=datetime(2022, 3, 8),
+    # )
+    # run.save()
+    # END TODO: REMOVE
 
     return str(job.job_id)

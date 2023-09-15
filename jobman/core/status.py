@@ -214,7 +214,7 @@ def status(
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
@@ -223,10 +223,12 @@ def status(
         (Job.host_id == get_host_id()) & (Job.job_id << job_ids)
     )
     jobs = list(jobs_q)
+    logger.info(f"Found {len(jobs)} job(s)")
 
     if not no_runs:
         runs_q = Run.select().join(Job).where(Job.job_id << job_ids)  # type: ignore[no-untyped-call]
         runs = list(runs_q)
+        logger.info(f"Found {len(runs)} run(s)")
     else:
         runs = None
 

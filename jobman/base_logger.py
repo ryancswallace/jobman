@@ -3,7 +3,7 @@
 import logging
 
 
-def make_logger(log_level: int) -> logging.Logger:
+def make_logger(log_level: int = logging.WARN) -> logging.Logger:
     handler = logging.StreamHandler()
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

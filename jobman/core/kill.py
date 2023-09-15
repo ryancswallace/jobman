@@ -193,7 +193,7 @@ def kill(
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")

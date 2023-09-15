@@ -75,7 +75,7 @@ def complete_job_id(
         # config or logger
         return []
 
-    jobs = ls(all_=True, config=config, logger=logger)
+    jobs, _ = ls(all_=True, show_runs=False, config=config, logger=logger)
     command_name = ctx.command.name
     if command_name in ["status", "logs"]:
         # all jobs on the host
@@ -557,16 +557,24 @@ def cli_kill(
 @click.option(
     "-a", "--all", "all_", is_flag=True, default=False, help="Include finished jobs"
 )
+@click.option(
+    "-r",
+    "--show-runs",
+    is_flag=True,
+    default=False,
+    help="Show details of individual runs",
+)
 @global_options
 def cli_ls(
     all_: bool,
+    show_runs: bool,
     quiet: bool,
     json: bool,
     plain: bool,
     debug: bool,
 ) -> None:
     """View jobs."""
-    cli_exec(display_ls, quiet, json, plain, debug, all_)
+    cli_exec(display_ls, quiet, json, plain, debug, all_, show_runs)
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)

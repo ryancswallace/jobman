@@ -102,7 +102,7 @@ def display_install_completions(
             ),
             json_content={
                 "result": "success",
-                "message": "already installed",
+                "message": "Completions already installed",
                 "shell": install_completions_result.shell.name,
             },
             stream=sys.stderr,
@@ -145,7 +145,7 @@ def install_completions(
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     logger.info(f"Supplied {shell_name=}")
     shell_name = shell_name or _get_shell_name()

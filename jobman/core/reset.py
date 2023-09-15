@@ -35,7 +35,7 @@ def reset(
     if not config:
         config = load_config()
     if not logger:
-        logger = make_logger(logging.WARN)
+        logger = make_logger()
 
     config.db_path.unlink(missing_ok=True)
     logger.warn(f"Ensured old database at {config.db_path} deleted")
