@@ -35,13 +35,16 @@ def display_status(
 
     # display message about any jobs not found
     if not_found_job_ids:
+        multiple = len(not_found_job_ids) > 1
         displayer.print(
-            pretty_content="No such jobs:",
+            pretty_content=(
+                "⚠️  [bold yellow]Warning: [/ bold yellow]No"
+                f" such{' ' + str(len(not_found_job_ids)) if multiple else ''} job{'s' if multiple else ''}:"
+            ),
             plain_content=None,
             json_content=None,
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
-            style=DisplayStyle.FAILURE,
         )
         for jid in not_found_job_ids:
             displayer.print(

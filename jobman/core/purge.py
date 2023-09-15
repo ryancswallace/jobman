@@ -68,7 +68,8 @@ def display_purge(
         multiple = len(nonexistent_job_ids) > 1
         displayer.print(
             pretty_content=(
-                "⚠️  [bold yellow]Warning:[/ bold yellow] No such"
+                "⚠️  [bold yellow]Warning: [/ bold yellow]No"
+                f" such{' ' + str(len(nonexistent_job_ids)) if multiple else ''}"
                 f" job{'s' if multiple else ''}:"
             ),
             plain_content=None,
@@ -96,7 +97,8 @@ def display_purge(
         multiple = len(skipped_job_ids) > 1
         displayer.print(
             pretty_content=(
-                "⚠️  [bold yellow]Warning:[/ bold yellow] Skipped running"
+                "⚠️  [bold yellow]Warning:[/ bold yellow]"
+                f" Skipped{' ' + str(len(skipped_job_ids)) if multiple else ''} running"
                 f" job{'s' if multiple else ''}:"
             ),
             plain_content=None,
@@ -114,7 +116,10 @@ def display_purge(
             )
         json_contents.update(
             {
-                "skipped_message": f"Skipped running job{'s' if multiple else ''}",
+                "skipped_message": (
+                    f"Skipped {len(skipped_job_ids)} running"
+                    f" job{'s' if multiple else ''}"
+                ),
                 "skipped_job_ids": skipped_job_ids,
             }
         )
@@ -133,11 +138,11 @@ def display_purge(
         multiple = len(purged_job_ids) > 1
         header = (
             "Deleted stdout/stderr logs and metadata for"
-            f" {len(purged_job_ids)} job{'s' if multiple else ''}:"
+            f"{' ' + str(len(purged_job_ids)) if multiple else ''} job{'s' if multiple else ''}:"
             if metadata
             else (
                 "Deleted stdout/stderr logs for"
-                f" {len(purged_job_ids)} job{'s' if multiple else ''}:"
+                f"{' ' + str(len(purged_job_ids)) if multiple else ''} job{'s' if multiple else ''}:"
             )
         )
         displayer.print(

@@ -30,7 +30,8 @@ def display_kill(
         multiple = len(nonexistent_job_ids) > 1
         displayer.print(
             pretty_content=(
-                "⚠️  [bold yellow]Warning:[/ bold yellow] No such"
+                "⚠️  [bold yellow]Warning: [/ bold yellow]No"
+                f" such{' ' + str(len(nonexistent_job_ids)) if multiple else ''}"
                 f" job{'s' if multiple else ''}:"
             ),
             plain_content=None,
@@ -58,7 +59,8 @@ def display_kill(
         multiple = len(nonrunning_job_ids) > 1
         displayer.print(
             pretty_content=(
-                "⚠️  [bold yellow]Warning:[/ bold yellow] No active runs for"
+                "⚠️  [bold yellow]Warning:[/ bold yellow] No active runs"
+                f" for{' ' + str(len(nonrunning_job_ids)) if multiple else ''}"
                 f" job{'s' if multiple else ''}:"
             ),
             plain_content=None,
@@ -87,7 +89,10 @@ def display_kill(
     if failed_killed_run_ids:
         multiple = len(failed_killed_run_ids) > 1
         displayer.print(
-            pretty_content=f"⚠️  [bold yellow]Warning:[/ bold yellow] Failed to kill:",
+            pretty_content=(
+                "⚠️  [bold yellow]Warning:[/ bold yellow] Failed to"
+                f" kill{' ' + str(len(failed_killed_run_ids)) if multiple else ''} job{'s' if multiple else ''}:"
+            ),
             plain_content=None,
             json_content=None,
             stream=sys.stderr,
@@ -112,7 +117,9 @@ def display_kill(
     if killed_run_ids:
         multiple = len(killed_run_ids) > 1
         displayer.print(
-            pretty_content=f"Killed:",
+            pretty_content=(
+                f"Killed{' ' + str(len(killed_run_ids)) if multiple else ''} job{'s' if multiple else ''}:"
+            ),
             plain_content=None,
             json_content=None,
             stream=sys.stderr,
