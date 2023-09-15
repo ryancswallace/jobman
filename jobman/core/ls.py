@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from typing import List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Union
 
 from rich import box
 from rich.table import Table
@@ -125,10 +125,24 @@ def display_ls(
                 vals.insert(1, "")
                 table.add_row(*vals)
 
+    json_content: Dict[str, Union[List[Job], List[Run]]] = {"jobs": jobs}
+    plain_content = "\n".join(str(j.job_id) for j in jobs)
+    if show_runs:
+        if not runs:
+            r: List[Run] = []
+            json_content["runs"] = r
+        else:
+            json_content["runs"] = runs
+        plain_content = "\n".join(
+            f"{j.job_id}:"
+            f" {len([r for r in (runs or []) if r.job_id.job_id == j.job_id])} runs"
+            for j in jobs
+        )
+
     displayer.print(
         pretty_content=table,
-        plain_content="\n".join(str(j.job_id) for j in jobs),
-        json_content=jobs,
+        plain_content=plain_content,
+        json_content=json_content,
         stream=sys.stdout,
         level=DisplayLevel.NORMAL,
     )
