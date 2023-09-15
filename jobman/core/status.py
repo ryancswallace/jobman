@@ -14,18 +14,18 @@ from ..models import Job, Run, init_db_models
 
 
 def display_status(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     no_runs: bool,
     all_: bool,
     config: JobmanConfig,
     displayer: Displayer,
     logger: logging.Logger,
 ) -> int:
-    jobs, runs = status(job_id, no_runs, config, logger)
+    jobs, runs = status(job_ids, no_runs, config, logger)
 
     # check that all jobs requested were found
     not_found_job_ids = set()
-    for requested_job_id in job_id:
+    for requested_job_id in job_ids:
         found = False
         for found_job in jobs:
             if found_job.job_id == requested_job_id:
@@ -84,13 +84,13 @@ def display_status(
         spec_fields = [
             "wait_time",
             "wait_duration",
-            "wait_for_file",
+            "wait_for_files",
             "abort_time",
             "abort_duration",
-            "abort_for_file",
+            "abort_for_files",
             "retry_attempts",
             "retry_delay",
-            "success_code",
+            "success_codes",
             "notify_on_run_completion",
             "notify_on_job_completion",
             "notify_on_job_success",
@@ -104,7 +104,7 @@ def display_status(
             display_name, display_val = job.pretty[name]
             if getattr(job, name) is not None:
                 if name == "exit_code":
-                    color = "[green]" if job.exit_code in job.success_code else "[red]"
+                    color = "[green]" if job.exit_code in job.success_codes else "[red]"
                     display_val = color + str(display_val)
                 job_table.add_row(display_name, display_val)
             else:
@@ -156,7 +156,7 @@ def display_status(
 
                 # make completed rows dim and colorize exit codes
                 if run.is_completed():
-                    run_failed = run.exit_code not in job.success_code
+                    run_failed = run.exit_code not in job.success_codes
                     exit_code_color = "[red]" if run_failed else "[green]"
                     field_to_val["exit_code"] = exit_code_color + str(
                         field_to_val["exit_code"]
@@ -206,7 +206,7 @@ class StatusResult(NamedTuple):
 
 
 def status(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     no_runs: bool = False,
     config: Optional[JobmanConfig] = None,
     logger: Optional[logging.Logger] = None,
@@ -220,12 +220,12 @@ def status(
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     jobs_q = Job.select().where(  # type: ignore[no-untyped-call]
-        (Job.host_id == get_host_id()) & (Job.job_id << job_id)
+        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)
     )
     jobs = list(jobs_q)
 
     if not no_runs:
-        runs_q = Run.select().join(Job).where(Job.job_id << job_id)  # type: ignore[no-untyped-call]
+        runs_q = Run.select().join(Job).where(Job.job_id << job_ids)  # type: ignore[no-untyped-call]
         runs = list(runs_q)
     else:
         runs = None

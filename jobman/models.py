@@ -156,7 +156,7 @@ class JobmanModel(Model):
                 pretty_val = str(val.replace(microsecond=0))
             elif name == "state":
                 pretty_val = JobState(val).name.title()
-            elif name == "success_code":
+            elif name == "success_codes":
                 pretty_val = ", ".join(map(str, sorted(val)))
             elif name.startswith("notify_on_"):
                 pretty_val = ", ".join(sorted(val))
@@ -196,13 +196,13 @@ class Job(JobmanModel):
     command = TextField()
     wait_time = DateTimeField(null=True)
     wait_duration = TimedeltaField(null=True)
-    wait_for_file = PathTupleField(null=True)
+    wait_for_files = PathTupleField(null=True)
     abort_time = DateTimeField(null=True)
     abort_duration = TimedeltaField(null=True)
-    abort_for_file = PathTupleField(null=True)
+    abort_for_files = PathTupleField(null=True)
     retry_attempts = IntegerField(null=True)
     retry_delay = TimedeltaField(null=True)
-    success_code = IntegerTupleField(null=True)
+    success_codes = IntegerTupleField(null=True)
     notify_on_run_completion = TextTupleField(null=True)
     notify_on_job_completion = TextTupleField(null=True)
     notify_on_job_success = TextTupleField(null=True)
@@ -217,7 +217,7 @@ class Job(JobmanModel):
 
     def is_failed(self) -> bool:
         return self.exit_code is not None and self.exit_code not in (
-            self.success_code if self.success_code is not None else [0]
+            self.success_codes if self.success_codes is not None else [0]
         )
 
     def is_completed(self) -> bool:

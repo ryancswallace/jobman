@@ -32,7 +32,7 @@ def _delete_job(job: Job, metadata: bool, logger: logging.Logger) -> None:
 
 
 def display_purge(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     _all: bool,
     metadata: bool,
     since: Optional[datetime],
@@ -42,7 +42,7 @@ def display_purge(
     logger: logging.Logger,
 ) -> int:
     nonexistent_job_ids, purged_job_ids, skipped_job_ids = purge(
-        job_id, _all, metadata, since, until, config, logger
+        job_ids, _all, metadata, since, until, config, logger
     )
 
     json_contents: Dict[str, Union[str, List[str]]] = {}
@@ -132,7 +132,7 @@ def display_purge(
             json_content=None,
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
-            style=DisplayStyle.FAILURE if job_id else DisplayStyle.NORMAL,
+            style=DisplayStyle.FAILURE if job_ids else DisplayStyle.NORMAL,
         )
         json_contents.update({"message": "No matching jobs found"})
     else:
@@ -185,7 +185,7 @@ class PurgeResult(NamedTuple):
 
 
 def purge(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     _all: bool = False,
     metadata: bool = False,
     since: Optional[datetime] = None,
@@ -193,7 +193,7 @@ def purge(
     config: Optional[JobmanConfig] = None,
     logger: Optional[logging.Logger] = None,
 ) -> PurgeResult:
-    if not (bool(job_id) ^ _all):
+    if not (bool(job_ids) ^ _all):
         raise click.exceptions.UsageError(
             "Must supply either a job-id argument or the -a/--all flag, but not both"
         )
@@ -207,8 +207,8 @@ def purge(
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     jobs_q = Job.select().where(Job.host_id == get_host_id())  # type: ignore[no-untyped-call]
-    if job_id:
-        jobs_q = jobs_q.where(Job.job_id << job_id)
+    if job_ids:
+        jobs_q = jobs_q.where(Job.job_id << job_ids)
     if since:
         jobs_q = jobs_q.where(Job.start_time >= since)
     if until:
@@ -229,7 +229,7 @@ def purge(
         purged_job_ids.append(job.job_id)
 
     nonexistent_job_ids = [
-        jid for jid in job_id if jid not in purged_job_ids + running_job_ids
+        jid for jid in job_ids if jid not in purged_job_ids + running_job_ids
     ]
     return PurgeResult(
         nonexistent_job_ids=nonexistent_job_ids,

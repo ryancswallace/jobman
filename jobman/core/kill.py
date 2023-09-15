@@ -12,7 +12,7 @@ from ..models import Job, Run, RunState, init_db_models
 
 
 def display_kill(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     signal: Optional[str],
     allow_retries: bool,
     config: JobmanConfig,
@@ -24,7 +24,7 @@ def display_kill(
         nonrunning_job_ids,
         killed_run_ids,
         failed_killed_run_ids,
-    ) = kill(job_id, signal, allow_retries, config, logger)
+    ) = kill(job_ids, signal, allow_retries, config, logger)
 
     json_contents: Dict[str, Union[str, List[str], List[Tuple[str, int]]]] = {}
     if nonexistent_job_ids:
@@ -184,7 +184,7 @@ class killResult(NamedTuple):
 
 
 def kill(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     signal: Optional[str] = None,
     allow_retries: bool = False,
     config: Optional[JobmanConfig] = None,
@@ -200,10 +200,10 @@ def kill(
 
     # find active runs
     jobs_q = Job.select().where(  # type: ignore[no-untyped-call]
-        (Job.host_id == get_host_id()) & (Job.job_id << job_id)
+        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)
     )
     existent_job_ids = [j.job_id for j in jobs_q]
-    nonexistent_job_ids = [jid for jid in job_id if jid not in existent_job_ids]
+    nonexistent_job_ids = [jid for jid in job_ids if jid not in existent_job_ids]
 
     runs = list(
         Run.select()  # type: ignore[no-untyped-call]

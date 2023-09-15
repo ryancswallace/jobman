@@ -257,6 +257,7 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
 )
 @click.option(
     "--wait-for-file",
+    "wait_for_files",
     type=click.Path(),
     multiple=True,
     help="Do not run the command until the specified file exists",
@@ -276,6 +277,7 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
 )
 @click.option(
     "--abort-for-file",
+    "abort_for_files",
     type=click.Path(),
     multiple=True,
     help="Terminate the command if it's still running and the specified file exists",
@@ -293,6 +295,7 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
 @click.option(
     "-c",
     "--success-code",
+    "success_codes",
     type=click.IntRange(min=0, max=255),
     multiple=True,
     default=[0],
@@ -350,13 +353,13 @@ def cli_run(
     command: Tuple[str, ...],
     wait_time: Optional[datetime],
     wait_duration: Optional[timedelta],
-    wait_for_file: Optional[Tuple[Path]],
+    wait_for_files: Optional[Tuple[Path]],
     abort_time: Optional[datetime],
     abort_duration: Optional[timedelta],
-    abort_for_file: Optional[Tuple[Path]],
+    abort_for_files: Optional[Tuple[Path]],
     retry_attempts: Optional[int],
     retry_delay: Optional[timedelta],
-    success_code: Optional[Tuple[int]],
+    success_codes: Optional[Tuple[int]],
     notify_on_run_completion: Optional[Tuple[str]],
     notify_on_job_completion: Optional[Tuple[str]],
     notify_on_job_success: Optional[Tuple[str]],
@@ -379,13 +382,13 @@ def cli_run(
         command,
         wait_time,
         wait_duration,
-        wait_for_file,
+        wait_for_files,
         abort_time,
         abort_duration,
-        abort_for_file,
+        abort_for_files,
         retry_attempts,
         retry_delay,
-        success_code,
+        success_codes,
         notify_on_run_completion,
         notify_on_job_completion,
         notify_on_job_success,
@@ -397,7 +400,7 @@ def cli_run(
 
 
 @cli.command("status", context_settings=CONTEXT_SETTINGS)
-@click.argument("job-id", nargs=-1, required=True, shell_complete=complete_job_id)
+@click.argument("job-ids", nargs=-1, required=True, shell_complete=complete_job_id)
 @click.option(
     "-n",
     "--no-runs",
@@ -415,7 +418,7 @@ def cli_run(
 )
 @global_options
 def cli_status(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     no_runs: bool,
     all_: bool,
     quiet: bool,
@@ -423,8 +426,8 @@ def cli_status(
     plain: bool,
     debug: bool,
 ) -> None:
-    """Display the status of a job(s) JOB_ID."""
-    cli_exec(display_status, quiet, json, plain, debug, job_id, no_runs, all_)
+    """Display the status of a job(s) JOB_IDS."""
+    cli_exec(display_status, quiet, json, plain, debug, job_ids, no_runs, all_)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)
@@ -484,7 +487,7 @@ def cli_logs(
     plain: bool,
     debug: bool,
 ) -> None:
-    """Show output from job(s) JOB_ID."""
+    """Show output from job JOB_ID."""
     cli_exec(
         display_logs,
         quiet,
@@ -530,7 +533,7 @@ SIGNALS = [s.name for s in Signals] + [str(s.value) for s in Signals]
 )
 @global_options
 def cli_kill(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     signal: Optional[str],
     allow_retries: bool,
     force: bool,
@@ -539,15 +542,15 @@ def cli_kill(
     plain: bool,
     debug: bool,
 ) -> None:
-    """Stop running job JOB_ID."""
-    multiple = len(job_id) > 1
+    """Stop running job JOB_IDS."""
+    multiple = len(job_ids) > 1
     if not force:
         click.confirm(
             "⚠️  Are you sure you want to stop"
-            f" job{'s' if multiple else ''} {', '.join(job_id)}?",
+            f" job{'s' if multiple else ''} {', '.join(job_ids)}?",
             abort=True,
         )
-    cli_exec(display_kill, quiet, json, plain, debug, job_id, signal, allow_retries)
+    cli_exec(display_kill, quiet, json, plain, debug, job_ids, signal, allow_retries)
 
 
 @cli.command("ls", context_settings=CONTEXT_SETTINGS)
@@ -567,7 +570,7 @@ def cli_ls(
 
 
 @cli.command("purge", context_settings=CONTEXT_SETTINGS)
-@click.argument("job-id", nargs=-1, required=False, shell_complete=complete_job_id)
+@click.argument("job-ids", nargs=-1, required=False, shell_complete=complete_job_id)
 @click.option(
     "-a",
     "--all",
@@ -600,7 +603,7 @@ def cli_ls(
 )
 @global_options
 def cli_purge(
-    job_id: Tuple[str, ...],
+    job_ids: Tuple[str, ...],
     _all: bool,
     metadata: bool,
     since: Optional[datetime],
@@ -611,7 +614,7 @@ def cli_purge(
     plain: bool,
     debug: bool,
 ) -> None:
-    """Delete metadata for historical job(s) JOB_ID."""
+    """Delete metadata for historical job(s) JOB_IDS."""
 
     if not force:
         click.confirm(
@@ -625,7 +628,7 @@ def cli_purge(
         json,
         plain,
         debug,
-        job_id,
+        job_ids,
         _all,
         metadata,
         since,
