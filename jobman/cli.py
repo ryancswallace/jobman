@@ -116,7 +116,8 @@ def cli_exec(  # type: ignore[no-untyped-def]
     try:
         config = load_config()
         logger = make_logger(DEBUG_TO_LEVEL[debug])
-        if fn in [display_logs, display_ls, display_run, display_status]:
+        if fn in [display_logs, display_ls, display_status]:
+            # run GC in background during read-only commands
             bg_gc_logs(config, logger)
         sys.exit(fn(*args, config, displayer, logger))
     except JobmanError as e:
@@ -395,16 +396,33 @@ def cli_run(
 
 @cli.command("status", context_settings=CONTEXT_SETTINGS)
 @click.argument("job-id", nargs=-1, required=True, shell_complete=complete_job_id)
+@click.option(
+    "-n",
+    "--no-runs",
+    is_flag=True,
+    default=False,
+    help="Don't show details of individual runs",
+)
+@click.option(
+    "-a",
+    "--all",
+    "all_",
+    is_flag=True,
+    default=False,
+    help="Display all job properties",
+)
 @global_options
 def cli_status(
     job_id: Tuple[str, ...],
+    no_runs: bool,
+    all_: bool,
     quiet: bool,
     json: bool,
     plain: bool,
     debug: bool,
 ) -> None:
     """Display the status of a job(s) JOB_ID."""
-    cli_exec(display_status, quiet, json, plain, debug, job_id)
+    cli_exec(display_status, quiet, json, plain, debug, job_id, no_runs, all_)
 
 
 @cli.command("logs", context_settings=CONTEXT_SETTINGS)

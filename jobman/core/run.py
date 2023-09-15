@@ -141,7 +141,39 @@ def run(
 
     # run.state = RunState.RUNNING.value
     # run.pid = "2953125"
+    # run.start_time = datetime(2022, 3, 5)
     # run.save()
+
+    # run2 = Run(
+    #     job_id=job.job_id,
+    #     attempt=attempt,
+    #     log_path=config.stdio_path / job.job_id / str(attempt),
+    #     start_time=datetime.now(),
+    #     state=RunState.SUBMITTED.value,
+    # )
+    # run2.attempt = 1
+    # run2.state = RunState.COMPLETE.value
+    # run2.pid = "12345"
+    # run2.start_time = datetime(2022, 3, 5)
+    # run2.finish_time = datetime(2022, 3, 7)
+    # run2.exit_code = "149"
+    # run2.save()
+
+    # run3 = Run(
+    #     job_id=job.job_id,
+    #     attempt=attempt,
+    #     log_path=config.stdio_path / job.job_id / str(attempt),
+    #     start_time=datetime.now(),
+    #     state=RunState.SUBMITTED.value,
+    # )
+    # run3.attempt = 2
+    # run3.state = RunState.COMPLETE.value
+    # run3.pid = "123"
+    # run3.start_time = datetime(2022, 3, 7)
+    # run3.finish_time = datetime(2022, 3, 8)
+    # run3.exit_code = "2"
+    # run3.save()
+
     # END TODO REMOVE
 
     return str(job.job_id)

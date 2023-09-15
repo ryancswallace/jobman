@@ -125,6 +125,36 @@ class JobmanModel(Model):
     class Meta:
         database = db
 
+    @staticmethod
+    def _name_to_display_name(name: str) -> str:
+        return name.replace("_", " ").title()
+
+    @property
+    def pretty(self) -> Dict[str, Tuple[str, str]]:
+        name_to_pretty = dict()
+        for name in self._meta.fields:  # type: ignore[attr-defined]
+            pretty_name = self._name_to_display_name(name)
+            val = getattr(self, name)
+
+            if val is None:
+                pretty_val = "-"
+            elif name.endswith("_time"):
+                pretty_val = str(val.replace(microsecond=0))
+            elif name == "state":
+                pretty_val = JobState(val).name.title()
+            elif name == "success_code":
+                pretty_val = ", ".join(sorted(val, key=int))
+            elif name.startswith("notify_on_"):
+                pretty_val = ", ".join(sorted(val))
+            elif name.endswith("_for_file"):
+                pretty_val = ", ".join(str(p) for p in sorted(val))
+            else:
+                pretty_val = str(val)
+
+            name_to_pretty[name] = (pretty_name, pretty_val)
+
+        return name_to_pretty
+
     def __str__(self) -> str:
         args = ", ".join(
             f"{name}={getattr(self, name)}" for name in self._meta.fields.keys()  # type: ignore[attr-defined]
@@ -182,36 +212,6 @@ class Job(JobmanModel):
         completed: bool = self.state == JobState.COMPLETE.value
         return completed
 
-    @property
-    def pretty(self) -> Dict[str, Tuple[str, str]]:
-        name_to_pretty = dict()
-        for name in self._meta.fields:  # type: ignore[attr-defined]
-            pretty_name = self._name_to_display_name(name)
-            val = getattr(self, name)
-
-            if val is None:
-                pretty_val = "-"
-            elif name.endswith("_time"):
-                pretty_val = str(val.replace(microsecond=0))
-            elif name == "state":
-                pretty_val = JobState(val).name.title()
-            elif name == "success_code":
-                pretty_val = ", ".join(sorted(val, key=int))
-            elif name.startswith("notify_on_"):
-                pretty_val = ", ".join(sorted(val))
-            elif name.endswith("_for_file"):
-                pretty_val = ", ".join(str(p) for p in sorted(val))
-            else:
-                pretty_val = str(val)
-
-            name_to_pretty[name] = (pretty_name, pretty_val)
-
-        return name_to_pretty
-
-    @staticmethod
-    def _name_to_display_name(name: str) -> str:
-        return name.replace("_", " ").title()
-
 
 class Run(JobmanModel):
     job_id = ForeignKeyField(Job, field="job_id", backref="runs")
@@ -223,3 +223,7 @@ class Run(JobmanModel):
     state = IntegerField()
     exit_code = IntegerField(null=True)
     killed = BooleanField(null=True)
+
+    def is_completed(self) -> bool:
+        completed: bool = self.state == RunState.COMPLETE.value
+        return completed

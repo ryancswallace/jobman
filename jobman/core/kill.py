@@ -161,7 +161,7 @@ def get_signal_num(signal: Optional[str]) -> int:
     return signal_num
 
 
-class KiillResult(NamedTuple):
+class killResult(NamedTuple):
     # jobs specified that don't exist
     nonexistent_job_ids: List[str]
 
@@ -181,7 +181,7 @@ def kill(
     allow_retries: bool,
     config: JobmanConfig,
     logger: logging.Logger,
-) -> KiillResult:
+) -> killResult:
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
@@ -231,7 +231,7 @@ def kill(
             f" {run.pid} with signal {signal_num}"
         )
 
-    return KiillResult(
+    return killResult(
         nonexistent_job_ids=nonexistent_job_ids,
         nonrunning_job_ids=nonrunning_job_ids,
         killed_run_ids=killed_run_ids,
