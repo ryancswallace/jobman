@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 from typing import Dict, NamedTuple, Optional
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..exceptions import JobmanError
 
@@ -137,10 +138,15 @@ class InstallCompletionsResult(NamedTuple):
 
 
 def install_completions(
-    shell_name: Optional[str],
-    config: JobmanConfig,
-    logger: logging.Logger,
+    shell_name: Optional[str] = None,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> InstallCompletionsResult:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     logger.info(f"Supplied {shell_name=}")
     shell_name = shell_name or _get_shell_name()
     logger.info(f"Attempting to install completions for {shell_name=}")

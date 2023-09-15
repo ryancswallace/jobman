@@ -295,6 +295,8 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
     "--success-code",
     type=click.IntRange(min=0, max=255),
     multiple=True,
+    default=[0],
+    show_default=True,
     help="Interpret these exit codes as a successful execution",
 )
 @click.option(
@@ -354,7 +356,7 @@ def cli_run(
     abort_for_file: Optional[Tuple[Path]],
     retry_attempts: Optional[int],
     retry_delay: Optional[timedelta],
-    success_code: Optional[Tuple[str]],
+    success_code: Optional[Tuple[int]],
     notify_on_run_completion: Optional[Tuple[str]],
     notify_on_job_completion: Optional[Tuple[str]],
     notify_on_job_success: Optional[Tuple[str]],
@@ -509,6 +511,8 @@ SIGNALS = [s.name for s in Signals] + [str(s.value) for s in Signals]
     "-s",
     "--signal",
     type=click.Choice(SIGNALS),
+    default="SIGINT",
+    show_default=True,
     help=(
         "Name (e.g., SIGINT) or integer number (e.g., 2) of signal to send to job"
         " process"

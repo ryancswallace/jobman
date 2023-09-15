@@ -2,8 +2,10 @@ import logging
 import os
 import shutil
 import sys
+from typing import Optional
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..models import init_db_models
 
@@ -27,7 +29,14 @@ def display_reset(
     return os.EX_OK
 
 
-def reset(config: JobmanConfig, logger: logging.Logger) -> None:
+def reset(
+    config: Optional[JobmanConfig] = None, logger: Optional[logging.Logger] = None
+) -> None:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     config.db_path.unlink(missing_ok=True)
     logger.warn(f"Ensured old database at {config.db_path} deleted")
 

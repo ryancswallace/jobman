@@ -6,7 +6,8 @@ from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 from rich import box
 from rich.table import Table
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
 from ..models import Job, Run, init_db_models
@@ -103,9 +104,7 @@ def display_status(
             display_name, display_val = job.pretty[name]
             if getattr(job, name) is not None:
                 if name == "exit_code":
-                    color = (
-                        "[green]" if str(job.exit_code) in job.success_code else "[red]"
-                    )
+                    color = "[green]" if job.exit_code in job.success_code else "[red]"
                     display_val = color + str(display_val)
                 job_table.add_row(display_name, display_val)
             else:
@@ -157,7 +156,7 @@ def display_status(
 
                 # make completed rows dim and colorize exit codes
                 if run.is_completed():
-                    run_failed = str(run.exit_code) not in job.success_code
+                    run_failed = run.exit_code not in job.success_code
                     exit_code_color = "[red]" if run_failed else "[green]"
                     field_to_val["exit_code"] = exit_code_color + str(
                         field_to_val["exit_code"]
@@ -208,10 +207,15 @@ class StatusResult(NamedTuple):
 
 def status(
     job_id: Tuple[str, ...],
-    no_runs: bool,
-    config: JobmanConfig,
-    logger: logging.Logger,
+    no_runs: bool = False,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> StatusResult:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 

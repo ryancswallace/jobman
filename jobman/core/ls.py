@@ -1,12 +1,13 @@
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from rich import box
 from rich.table import Table
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel
 from ..host import get_host_id
 from ..models import Job, JobState, init_db_models
@@ -26,7 +27,7 @@ def display_ls(
         displayer.print(
             pretty_content="🔎  No jobs found",
             plain_content="No jobs found",
-            json_content={"result": "error", "message": "No jobs found"},
+            json_content={"result": "success", "message": "No jobs found"},
             stream=sys.stderr,
             level=DisplayLevel.NORMAL,
         )
@@ -79,7 +80,16 @@ def display_ls(
     return os.EX_OK
 
 
-def ls(all_: bool, config: JobmanConfig, logger: logging.Logger) -> List[Job]:
+def ls(
+    all_: bool = False,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
+) -> List[Job]:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 

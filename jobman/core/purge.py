@@ -7,7 +7,8 @@ from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import click
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
 from ..models import Job, JobState, Run, init_db_models
@@ -185,17 +186,22 @@ class PurgeResult(NamedTuple):
 
 def purge(
     job_id: Tuple[str, ...],
-    _all: bool,
-    metadata: bool,
-    since: Optional[datetime],
-    until: Optional[datetime],
-    config: JobmanConfig,
-    logger: logging.Logger,
+    _all: bool = False,
+    metadata: bool = False,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> PurgeResult:
     if not (bool(job_id) ^ _all):
         raise click.exceptions.UsageError(
             "Must supply either a job-id argument or the -a/--all flag, but not both"
         )
+
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
 
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")

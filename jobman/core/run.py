@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel, DisplayStyle
 from ..host import get_host_id
 from ..models import Job, JobState, Run, RunState, init_db_models
@@ -33,7 +34,7 @@ def display_run(
     abort_for_file: Optional[Tuple[Path]],
     retry_attempts: Optional[int],
     retry_delay: Optional[timedelta],
-    success_code: Optional[Tuple[str]],
+    success_code: Optional[Tuple[int]],
     notify_on_run_completion: Optional[Tuple[str]],
     notify_on_job_completion: Optional[Tuple[str]],
     notify_on_job_success: Optional[Tuple[str]],
@@ -84,27 +85,35 @@ def _generate_random_job_id() -> str:
 
 def run(
     command: Tuple[str, ...],
-    wait_time: Optional[datetime],
-    wait_duration: Optional[timedelta],
-    wait_for_file: Optional[Tuple[Path]],
-    abort_time: Optional[datetime],
-    abort_duration: Optional[timedelta],
-    abort_for_file: Optional[Tuple[Path]],
-    retry_attempts: Optional[int],
-    retry_delay: Optional[timedelta],
-    success_code: Optional[Tuple[str]],
-    notify_on_run_completion: Optional[Tuple[str]],
-    notify_on_job_completion: Optional[Tuple[str]],
-    notify_on_job_success: Optional[Tuple[str]],
-    notify_on_run_success: Optional[Tuple[str]],
-    notify_on_job_failure: Optional[Tuple[str]],
-    notify_on_run_failure: Optional[Tuple[str]],
-    follow: bool,
-    config: JobmanConfig,
-    logger: logging.Logger,
+    wait_time: Optional[datetime] = None,
+    wait_duration: Optional[timedelta] = None,
+    wait_for_file: Optional[Tuple[Path]] = None,
+    abort_time: Optional[datetime] = None,
+    abort_duration: Optional[timedelta] = None,
+    abort_for_file: Optional[Tuple[Path]] = None,
+    retry_attempts: Optional[int] = None,
+    retry_delay: Optional[timedelta] = None,
+    success_code: Optional[Tuple[int]] = None,
+    notify_on_run_completion: Optional[Tuple[str]] = None,
+    notify_on_job_completion: Optional[Tuple[str]] = None,
+    notify_on_job_success: Optional[Tuple[str]] = None,
+    notify_on_run_success: Optional[Tuple[str]] = None,
+    notify_on_job_failure: Optional[Tuple[str]] = None,
+    notify_on_run_failure: Optional[Tuple[str]] = None,
+    follow: bool = False,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> str:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
+
+    if success_code is None:
+        success_code = (0,)
 
     job = Job(
         job_id=_generate_random_job_id(),

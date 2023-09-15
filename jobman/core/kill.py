@@ -4,7 +4,8 @@ import sys
 from signal import Signals
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
-from ..config import JobmanConfig
+from ..base_logger import make_logger
+from ..config import JobmanConfig, load_config
 from ..display import Displayer, DisplayLevel
 from ..host import get_host_id
 from ..models import Job, Run, RunState, init_db_models
@@ -184,11 +185,16 @@ class killResult(NamedTuple):
 
 def kill(
     job_id: Tuple[str, ...],
-    signal: Optional[str],
-    allow_retries: bool,
-    config: JobmanConfig,
-    logger: logging.Logger,
+    signal: Optional[str] = None,
+    allow_retries: bool = False,
+    config: Optional[JobmanConfig] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> killResult:
+    if not config:
+        config = load_config()
+    if not logger:
+        logger = make_logger(logging.WARN)
+
     init_db_models(config.db_path)
     logger.info(f"Successfully connected to database in {config.storage_path}")
 

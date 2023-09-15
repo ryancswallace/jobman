@@ -96,6 +96,13 @@ class TextTupleField(TextField):
         return value.split(self.delim)
 
 
+class IntegerTupleField(TextTupleField):
+    def python_value(self, value: Optional[str]) -> Optional[List[int]]:  # type: ignore[override]
+        if value is None:
+            return None
+        return [int(i) for i in value.split(self.delim)]
+
+
 class PathTupleField(TextTupleField):
     def python_value(self, value: Optional[str]) -> Optional[List[Path]]:  # type: ignore[override]
         if value is None:
@@ -150,7 +157,7 @@ class JobmanModel(Model):
             elif name == "state":
                 pretty_val = JobState(val).name.title()
             elif name == "success_code":
-                pretty_val = ", ".join(sorted(val, key=int))
+                pretty_val = ", ".join(map(str, sorted(val)))
             elif name.startswith("notify_on_"):
                 pretty_val = ", ".join(sorted(val))
             elif name.endswith("_for_file"):
@@ -195,7 +202,7 @@ class Job(JobmanModel):
     abort_for_file = PathTupleField(null=True)
     retry_attempts = IntegerField(null=True)
     retry_delay = TimedeltaField(null=True)
-    success_code = TextTupleField(null=True)
+    success_code = IntegerTupleField(null=True)
     notify_on_run_completion = TextTupleField(null=True)
     notify_on_job_completion = TextTupleField(null=True)
     notify_on_job_success = TextTupleField(null=True)
@@ -210,7 +217,7 @@ class Job(JobmanModel):
 
     def is_failed(self) -> bool:
         return self.exit_code is not None and self.exit_code not in (
-            self.success_code or ["0"]
+            self.success_code if self.success_code is not None else [0]
         )
 
     def is_completed(self) -> bool:
