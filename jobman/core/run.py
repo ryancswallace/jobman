@@ -20,7 +20,9 @@ def display_run(
     abort_for_files: Optional[Tuple[Path]],
     retry_attempts: Optional[int],
     retry_delay: Optional[timedelta],
-    success_codes: Optional[Tuple[int]],
+    retry_expo_backoff: bool,
+    retry_jitter: bool,
+    success_codes: Tuple[int],
     notify_on_run_completion: Optional[Tuple[str]],
     notify_on_job_completion: Optional[Tuple[str]],
     notify_on_job_success: Optional[Tuple[str]],
@@ -42,6 +44,8 @@ def display_run(
         abort_for_files=abort_for_files,
         retry_attempts=retry_attempts,
         retry_delay=retry_delay,
+        retry_expo_backoff=retry_expo_backoff,
+        retry_jitter=retry_jitter,
         success_codes=success_codes,
         notify_on_run_completion=notify_on_run_completion,
         notify_on_job_completion=notify_on_job_completion,
@@ -67,6 +71,6 @@ def display_run(
         style=DisplayStyle.SUCCESS,
     )
 
-    run_job(job)
+    run_job(job, config)
 
     return os.EX_OK

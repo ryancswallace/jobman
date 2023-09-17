@@ -64,7 +64,9 @@ def display_status(
         )
 
     # display found jobs
-    jobs_sorted = sorted(jobs, key=lambda r: r.start_time, reverse=True)
+    jobs_sorted = sorted(
+        jobs, key=lambda r: (r.start_time is None, r.start_time), reverse=True
+    )
     for idx, job in enumerate(jobs_sorted):
         job_table = Table(title_justify="left", show_header=False)
         job_table.title = (
@@ -131,7 +133,7 @@ def display_status(
         )
 
         # display runs for this job
-        job_runs = [r for r in runs or list() if r.job_id.job_id == job.job_id]
+        job_runs = [r for r in runs or list() if r.job.job_id == job.job_id]
         if not no_runs and job_runs:
             run_table = Table(show_header=True)
             run_table.title = f"[bold blue][not italic]Runs"
@@ -220,13 +222,13 @@ def status(
     logger.info(f"Successfully connected to database in {config.storage_path}")
 
     jobs_q = Job.select().where(  # type: ignore[no-untyped-call]
-        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)
+        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)  # type: ignore[operator]
     )
     jobs = list(jobs_q)
     logger.info(f"Found {len(jobs)} job(s)")
 
     if not no_runs:
-        runs_q = Run.select().join(Job).where(Job.job_id << job_ids)  # type: ignore[no-untyped-call]
+        runs_q = Run.select().join(Job).where(Job.job_id << job_ids)  # type: ignore[no-untyped-call, operator]
         runs = list(runs_q)
         logger.info(f"Found {len(runs)} run(s)")
     else:

@@ -293,6 +293,23 @@ def global_options(f: Callable[..., R]) -> Callable[..., Callable[..., R]]:
     help="Wait the specified time before starting retries",
 )
 @click.option(
+    "-e",
+    "--retry-expo-backoff",
+    is_flag=True,
+    default=False,
+    help="Exponentially increase delay between retries",
+)
+@click.option(
+    "-t",
+    "--retry-jitter",
+    is_flag=True,
+    default=False,
+    help=(
+        "Add extra delay between retries randomly selected uniform over the range -1 *"
+        " (retry-delay / 10) to (retry-delay / 10)"
+    ),
+)
+@click.option(
     "-c",
     "--success-code",
     "success_codes",
@@ -359,7 +376,9 @@ def cli_run(
     abort_for_files: Optional[Tuple[Path]],
     retry_attempts: Optional[int],
     retry_delay: Optional[timedelta],
-    success_codes: Optional[Tuple[int]],
+    retry_expo_backoff: bool,
+    retry_jitter: bool,
+    success_codes: Tuple[int],
     notify_on_run_completion: Optional[Tuple[str]],
     notify_on_job_completion: Optional[Tuple[str]],
     notify_on_job_success: Optional[Tuple[str]],
@@ -388,6 +407,8 @@ def cli_run(
         abort_for_files,
         retry_attempts,
         retry_delay,
+        retry_expo_backoff,
+        retry_jitter,
         success_codes,
         notify_on_run_completion,
         notify_on_job_completion,
@@ -534,7 +555,7 @@ SIGNALS = [s.name for s in Signals] + [str(s.value) for s in Signals]
 @global_options
 def cli_kill(
     job_ids: Tuple[str, ...],
-    signal: Optional[str],
+    signal: str,
     allow_retries: bool,
     force: bool,
     quiet: bool,

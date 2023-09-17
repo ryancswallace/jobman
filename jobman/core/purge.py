@@ -208,11 +208,11 @@ def purge(
 
     jobs_q = Job.select().where(Job.host_id == get_host_id())  # type: ignore[no-untyped-call]
     if job_ids:
-        jobs_q = jobs_q.where(Job.job_id << job_ids)
+        jobs_q = jobs_q.where(Job.job_id << job_ids)  # type: ignore[operator]
     if since:
-        jobs_q = jobs_q.where(Job.start_time >= since)
+        jobs_q = jobs_q.where((Job.start_time or datetime.max) >= since)
     if until:
-        jobs_q = jobs_q.where(Job.start_time <= until)
+        jobs_q = jobs_q.where((Job.start_time or datetime.min) <= until)
 
     running_jobs = jobs_q.where(Job.state != JobState.COMPLETE.value)
     running_job_ids = [j.job_id for j in running_jobs]

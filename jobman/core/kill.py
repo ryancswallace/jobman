@@ -13,7 +13,7 @@ from ..models import Job, Run, RunState, init_db_models
 
 def display_kill(
     job_ids: Tuple[str, ...],
-    signal: Optional[str],
+    signal: str,
     allow_retries: bool,
     config: JobmanConfig,
     displayer: Displayer,
@@ -154,11 +154,7 @@ def display_kill(
     return os.EX_DATAERR if failed else os.EX_OK
 
 
-def get_signal_num(signal: Optional[str]) -> int:
-    # default to SIGINT (2) if no signal specified
-    if signal is None:
-        return Signals["SIGINT"].value
-
+def get_signal_num(signal: str) -> int:
     try:
         # first check if the signal is a number
         signal_num = int(signal)
@@ -185,7 +181,7 @@ class killResult(NamedTuple):
 
 def kill(
     job_ids: Tuple[str, ...],
-    signal: Optional[str] = None,
+    signal: str = "SIGINT",
     allow_retries: bool = False,
     config: Optional[JobmanConfig] = None,
     logger: Optional[logging.Logger] = None,
@@ -200,7 +196,7 @@ def kill(
 
     # find active runs
     jobs_q = Job.select().where(  # type: ignore[no-untyped-call]
-        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)
+        (Job.host_id == get_host_id()) & (Job.job_id << job_ids)  # type: ignore[operator]
     )
     existent_job_ids = [j.job_id for j in jobs_q]
     nonexistent_job_ids = [jid for jid in job_ids if jid not in existent_job_ids]
@@ -209,12 +205,12 @@ def kill(
         Run.select()  # type: ignore[no-untyped-call]
         .join(Job)
         .where(
-            (Job.job_id << existent_job_ids)
+            (Job.job_id << existent_job_ids)  # type: ignore[operator]
             & (Run.state == RunState.RUNNING.value)
-            & (~Run.pid.is_null())
+            & (~Run.pid.is_null())  # type: ignore[union-attr]
         )
     )
-    running_job_ids = list(set(run.job_id.job_id for run in runs))
+    running_job_ids = list(set(run.job.job_id for run in runs))
     nonrunning_job_ids = [jid for jid in existent_job_ids if jid not in running_job_ids]
 
     if not allow_retries:
@@ -222,7 +218,7 @@ def kill(
         for run in runs:
             run.killed = True
             run.save()
-            logger.info(f"Marked run {run.job_id.job_id} attempt {run.attempt} killed")
+            logger.info(f"Marked run {run.job.job_id} attempt {run.attempt} killed")
 
     # kill runs with specified signal
     signal_num = get_signal_num(signal)
@@ -232,15 +228,15 @@ def kill(
             os.kill(run.pid, signal_num)
         except (ProcessLookupError, SystemError, OSError) as e:
             logger.error(
-                f"Error occurred trying to kill run {run.job_id.job_id} attempt"
+                f"Error occurred trying to kill run {run.job.job_id} attempt"
                 f" {run.attempt} with PID {run.pid} with signal {signal_num}: {e}"
             )
-            failed_killed_run_ids.append((run.job_id.job_id, run.attempt))
+            failed_killed_run_ids.append((run.job.job_id, run.attempt))
             continue
 
-        killed_run_ids.append((run.job_id.job_id, run.attempt))
+        killed_run_ids.append((run.job.job_id, run.attempt))
         logger.info(
-            f"Killed run {run.job_id.job_id} attempt {run.attempt} with PID"
+            f"Killed run {run.job.job_id} attempt {run.attempt} with PID"
             f" {run.pid} with signal {signal_num}"
         )
 

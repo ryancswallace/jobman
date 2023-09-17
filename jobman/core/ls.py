@@ -85,7 +85,7 @@ def display_ls(
         table.add_row(*field_to_val.values())
 
         if show_runs and runs:
-            job_runs = [r for r in runs if r.job_id.job_id == job.job_id]
+            job_runs = [r for r in runs if r.job.job_id == job.job_id]
             job_runs.sort(
                 key=lambda r: (r.attempt, r.start_time is None, r.start_time),
                 reverse=True,
@@ -114,7 +114,7 @@ def display_ls(
                         ""
                         if not run.is_completed()
                         else (
-                            "[red]" if run.exit_code in job.success_codes else "[green]"
+                            "[green]" if run.exit_code in job.success_codes else "[red]"
                         )
                     )
                     field_to_val["exit_code"] = exit_code_color + str(
@@ -135,7 +135,7 @@ def display_ls(
             json_content["runs"] = runs
         plain_content = "\n".join(
             f"{j.job_id}:"
-            f" {len([r for r in (runs or []) if r.job_id.job_id == j.job_id])} runs"
+            f" {len([r for r in (runs or []) if r.job.job_id == j.job_id])} runs"
             for j in jobs
         )
 
@@ -174,14 +174,14 @@ def ls(
         if all_
         else Job.select().where(  # type: ignore[no-untyped-call]
             (Job.host_id == get_host_id())
-            & (Job.state << [JobState.SUBMITTED.value, JobState.RUNNING.value])
+            & (Job.state << [JobState.SUBMITTED.value, JobState.RUNNING.value])  # type: ignore[operator]
         )
     )
     jobs = list(jobs_q)
     logger.info(f"Found {len(jobs)} job(s)")
 
     if show_runs:
-        runs_q = Run.select().join(Job).where(Job.job_id << [j.job_id for j in jobs])  # type: ignore[no-untyped-call]
+        runs_q = Run.select().join(Job).where(Job.job_id << [j.job_id for j in jobs])  # type: ignore[no-untyped-call, operator]
         runs = list(runs_q)
         logger.info(f"Found {len(runs)} run(s)")
     else:

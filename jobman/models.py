@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -191,34 +191,34 @@ class RunState(Enum):
 
 
 class Job(JobmanModel):
-    job_id = IntegerField(unique=True)
-    host_id = TextField()
-    command = TextField()
-    wait_time = DateTimeField(null=True)
-    wait_duration = TimedeltaField(null=True)
-    wait_for_files = PathTupleField(null=True)
-    abort_time = DateTimeField(null=True)
-    abort_duration = TimedeltaField(null=True)
-    abort_for_files = PathTupleField(null=True)
-    retry_attempts = IntegerField(null=True)
-    retry_delay = TimedeltaField(null=True)
-    success_codes = IntegerTupleField(null=True)
-    notify_on_run_completion = TextTupleField(null=True)
-    notify_on_job_completion = TextTupleField(null=True)
-    notify_on_job_success = TextTupleField(null=True)
-    notify_on_run_success = TextTupleField(null=True)
-    notify_on_job_failure = TextTupleField(null=True)
-    notify_on_run_failure = TextTupleField(null=True)
-    follow = BooleanField(null=True)
-    start_time = DateTimeField(null=True)
-    finish_time = DateTimeField(null=True)
-    state = IntegerField()
-    exit_code = TextField(null=True)
+    job_id: str = TextField(unique=True)  # type: ignore[assignment]
+    host_id: str = TextField()  # type: ignore[assignment]
+    command: str = TextField()  # type: ignore[assignment]
+    wait_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    wait_duration: Optional[timedelta] = TimedeltaField(null=True)  # type: ignore[assignment]
+    wait_for_files: Optional[Tuple[Path]] = PathTupleField(null=True)  # type: ignore[assignment]
+    abort_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    abort_duration: Optional[timedelta] = TimedeltaField(null=True)  # type: ignore[assignment]
+    abort_for_files: Optional[List[Path]] = PathTupleField(null=True)  # type: ignore[assignment]
+    retry_attempts: Optional[int] = IntegerField(null=True)  # type: ignore[assignment]
+    retry_delay: Optional[timedelta] = TimedeltaField(null=True)  # type: ignore[assignment]
+    retry_expo_backoff: bool = BooleanField(null=True)  # type: ignore[assignment]
+    retry_jitter: bool = BooleanField(null=True)  # type: ignore[assignment]
+    success_codes: Tuple[int] = IntegerTupleField(null=True)  # type: ignore[assignment]
+    notify_on_run_completion: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    notify_on_job_completion: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    notify_on_job_success: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    notify_on_run_success: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    notify_on_job_failure: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    notify_on_run_failure: Optional[Tuple[str]] = TextTupleField(null=True)  # type: ignore[assignment]
+    follow: Optional[bool] = BooleanField(null=True)  # type: ignore[assignment]
+    start_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    finish_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    state: int = IntegerField()  # type: ignore[assignment]
+    exit_code: Optional[int] = IntegerField(null=True)  # type: ignore[assignment]
 
     def is_failed(self) -> bool:
-        return self.exit_code is not None and self.exit_code not in (
-            self.success_codes if self.success_codes is not None else [0]
-        )
+        return self.exit_code is not None and self.exit_code not in self.success_codes
 
     def is_completed(self) -> bool:
         completed: bool = self.state == JobState.COMPLETE.value
@@ -226,15 +226,15 @@ class Job(JobmanModel):
 
 
 class Run(JobmanModel):
-    job_id = ForeignKeyField(Job, field="job_id", backref="runs")
-    attempt = IntegerField()
-    log_path = PathField()
-    pid = IntegerField(null=True)
-    start_time = DateTimeField(null=True)
-    finish_time = DateTimeField(null=True)
-    state = IntegerField()
-    exit_code = IntegerField(null=True)
-    killed = BooleanField(null=True)
+    job: Job = ForeignKeyField(Job, field="job_id", backref="runs")  # type: ignore[assignment]
+    attempt: int = IntegerField()  # type: ignore[assignment]
+    log_path: Path = PathField()  # type: ignore[assignment]
+    pid: Optional[int] = IntegerField(null=True)  # type: ignore[assignment]
+    start_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    finish_time: Optional[datetime] = DateTimeField(null=True)  # type: ignore[assignment]
+    state: int = IntegerField()  # type: ignore[assignment]
+    exit_code: Optional[int] = IntegerField(null=True)  # type: ignore[assignment]
+    killed: Optional[bool] = BooleanField(null=True)  # type: ignore[assignment]
 
     def is_completed(self) -> bool:
         completed: bool = self.state == RunState.COMPLETE.value
