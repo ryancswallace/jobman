@@ -13,24 +13,23 @@ signs:
       - --detach-sig
       - $artifact
     signature: ${artifact}.sig
-    artifacts: none
 
 changelog:
   sort: asc
   filters:
     exclude:
-      - '^assets:'
-      - '^devel:'
-      - '^docs:'
-      - '^formula:'
-      - '^site:'
-      - '^tests:'
+      - "^assets:"
+      - "^devel:"
+      - "^docs:"
+      - "^formula:"
+      - "^site:"
+      - "^tests:"
 
 snapshot:
   name_template: SNAPSHOT-{{ .Commit }}
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
 
 builds:
   - env:
@@ -41,7 +40,7 @@ builds:
       - windows
     goarch:
       - amd64
-      - '386'
+      - "386"
       - arm64
     ignore:
       - goos: linux
@@ -50,16 +49,10 @@ builds:
         goarch: arm64
     main: ./main.go
     ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-    binary: '{{ .ProjectName }}'
+    binary: "{{ .ProjectName }}"
 
 archives:
-  - name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
       - etc/jobman/jobman.yml
@@ -75,9 +68,6 @@ nfpms:
       - deb
       - rpm
       - apk
-    replacements:
-      darwin: Darwin
-      linux: Linux
     contents:
       - src: etc/jobman/jobman.yml
         dst: /etc/jobman/jobman.yml
@@ -90,14 +80,15 @@ nfpms:
         dst: /usr/share/zsh/vendor-completions/_jobman
 
 brews:
-  - tap:
+  - name: jobman
+    repository:
       owner: ryancswallace
       name: jobman
-    name: jobman
+      token: "{{ .Env.GH_TOKEN }}"
     description: "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
     homepage: "https://github.com/ryancswallace/jobman"
     license: "MIT"
-    folder: formula
+    directory: formula
     commit_author:
       name: Ryan Wallace
       email: ryancswallace@gmail.com
@@ -128,7 +119,7 @@ dockers:
 
   - image_templates: ["ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-i386"]
     goos: linux
-    goarch: 386
+    goarch: "386"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
