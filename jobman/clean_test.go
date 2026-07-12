@@ -2,5 +2,5 @@ package jobman
 
 import "testing"
 
-func TestClean(t *testing.T) {
+func TestClean(_ *testing.T) {
 }

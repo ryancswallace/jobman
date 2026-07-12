@@ -2,5 +2,5 @@ package main
 
 import "testing"
 
-func TestAutocomplete(t *testing.T) {
+func TestAutocomplete(_ *testing.T) {
 }

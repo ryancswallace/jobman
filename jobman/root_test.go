@@ -2,5 +2,5 @@ package jobman
 
 import "testing"
 
-func TestRoot(t *testing.T) {
+func TestRoot(_ *testing.T) {
 }

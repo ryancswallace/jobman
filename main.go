@@ -21,8 +21,16 @@ THE SOFTWARE.
 */
 package main
 
-import "github.com/ryancswallace/jobman/jobman"
+import (
+	"fmt"
+	"os"
+
+	"github.com/ryancswallace/jobman/jobman"
+)
 
 func main() {
-	jobman.Execute()
+	if err := jobman.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

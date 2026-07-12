@@ -1,9 +1,8 @@
-// Package jobman implements implements the jobman CLI.
+// Package jobman implements the jobman CLI.
 package jobman
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -11,70 +10,56 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	cfgFile   string
+	errConfig error
+)
 
 // JobmanRootCmd is root of the jobman command tree.
 var JobmanRootCmd = &cobra.Command{
-	Use:   "jobman",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	//	the bare `jobman` command is an alias for `jobman run`
-	Run: Run,
+	Use:           "jobman [command]",
+	Short:         "Run and manage background jobs without a daemon",
+	Long:          "Jobman runs and manages command-line jobs with retries, timeouts, logging, and notifications without requiring a daemon.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		return errConfig
+	},
+	// The bare jobman command is an alias for jobman run.
+	RunE: Run,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-func Execute() {
-	if err := JobmanRootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+// Execute runs the root command and returns any command or configuration error.
+func Execute() error {
+	return JobmanRootCmd.Execute()
 }
 
 func init() {
 	cobra.OnInitialize(initConfig)
-
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "user-config-file", "", "user-level config file path (default is $HOME/.jobman.yaml)")
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "project-config-file", "", "project-level config file path (default is ./.jobman.yaml)")
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.jobman.yaml)")
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.jobman.yaml)")
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.jobman.yaml)")
-	// JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.jobman.yaml)")
-
-	// JobmanRootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
-	// *`-log-level`
-	// *`-verbose`
-	// *`-quiet`
-	// *`-json`
+	JobmanRootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to a jobman configuration file")
 }
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	errConfig = nil
+
 	if cfgFile != "" {
-		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Find home directory.
 		home, err := homedir.Dir()
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			errConfig = fmt.Errorf("find home directory: %w", err)
+
+			return
 		}
 
-		// Search config in home directory with name ".jobman" (without extension).
 		viper.AddConfigPath(home)
 		viper.SetConfigName(".jobman")
 	}
 
-	viper.AutomaticEnv() // read in environment variables that match
+	viper.AutomaticEnv()
 
-	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+		fmt.Fprintln(JobmanRootCmd.ErrOrStderr(), "Using config file:", viper.ConfigFileUsed())
 	}
 }

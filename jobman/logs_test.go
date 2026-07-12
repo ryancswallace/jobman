@@ -2,5 +2,5 @@ package jobman
 
 import "testing"
 
-func TestLogs(t *testing.T) {
+func TestLogs(_ *testing.T) {
 }

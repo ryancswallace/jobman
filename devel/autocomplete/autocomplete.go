@@ -42,7 +42,7 @@ func genAutocomplete() error {
 }
 
 func writeCompletion(item completion) error {
-	if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(item.path), 0o750); err != nil {
 		return fmt.Errorf("create completion directory for %s: %w", item.path, err)
 	}
 

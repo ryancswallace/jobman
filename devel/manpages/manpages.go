@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,22 +12,25 @@ import (
 	"github.com/ryancswallace/jobman/jobman"
 )
 
-func genManpages() {
+func genManpages() error {
 	header := &doc.GenManHeader{
 		Title:   "jobman",
 		Section: "1",
 	}
 	manPath := filepath.Join(".", "docs", "manpage")
-	err := os.MkdirAll(manPath, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
+	if err := os.MkdirAll(manPath, 0o750); err != nil {
+		return fmt.Errorf("create man page directory: %w", err)
 	}
-	err = doc.GenManTree(jobman.JobmanRootCmd, header, manPath)
-	if err != nil {
-		log.Fatal(err)
+
+	if err := doc.GenManTree(jobman.JobmanRootCmd, header, manPath); err != nil {
+		return fmt.Errorf("generate man pages: %w", err)
 	}
+
+	return nil
 }
 
 func main() {
-	genManpages()
+	if err := genManpages(); err != nil {
+		log.Fatal(err)
+	}
 }
