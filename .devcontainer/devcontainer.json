@@ -20,6 +20,7 @@
         "github.vscode-github-actions",
         "github.vscode-pull-request-github",
         "golang.go",
+        "gruntfuggly.todo-tree",
         "mikestead.dotenv",
         "ms-azuretools.vscode-containers",
         "msyrus.go-doc",
