@@ -1,0 +1,56 @@
+{
+  "name": "jobman",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "GO_VERSION": "1.26"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "remoteUser": "vscode",
+  "updateContentCommand": "go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "davidanson.vscode-markdownlint",
+        "editorconfig.editorconfig",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "golang.go",
+        "mikestead.dotenv",
+        "ms-azuretools.vscode-containers",
+        "msyrus.go-doc",
+        "premparihar.gotestexplorer",
+        "redhat.vscode-yaml",
+        "streetsidesoftware.code-spell-checker",
+        "usernamehw.errorlens",
+        "vivaxy.vscode-conventional-commits"
+      ],
+      "settings": {
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit"
+        },
+        "editor.formatOnSave": true,
+        "go.coverOnSave": false,
+        "go.formatTool": "goimports",
+        "go.lintOnSave": "package",
+        "go.lintTool": "staticcheck",
+        "go.testFlags": [
+          "-race"
+        ],
+        "go.toolsManagement.autoUpdate": false,
+        "gopls": {
+          "ui.semanticTokens": true,
+          "ui.completion.usePlaceholders": true
+        },
+        "markdownlint.config": {
+          "MD013": false
+        },
+        "redhat.telemetry.enabled": false
+      }
+    }
+  }
+}
