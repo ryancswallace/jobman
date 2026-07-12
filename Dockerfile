@@ -1,33 +1,69 @@
-# TODO: add support for local builds in addition to GoReleaser "copies"
-# TODO: include supporting files (e.g., config, man, completions
+# syntax=docker/dockerfile:1.7
 
-# ARG go_vers=1.16
+# These defaults match go.version and the release image. Override them with
+# --build-arg when testing a toolchain or base-image upgrade.
+ARG GO_VERSION=1.26
+ARG ALPINE_VERSION=3.23
 
-# FROM golang:${go_vers}-alpine as build
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS build
 
-# RUN apk update && apk add build-base
+RUN apk add --no-cache ca-certificates git
 
-# WORKDIR /go/src/github.com/ryancswallace/jobman
-# COPY . /go/src/github.com/ryancswallace/jobman
+ENV CGO_ENABLED=0 \
+    GOTOOLCHAIN=local
 
-# RUN make install
+WORKDIR /src
 
-# ENTRYPOINT ["/bin/sh"]
+# Cache dependencies independently from source changes. The readonly module
+# cache prevents a build from silently changing the committed dependency graph.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go mod download \
+    && go mod verify
 
+COPY . .
 
-# FROM alpine:3.12
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build \
+      -trimpath \
+      -ldflags="-s -w -buildid=" \
+      -o /out/jobman \
+      .
 
-# RUN apk update
+FROM alpine:${ALPINE_VERSION} AS runtime
 
-# COPY --from=build /go/bin/jobman /usr/bin/jobman
+# Bash is required by jobman's command runner. Tini forwards signals and reaps
+# orphaned child processes when jobman is PID 1. CA roots and timezone data make
+# networked and scheduled jobs useful without inflating the image excessively.
+RUN apk add --no-cache bash ca-certificates tini tzdata \
+    && addgroup -S -g 10001 jobman \
+    && adduser -S -D -u 10001 -G jobman -h /home/jobman jobman \
+    && mkdir -p /home/jobman/.config/jobman /work \
+    && chown -R jobman:jobman /home/jobman /work
 
-# ENTRYPOINT ["/bin/sh"]
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.title="jobman" \
+      org.opencontainers.image.description="A daemon-less command line job manager" \
+      org.opencontainers.image.url="https://github.com/ryancswallace/jobman" \
+      org.opencontainers.image.source="https://github.com/ryancswallace/jobman" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.created="$BUILD_DATE" \
+      org.opencontainers.image.revision="$VCS_REF" \
+      org.opencontainers.image.licenses="MIT"
 
+COPY --from=build --chown=root:root /out/jobman /usr/local/bin/jobman
 
-FROM alpine:3.12
+ENV HOME=/home/jobman \
+    XDG_CONFIG_HOME=/home/jobman/.config
 
-RUN apk update
+USER 10001:10001
+WORKDIR /work
 
-ENTRYPOINT ["/bin/sh"]
-
-COPY jobman /usr/bin/jobman
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/sbin/tini", "--", "jobman"]
+CMD ["--help"]
