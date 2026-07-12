@@ -1,4 +1,4 @@
-# Contributing to benchmatrix
+# Contributing to jobman
 
 Thanks for considering a contribution.
 
@@ -17,9 +17,15 @@ public issue.
 The normal pre-submission loop is:
 
 ```bash
+make setup
 make format
 make check
 ```
+
+`make setup` installs pinned development tools into `bin/` when they are not
+already available and downloads the Go module graph. Run it once after cloning
+or whenever tool versions change. Use `make help` to list the narrower workflows
+available while iterating.
 
 Documentation changes should pass `make docs`, and public API behavior changes
 should update tests, docs, and [CHANGELOG.md](CHANGELOG.md) when users will
