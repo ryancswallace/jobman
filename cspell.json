@@ -27,6 +27,7 @@
         "noninteractive",
         "premparihar",
         "procps",
+        "sandboxing",
         "seccomp",
         "shellcheck",
         "staticcheck",
