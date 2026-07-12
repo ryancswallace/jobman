@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ryancswallace/jobman/jobman"
 	"github.com/spf13/cobra/doc"
+
+	"github.com/ryancswallace/jobman/jobman"
 )
 
 func genManpages() {
