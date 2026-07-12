@@ -18,6 +18,7 @@
         "gopls",
         "gotestexplorer",
         "gotests",
+        "gruntfuggly",
         "honnef",
         "jobman",
         "josharian",
@@ -26,9 +27,11 @@
         "noninteractive",
         "premparihar",
         "procps",
+        "seccomp",
         "shellcheck",
         "staticcheck",
         "usernamehw",
-        "vivaxy"
+        "vivaxy",
+        "worktree"
     ]
 }
