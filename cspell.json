@@ -1,0 +1,34 @@
+{
+    "version": "0.2",
+    "language": "en",
+    "useGitignore": true,
+    "ignorePaths": [
+        ".git/**",
+        ".vscode/**",
+        "build/**",
+        "cspell.json",
+        "dist/**"
+    ],
+    "words": [
+        "cspell",
+        "cweill",
+        "davidanson",
+        "errorlens",
+        "goimports",
+        "gopls",
+        "gotestexplorer",
+        "gotests",
+        "honnef",
+        "jobman",
+        "josharian",
+        "mikestead",
+        "msyrus",
+        "noninteractive",
+        "premparihar",
+        "procps",
+        "shellcheck",
+        "staticcheck",
+        "usernamehw",
+        "vivaxy"
+    ]
+}
