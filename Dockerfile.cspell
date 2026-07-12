@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1.7
+
+ARG CSPELL_VERSION=10.0.1
+FROM ghcr.io/streetsidesoftware/cspell:${CSPELL_VERSION}
+
+WORKDIR /workdir
+COPY . .
+RUN cspell-cli lint .
