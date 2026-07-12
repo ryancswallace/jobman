@@ -1,75 +1,138 @@
+---
 name: Release
 
 on:
+  # Automatic releases are considered only after the main-branch test workflow
+  # has completed successfully.
   workflow_run:
     workflows:
-      - "tests"
+      - Test
     branches:
-      - "main"
+      - main
     types:
       - completed
 
-  push:
-    tags:
-      - v**
-
+  # Supplying an existing tag republishes/replaces its artifacts. Leaving the
+  # tag empty runs the normal semantic-release decision against main.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to recover (for example, v1.2.3)
+        required: false
+        type: string
 
-# limits to one concurrent release
 concurrency:
-  group: "release"
-  cancel-in-progress: true
+  group: release
+  # Never terminate a release while it may be publishing artifacts.
+  cancel-in-progress: false
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
 
 jobs:
-  goreleaser:
+  release:
+    name: Create and publish release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    env:
-      DOCKER_CLI_EXPERIMENTAL: "enabled"
-    steps:
-      - name: Wait for tests to succeed
-        uses: lewagon/wait-on-check-action@v1.0.0
-        with:
-          ref: ${{ github.ref }}
-          check-name: 'Test'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
+    timeout-minutes: 30
 
-      - name: Checkout
-        uses: actions/checkout@v2
+    steps:
+      - name: Validate recovery tag
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a semantic version tag such as v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
+          fi
+
+      - name: Checkout tested commit
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+      - name: Determine version and create GitHub release
+        id: semantic
+        if: inputs.tag == ''
+        uses: cycjimmy/semantic-release-action@v6
+        with:
+          semantic_version: 25
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+      - name: Checkout release tag
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || steps.semantic.outputs.new_release_git_tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.26
+          go-version: "1.26"
+          check-latest: true
+          cache-dependency-path: go.sum
 
-      - name: Docker Login
-        uses: docker/login-action@v1
+      - name: Set up QEMU
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GH_PAT }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v3
+      - name: Install Syft
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Install Cosign
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Build and publish artifacts
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
-          args: release --rm-dist
+          version: "~> v2.17"
+          args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Do semantic release
-      #   uses: cycjimmy/semantic-release-action@v3
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+      - name: No release required
+        if: >-
+          inputs.tag == '' &&
+          steps.semantic.outputs.new_release_published != 'true'
+        run: echo "No releasable commits were found since the previous tag."

@@ -1,2 +1,17 @@
+---
+# Semantic-release owns version calculation, the v-prefixed Git tag, and the
+# GitHub release notes. GoReleaser subsequently adds artifacts to that release.
 branches:
   - main
+
+tagFormat: "v${version}"
+
+# Listing plugins explicitly prevents the default npm publishing step from
+# running in this Go-only repository.
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - - "@semantic-release/github"
+    - successComment: false
+      failComment: false
+      releasedLabels: false

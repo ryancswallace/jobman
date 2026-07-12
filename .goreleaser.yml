@@ -1,170 +1,188 @@
+---
+version: 2
+
 project_name: jobman
 
 before:
   hooks:
-    - go mod tidy
+    # A release must use the dependency graph committed with the tag.
+    - go mod download
+    - go mod verify
     - make gen-manpage gen-completions
 
-signs:
-  - cmd: gpg
-    args:
-      - --output
-      - $signature
-      - --detach-sig
-      - $artifact
-    signature: ${artifact}.sig
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^assets:"
-      - "^devel:"
-      - "^docs:"
-      - "^formula:"
-      - "^site:"
-      - "^tests:"
-
-snapshot:
-  name_template: SNAPSHOT-{{ .Commit }}
-
-checksum:
-  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
-
 builds:
-  - env:
+  - id: jobman
+    main: .
+    binary: jobman
+    env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -buildid=
     goos:
       - linux
       - darwin
       - windows
     goarch:
       - amd64
-      - "386"
       - arm64
+      - "386"
     ignore:
-      - goos: linux
-        goarch: arm64
-      - goos: windows
-        goarch: arm64
-    main: ./main.go
-    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-    binary: "{{ .ProjectName }}"
+      # Go does not support 32-bit Darwin.
+      - goos: darwin
+        goarch: "386"
 
 archives:
-  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: jobman
+    ids:
+      - jobman
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      {{- with .Arm }}v{{ . }}{{ end }}
     files:
       - LICENSE
-      - etc/jobman/jobman.yml
-      - docs/manpage/jobman.*
-      - docs/completions/**/jobman
+      - README.md
+      - CHANGELOG.md
+      - src: etc/jobman/jobman.yml
+        dst: etc/jobman
+      - src: docs/manpage/jobman*.1
+        dst: docs/manpage
+      - src: docs/completions/**
+        dst: docs/completions
 
 nfpms:
-  - maintainer: ryancswallace <ryancswallace@gmail.com>
-    description: "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
-    homepage: "https://github.com/ryancswallace/jobman"
-    license: "MIT"
+  - id: jobman
+    ids:
+      - jobman
+    package_name: jobman
+    vendor: jobman contributors
+    homepage: https://github.com/ryancswallace/jobman
+    maintainer: Ryan Wallace <ryancswallace@gmail.com>
+    description: >-
+      A daemon-less command line job manager with retries, timeouts, logging,
+      notifications, and more.
+    license: MIT
+    section: utils
+    priority: optional
     formats:
+      - apk
       - deb
       - rpm
-      - apk
     contents:
       - src: etc/jobman/jobman.yml
         dst: /etc/jobman/jobman.yml
-        type: config
-      - src: docs/manpage/jobman*.1
-        dst: /usr/share/man/man1
+        type: config|noreplace
+      - src: docs/manpage/jobman.1
+        dst: /usr/share/man/man1/jobman.1
       - src: docs/completions/bash/jobman
         dst: /usr/share/bash-completion/completions/jobman
       - src: docs/completions/zsh/_jobman
         dst: /usr/share/zsh/vendor-completions/_jobman
 
-brews:
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+# Generate SPDX JSON SBOMs for both portable archives and native packages.
+sboms:
+  - id: archives
+    artifacts: archive
+  - id: packages
+    artifacts: package
+
+# Keyless Sigstore signing produces a bundle that contains the signature,
+# certificate, and transparency-log proof for the checksum file.
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+
+homebrew_casks:
   - name: jobman
+    ids:
+      - jobman
+    binaries:
+      - jobman
+    manpages:
+      - docs/manpage/jobman.1
+    completions:
+      bash: docs/completions/bash/jobman
+      zsh: docs/completions/zsh/_jobman
+    homepage: https://github.com/ryancswallace/jobman
+    description: >-
+      A daemon-less command line job manager with retries, timeouts, logging,
+      notifications, and more.
+    license: MIT
+    directory: Casks
+    skip_upload: auto
     repository:
       owner: ryancswallace
       name: jobman
-      token: "{{ .Env.GH_TOKEN }}"
-    description: "A command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
-    homepage: "https://github.com/ryancswallace/jobman"
-    license: "MIT"
-    directory: formula
+      branch: main
     commit_author:
-      name: Ryan Wallace
-      email: ryancswallace@gmail.com
-    install: |
-      bin.install "jobman"
-      man1.install Dir["docs/manpage/jobman.1"]
-      bash_completion.install "docs/completions/bash/jobman"
-      zsh_completion.install "docs/completions/zsh/jobman"
-    test: |
-      system "#{bin/jobman}"
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "chore(homebrew): update jobman to {{ .Tag }} [skip ci]"
 
-dockers:
-  - image_templates: ["ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-amd64"]
-    goos: linux
-    goarch: amd64
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - --platform=linux/amd64
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://ryancswallace.github.io/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/ryancswallace/{{ .ProjectName }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ .Date }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=MIT
+dockers_v2:
+  - id: jobman
+    ids:
+      - jobman
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - ghcr.io/ryancswallace/jobman
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Tag }}"
+      - '{{ if not .Prerelease }}latest{{ end }}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    sbom: true
+    labels:
+      org.opencontainers.image.title: jobman
+      org.opencontainers.image.description: >-
+        A daemon-less command line job manager
+      org.opencontainers.image.url: https://github.com/ryancswallace/jobman
+      org.opencontainers.image.source: https://github.com/ryancswallace/jobman
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
 
-  - image_templates: ["ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-i386"]
-    goos: linux
-    goarch: "386"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - --platform=linux/i386
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://ryancswallace.github.io/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/ryancswallace/{{ .ProjectName }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ .Date }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=MIT
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^chore(?:\([^)]*\))?:'
+      - '^ci(?:\([^)]*\))?:'
+      - '^docs(?:\([^)]*\))?:'
+      - '^test(?:\([^)]*\))?:'
+      - '^Merge '
 
-docker_manifests:
-  - name_template: ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}
-    image_templates:
-      - ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-i386
-
-  - name_template: ghcr.io/ryancswallace/{{ .ProjectName }}:latest
-    image_templates:
-      - ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/ryancswallace/{{ .ProjectName }}:{{ .Version }}-i386
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}"
 
 release:
   github:
     owner: ryancswallace
     name: jobman
-  draft: true
-  replace_existing_draft: true
-  mode: append
+  draft: false
   prerelease: auto
-  discussion_category_name: General
-  extra_files:
-    - glob: ./etc/jobman/jobman.yml
-    - glob: ./docs/manpage/jobman*.1
-  header: |
-    ## Features
-    List of newly introduced features:
-    - Item 1
-    - Item 2
-    ## Bug fixes
-    List of fixed issues:
-    - Item 1
-    - Item 2
+  mode: keep-existing
+  replace_existing_artifacts: true
   footer: |
-    ## Reference
-    Read more on the [jobman documentation site](https://ryancswallace.github.io/jobman) and [jobman page](https://pkg.go.dev/github.com/ryancswallace/jobman) in the Golang reference.
+    **Install and verify:** see [RELEASE.md](https://github.com/ryancswallace/jobman/blob/main/RELEASE.md#verifying-a-release).
