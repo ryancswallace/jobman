@@ -1,0 +1,21 @@
+# GoReleaser supplies one pre-built jobman binary for each TARGETPLATFORM.
+FROM alpine:3.23
+
+RUN apk add --no-cache bash ca-certificates tini tzdata \
+    && addgroup -S -g 10001 jobman \
+    && adduser -S -D -u 10001 -G jobman -h /home/jobman jobman \
+    && mkdir -p /home/jobman/.config/jobman /work \
+    && chown -R jobman:jobman /home/jobman /work
+
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/jobman /usr/local/bin/jobman
+
+ENV HOME=/home/jobman \
+    XDG_CONFIG_HOME=/home/jobman/.config
+
+USER 10001:10001
+WORKDIR /work
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/sbin/tini", "--", "jobman"]
+CMD ["--help"]
