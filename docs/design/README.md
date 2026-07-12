@@ -9,7 +9,7 @@
             * `name` (string) (default: "") - use `name` as the display name for job. Defaults to `command`
             * `group` (string) (default: "") - mark job as a member of job group `group`
 
-            * `job-spec` (string) (default: "") - 
+            * `job-spec` (string) (default: "") -
             * `rerun-by-name` (string) (default: "") - rerun the job named `rerun-by-name`. If multiple jobs with this name exist, choose among them the job with the latest start datetime
             * `rerun-by-id` (string) (default: "") - rerun job with id `rerun-by-id`
 
@@ -41,8 +41,8 @@
             * `retries.failure-codes` (string) (default: "") - comma-separated list of exit codes that indicate a failed run
             * `retries.delay` (string) (default: `0s`) - delay after finishing run to start next run
             * `retries.jitter-range` (string) (default: `0s`) - add jitter distributed Unif(-`retries.jitter-range` / 2, `retries.jitter-range` / 2) to retry delay. Actual delay is distributed max(0, Unif(`retries.delay` - (`retries.jitter-range` / 2), `retries.delay` + (`retries.jitter-range` / 2)))
-            * `retries.exponential-backoff-base` (float) (default: 1) - delay (`retries.delay` * `retries.eexponential-backoff-base`^[run#]), where `run#` is indexed from 0, after finishing run `run#` to start next run. Default value of 1 results in a constant delay of `retries.delay` 
-            * `retries.max-delay` (string) (default: -1) - delay no more than `reries.max-delay`. Useful for capping the delay when using exponential backoff (i.e., `retries.exponential-backoff-base` > 1). Default value of -1 indicates no maximum delay enforced
+            * `retries.exponential-backoff-base` (float) (default: 1) - delay (`retries.delay` * `retries.exponential-backoff-base`^[run#]), where `run#` is indexed from 0, after finishing run `run#` to start next run. Default value of 1 results in a constant delay of `retries.delay`
+            * `retries.max-delay` (string) (default: -1) - delay no more than `retries.max-delay`. Useful for capping the delay when using exponential backoff (i.e., `retries.exponential-backoff-base` > 1). Default value of -1 indicates no maximum delay enforced
 
             * `timeout`
             * `timeout.job`
@@ -290,7 +290,7 @@
             * misspell
         * how to ensure hooks/* run by CI
         * deploy docs site
-        * publish to Dockerhub, GH packages
+        * publish to Docker Hub, GH packages
         * releases (GoReleaser)
             * assets
                 * (linux|windows|darwin|freebsd).(amd64|i386).tar.gz
@@ -313,7 +313,7 @@ Draft release from push/merge to main
 Require reviewers
 Codeql
 Automated method to bump jobman version
-Combine or make dep between build and release actions 
+Combine or make dep between build and release actions
 Twitter
 
 
@@ -343,6 +343,6 @@ db.getAll(k1=v1, k2=v2)
 db.set(k1=v1, k2=v2, name, value="")
 
 db.delete(k1=v1, k2=v2)
-db.delete(Allk1=v1, k2=v2, name)
+db.delete(all_k1=v1, k2=v2, name)
 
 db.updateKey()

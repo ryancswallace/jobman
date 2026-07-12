@@ -55,18 +55,37 @@ Jobman is available via RPM, deb, and apk packages as `jobman_<version>-_linux_(
 Precompiled binaries are available for Linux, MacOS, and Windows as `jobman_(Linux|Darwin|Windows)_<(x86_64|i386)>.tar.gz`. Download binaries for the latest jobman version from the [latest releases page](https://github.com/ryancswallace/jobman/releases/latest) on the GitHub repository.
 
 ### Docker image
-Use `docker run` to pull and run the latest jobman Docker image from Docker Hub:
-```bash
-docker run -it jobman
+Use a versioned image from GitHub Container Registry for reproducible runs:
+
+```shell
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --env HOME=/tmp \
+  --env XDG_CONFIG_HOME=/tmp/.config \
+  --volume "$PWD:/work" \
+  ghcr.io/ryancswallace/jobman:latest --help
 ```
 
-To build the Docker image locally instead of pulling from Docker Hub, use the `docker-image` make target:
-```bash
+The image runs as an unprivileged user with `/work` as its working directory.
+It includes Bash, CA certificates, timezone data, and Tini so child jobs receive
+signals correctly. Override the command after the image name to run a jobman
+subcommand. Pin a release tag in automation; `latest` is intended for interactive
+evaluation only.
+
+To build the image locally instead, use the `docker-image` make target:
+
+```shell
 make docker-image
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --env HOME=/tmp \
+  --env XDG_CONFIG_HOME=/tmp/.config \
+  --volume "$PWD:/work" \
+  jobman --help
 ```
 
 ### Build from source
-Building jobman from source code requires [Go](https://golang.org/doc/install) version 1.15 or greater.
+Building jobman from source requires [Go](https://go.dev/doc/install) 1.26.
 
 Start by cloning the repository:
 ```bash
@@ -79,10 +98,18 @@ Then build and install the jobman binary under your `GOPATH` using make:
 make install
 ```
 
-The Makefile provides several other targets for convenience while developing, including:
-* *format*: formats the source code
-* *test*: runs the jobman test suite, including unit tests, end-to-end tests, performance tests, and linters
-* *build*: builds the `jobman` binary for the current platform
+The Makefile automates the common development workflows. Start with `make help`
+for the complete target list. The primary targets are:
+
+- `make setup`: installs pinned tools and downloads dependencies;
+- `make format`: formats Go source with the configured formatters;
+- `make check`: runs module, format, lint, test, documentation, build, and
+  release-configuration checks;
+- `make test`: runs unit, end-to-end, and performance suites;
+- `make docs`: generates and validates man pages and shell completions;
+- `make build`: builds `bin/jobman` for the current platform;
+- `make docker-image`: builds the local container image;
+- `make snapshot`: builds release artifacts locally without publishing them.
 
 # Alternatives
 Jobman aims to be reliable and fully-featured. It operates *without* requiring a system service/daemon for orchestration.
