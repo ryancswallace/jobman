@@ -1,22 +1,277 @@
-timeout: 3m
+---
+# Keep this file on golangci-lint's version 2 schema. Validate changes with:
+#   golangci-lint config verify
+version: "2"
 
-linters:
-  disable-all: true
-  enable:
-    - goimports
-    - gofmt
-    - bodyclose
-    - gosimple
-    - prealloc
-    - unused
-    - govet
-    - staticcheck
-    - revive
-    - ineffassign
-    - whitespace
-    - godot
-    - gocyclo
-    - misspell
+run:
+  # A full run includes whole-program analyzers and the race-oriented test code.
+  timeout: 5m
+  go: "1.26"
+  tests: true
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+  sort-order:
+    - file
+    - linter
+  show-stats: true
 
 issues:
-  exclude-use-default: false
+  # Report the complete result set locally and in CI.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true
+  fix: false
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/ryancswallace/jobman
+  exclusions:
+    generated: strict
+
+linters:
+  # An explicit list keeps upgrades deterministic: newly added linters are
+  # evaluated deliberately instead of appearing unexpectedly in CI.
+  default: none
+  enable:
+    # Correctness and standard static analysis.
+    - asciicheck
+    - bidichk
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - govet
+    - ineffassign
+    - nilerr
+    - nilnesserr
+    - staticcheck
+    - unused
+    - wastedassign
+
+    # APIs, errors, resources, and concurrency.
+    - asasalint
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - makezero
+    - musttag
+    - nilnil
+    - noctx
+    - nosprintfhostport
+    - rowserrcheck
+    - sqlclosecheck
+
+    # Security and compiler-directive hygiene.
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gosec
+
+    # Maintainability and code clarity.
+    - cyclop
+    - dupl
+    - gocognit
+    - goconst
+    - gocritic
+    - godot
+    - maintidx
+    - misspell
+    - nakedret
+    - nestif
+    - nolintlint
+    - predeclared
+    - revive
+    - unparam
+    - whitespace
+
+    # Performance and modern Go idioms.
+    - intrange
+    - mirror
+    - perfsprint
+    - prealloc
+    - unconvert
+    - usestdlibvars
+
+    # Test quality.
+    - testableexamples
+    - thelper
+    - usetesting
+
+    # Module and logging conventions.
+    - gomoddirectives
+    - goprintffuncname
+    - loggercheck
+    - sloglint
+
+  settings:
+    cyclop:
+      max-complexity: 15
+      package-average: 10.0
+
+    dupl:
+      threshold: 150
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    gocognit:
+      min-complexity: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+      match-constant: true
+      numbers: true
+      min: 3
+      max: 3
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        # These overlap dedicated linters or enforce a project layout choice.
+        - hugeParam
+        - rangeValCopy
+
+    godot:
+      scope: declarations
+      capital: true
+      period: true
+
+    gomoddirectives:
+      replace-local: true
+      retract-allow-no-explanation: false
+      exclude-forbidden: false
+
+    govet:
+      enable-all: true
+      disable:
+        # Field order should be chosen for readability unless profiling proves
+        # that padding materially matters.
+        - fieldalignment
+
+    maintidx:
+      under: 20
+
+    misspell:
+      locale: US
+      mode: default
+
+    nestif:
+      min-complexity: 5
+
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: true
+
+    revive:
+      confidence: 0.8
+      severity: warning
+      enable-all-rules: false
+      rules:
+        - name: atomic
+        - name: bool-literal-in-expr
+        - name: confusing-naming
+        - name: confusing-results
+        - name: constant-logical-expr
+        - name: context-as-argument
+        - name: datarace
+        - name: deep-exit
+        - name: early-return
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: import-shadowing
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: string-of-int
+        - name: superfluous-else
+        - name: time-equal
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: unused-receiver
+        - name: use-any
+        - name: var-declaration
+        - name: var-naming
+
+    sloglint:
+      no-global: all
+      context: scope
+      static-msg: true
+      key-naming-case: kebab
+      forbidden-keys:
+        - time
+        - level
+        - msg
+        - source
+
+    staticcheck:
+      checks:
+        - all
+
+    usetesting:
+      os-create-temp: true
+      os-mkdir-temp: true
+      os-setenv: true
+      os-temp-dir: true
+      os-chdir: true
+      context-background: true
+      context-todo: true
+
+  exclusions:
+    generated: strict
+    # Some rules are intentionally conditional (for example, complex tests),
+    # so an unused exclusion in a given revision is not an error.
+    warn-unused: false
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # Complexity and duplication are less useful for table-driven tests and
+      # test fixtures; correctness and security analyzers still run there.
+      - path: _test\.go
+        linters:
+          - cyclop
+          - dupl
+          - gocognit
+          - maintidx
