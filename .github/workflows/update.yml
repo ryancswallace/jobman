@@ -1,28 +1,51 @@
-name: Update
+---
+name: Repository maintenance
 
 on:
   schedule:
-    # daily at 5:03 (avoid GH load spikes on the hour)
-    - cron: '03 05 * * *'
-
+    - cron: "17 5 1 * *"
   workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: repository-maintenance
+  cancel-in-progress: true
 
 jobs:
   update:
-    name: Copyright date
+    name: Update generated repository files
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          fetch-depth: 0
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
 
-      - name: Run all update scripts
-        run: |
-          make update-all
+      - name: Run repository maintenance
+        run: make update-all
 
-    # TODO:
-    # if changes...
-    # commit changes on new branch b
-    # create pull request for b -> main (e.g., https://github.com/peter-evans/create-pull-request)
-    # merge pull request
+      - name: Validate changes
+        run: make quick-check
+
+      - name: Create maintenance pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: automation/repository-maintenance
+          delete-branch: true
+          commit-message: "chore: run repository maintenance"
+          title: "chore: run repository maintenance"
+          body: |
+            Automated monthly repository maintenance.
+
+            - Synchronizes pinned Go version declarations.
+            - Updates copyright years.
+            - Refreshes generated documentation assets.

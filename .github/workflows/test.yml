@@ -28,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.5"
           check-latest: true
           cache-dependency-path: go.sum
 
@@ -43,6 +43,9 @@ jobs:
       - name: Check formatting
         run: golangci-lint fmt --diff
 
+      - name: Validate workflows and shell scripts
+        run: make workflow-check shellcheck
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -56,12 +59,15 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.5"
           check-latest: true
           cache-dependency-path: go.sum
 
       - name: Run tests
         run: make test
+
+      - name: Check for known vulnerabilities
+        run: make vulncheck
 
       - name: Test build
         run: make build
@@ -73,3 +79,26 @@ jobs:
           files: ./coverage.txt
           disable_search: true
           fail_ci_if_error: true
+
+  repository:
+    name: Documentation and release configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Validate documentation
+        run: make docs
+
+      - name: Validate release configuration
+        run: make release-check
