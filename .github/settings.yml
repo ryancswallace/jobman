@@ -1,0 +1,77 @@
+# Repository settings-as-code for the GitHub Settings app.
+# The app applies this file after it reaches the default branch. Review changes
+# carefully: anyone who can modify the default-branch copy can change settings
+# that would otherwise require repository administration access.
+
+repository:
+  description: "A daemon-less command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
+  homepage: "https://ryancswallace.github.io/jobman/"
+  topics: "background-jobs, cli, command-line, daemonless, go, job-manager, logging, monitoring-tool, nohup, notifications, process-supervisor, retries, timeouts"
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_discussions: false
+  default_branch: "main"
+
+  # Conventional Commit pull request titles become the commits evaluated by
+  # semantic-release. Keeping only squash merges makes that invariant clear.
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+  allow_auto_merge: true
+  allow_update_branch: true
+  squash_merge_commit_title: PR_TITLE
+  squash_merge_commit_message: PR_BODY
+  delete_branch_on_merge: true
+
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true
+
+branches:
+  - name: "main"
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
+        require_last_push_approval: true
+      required_status_checks:
+        strict: true
+        # These are the check-run names produced for every pull request to main.
+        contexts:
+          - Analyze Go
+          - Documentation and release configuration
+          - Lint
+          - Test
+          - "Test (macos-latest)"
+          - "Test (windows-latest)"
+
+      # Keep a break-glass path for the sole maintainer. Normal pull requests
+      # remain subject to the review and check requirements above.
+      enforce_admins: false
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false
+      required_conversation_resolution: true
+
+      # Restrictions must be null for this user-owned repository and are a
+      # required top-level property in the Settings app branch schema.
+      restrictions: null
+
+environments:
+  - name: "github-pages"
+    wait_timer: 0
+    deployment_branch_policy:
+      custom_branches:
+        - main
+
+  - name: "main"
+    wait_timer: 0
+    reviewers:
+      # Stable numeric user ID for @ryancswallace
+      # gh api users/ryancswallace --jq .id
+      - id: 20177051
+        type: "User"
+    deployment_branch_policy:
+      custom_branches:
+        - main
