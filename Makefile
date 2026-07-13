@@ -251,9 +251,9 @@ docs-check: ## Check Markdown whitespace and generated documentation assets.
 .PHONY: spellcheck
 spellcheck: ## Spell-check the repository using cspell or its pinned container.
 	@if command -v cspell >/dev/null 2>&1; then \
-		cspell lint .; \
+		cspell lint --dot .; \
 	elif command -v npx >/dev/null 2>&1; then \
-		npx --yes cspell@$(CSPELL_VERSION) lint .; \
+		npx --yes cspell@$(CSPELL_VERSION) lint --dot .; \
 	elif $(DOCKER) info >/dev/null 2>&1; then \
 		$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
 			--file Dockerfile.cspell \
@@ -309,6 +309,10 @@ build-all: build docker-image ## Build the local binary and container image.
 release-check: tool-goreleaser ## Validate the GoReleaser configuration.
 	$(GORELEASER) check
 
+.PHONY: release-build
+release-build: tool-goreleaser ## Compile every target declared in GoReleaser.
+	$(GORELEASER) build --snapshot --clean
+
 .PHONY: snapshot
 snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without publishing.
 	PATH='$(abspath $(BIN_DIR))':$$PATH \
@@ -316,7 +320,7 @@ snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without pu
 			--skip=sign,homebrew
 
 .PHONY: check quick-check ci
-check: mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check ## Run all presubmission checks.
+check: mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check release-build ## Run all presubmission checks.
 quick-check: mod-check format-check lint unittest build ## Run the fast presubmission checks.
 ci: check ## Alias for the complete CI verification workflow.
 

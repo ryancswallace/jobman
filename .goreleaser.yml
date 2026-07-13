@@ -163,6 +163,17 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.licenses: MIT
 
+# Sign the multi-platform image and its platform-specific images by immutable
+# digest using the same keyless Actions identity as the checksum bundle.
+docker_signs:
+  - id: containers
+    cmd: cosign
+    artifacts: all
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes
+
 changelog:
   sort: asc
   filters:

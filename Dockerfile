@@ -3,7 +3,7 @@
 # These defaults match go.version and the release image. Override them with
 # --build-arg when testing a toolchain or base-image upgrade.
 ARG GO_VERSION=1.26.5
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS build
 

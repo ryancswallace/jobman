@@ -5,4 +5,4 @@ FROM ghcr.io/streetsidesoftware/cspell:${CSPELL_VERSION}
 
 WORKDIR /workdir
 COPY . .
-RUN cspell-cli lint .
+RUN cspell-cli lint --dot .
