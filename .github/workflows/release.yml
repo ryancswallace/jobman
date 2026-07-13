@@ -50,6 +50,7 @@ jobs:
       contents: write
       id-token: write
       packages: write
+      pull-requests: write
     environment:
       name: main
       url: https://github.com/ryancswallace/jobman/releases

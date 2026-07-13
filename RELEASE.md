@@ -13,7 +13,8 @@ builds, signs, and publishes the release artifacts.
    creates the next tag and GitHub release notes.
 5. GoReleaser checks out that exact tag and publishes binaries, archives, native
    Linux packages, SBOMs, checksums, a checksum signature, a multi-platform GHCR
-   image, image signatures, and the Homebrew Cask update.
+   image, and image signatures. It pushes the Homebrew Cask update to a
+   version-specific branch and opens a pull request against `main`.
 6. An isolated SLSA generator signs provenance for every checksummed artifact
    and uploads `jobman.intoto.jsonl` to the GitHub release.
 7. If there are no releasable commits, the workflow exits successfully without
@@ -66,10 +67,11 @@ ghcr.io/ryancswallace/jobman:latest
 The `latest` image is published only for stable versions. Images run as an
 unprivileged `jobman` user and include Bash, CA certificates, and timezone data.
 
-The Homebrew Cask is generated into `Casks/jobman.rb` in this repository. The
-workflow token needs permission to push that generated update to `main`; if
-branch protection rejects the update, publish it through a dedicated tap or use
-a narrowly scoped release-bot token instead.
+The Homebrew Cask is generated into `Casks/jobman.rb` in this repository. Since
+`main` requires pull requests and status checks, GoReleaser writes each update
+to `automation/homebrew-<version>` and opens a pull request. Review and merge
+that pull request after its required checks pass; the release artifacts remain
+published even while the Cask update is awaiting review.
 
 Because this repository does not use Homebrew's conventional
 `homebrew-<name>` repository name, users must add it with the explicit remote:
@@ -84,7 +86,8 @@ brew install --cask jobman
 The workflow uses GitHub's short-lived `GITHUB_TOKEN`; no repository PAT or GPG
 private key is required. Keep these workflow permissions enabled:
 
-- `contents: write` for tags, releases, assets, and the Homebrew Cask;
+- `contents: write` for tags, releases, assets, and the Homebrew Cask branch;
+- `pull-requests: write` for the Homebrew Cask update pull request;
 - `packages: write` for GHCR;
 - `id-token: write` for keyless Sigstore signing;
 - `attestations: write` and `artifact-metadata: write` for provenance.
@@ -95,8 +98,9 @@ by a complete release tag such as `v2.1.0`: its verifier currently rejects a
 commit-SHA reference. This is an intentional exception to the repository's
 normal action-pinning policy. Dependabot monitors the tag for updates.
 
-In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions
-to create and approve the configured repository writes. In the package settings,
+In **Settings → Actions → General → Workflow permissions**, enable **Allow
+GitHub Actions to create and approve pull requests**. The workflow grants its
+token only the explicit write permissions listed above. In the package settings,
 ensure this repository's workflow has write access to the `jobman` GHCR package.
 This is required even when the workflow has `packages: write`; an existing
 package can retain access settings from the repository or token that first
@@ -191,8 +195,9 @@ from that exact commit, and replaces same-named GitHub release artifacts.
 Before retrying, diagnose the failed publishing stage:
 
 - GHCR failures usually indicate missing package write access;
-- Homebrew failures usually indicate branch protection or repository write
-  restrictions;
+- Homebrew branch failures usually indicate missing `contents: write` access;
+- Homebrew pull-request failures usually indicate missing `pull-requests: write`
+  access or a disabled Actions pull-request setting;
 - signing failures usually indicate missing `id-token: write` permission;
 - a missing `jobman.intoto.jsonl` asset usually indicates that the isolated
   provenance job could not read the release or obtain its OIDC identity;
@@ -216,6 +221,7 @@ Before relying on the first automated release:
 - verify the `main` environment's deployment protection rules;
 - confirm the `jobman` GHCR package grants this repository's Actions workflow
   write access, especially if the package already exists;
-- ensure `Casks/jobman.rb` can be updated by the workflow identity;
+- ensure the workflow identity can create the Homebrew update branch and pull
+  request, and merge that pull request after its checks pass;
 - review the generated GitHub release notes and all artifacts after publication;
 - install at least one archive or native package and run the versioned container.

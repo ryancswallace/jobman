@@ -17,6 +17,8 @@ semantic-release.
 - Added continuous configuration fuzzing, digest-pinned build images, and
   GitHub and SLSA provenance attestations for release artifacts and container
   images.
+- Publish Homebrew Cask updates through reviewed pull requests so releases work
+  with protected-branch requirements.
 
 ## [0.1.0] - 2026-07-12
 

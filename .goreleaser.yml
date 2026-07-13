@@ -135,11 +135,20 @@ homebrew_casks:
     repository:
       owner: ryancswallace
       name: jobman
-      branch: main
+      # main requires pull requests and status checks. Publish each Cask update
+      # to a deterministic release branch and let GoReleaser open the PR.
+      branch: "automation/homebrew-{{ .Version }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: ryancswallace
+          name: jobman
+          branch: main
     commit_author:
       name: github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
-    commit_msg_template: "chore(homebrew): update jobman to {{ .Tag }} [skip ci]"
+    commit_msg_template: "chore(homebrew): update jobman to {{ .Tag }}"
 
 dockers_v2:
   - id: jobman
