@@ -13,7 +13,7 @@ builds, signs, and publishes the release artifacts.
    creates the next tag and GitHub release notes.
 5. GoReleaser checks out that exact tag and publishes binaries, archives, native
    Linux packages, SBOMs, checksums, a checksum signature, a multi-platform GHCR
-   image, and the Homebrew Cask update.
+   image, image signatures, and the Homebrew Cask update.
 6. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
@@ -45,7 +45,9 @@ Each GitHub release contains:
 - generated man pages, Bash/Zsh completions, the sample configuration, license,
   README, and changelog inside the portable archives;
 - SPDX JSON SBOMs for archives and native packages;
-- a SHA-256 checksum manifest and a keyless Sigstore bundle for that manifest.
+- a SHA-256 checksum manifest and a keyless Sigstore bundle for that manifest;
+- keyless Sigstore signatures for the multi-platform container manifest and
+  its platform-specific images.
 
 GoReleaser also publishes `linux/amd64` and `linux/arm64` images to:
 
@@ -62,6 +64,14 @@ The Homebrew Cask is generated into `Casks/jobman.rb` in this repository. The
 workflow token needs permission to push that generated update to `main`; if
 branch protection rejects the update, publish it through a dedicated tap or use
 a narrowly scoped release-bot token instead.
+
+Because this repository does not use Homebrew's conventional
+`homebrew-<name>` repository name, users must add it with the explicit remote:
+
+```sh
+brew tap ryancswallace/jobman https://github.com/ryancswallace/jobman
+brew install --cask jobman
+```
 
 ## Repository configuration
 
@@ -84,6 +94,11 @@ failure.
 If tag protection rules cover `v*`, allow the GitHub Actions release identity to
 create those tags.
 
+The release job uses the repository's `main` environment. Keep that environment
+restricted to deployments from `main`, and retain required reviewers when
+releases need a manual approval boundary. Manual recovery runs are rejected
+unless the workflow itself is dispatched from `main`.
+
 ## Local validation
 
 Install Go 1.26.5, GoReleaser 2.17, Syft, Cosign, Docker with Buildx, and QEMU/binfmt
@@ -92,13 +107,15 @@ for multi-platform container tests. Then run:
 ```sh
 go test ./...
 make release-check
+make release-build
 make snapshot
 ```
 
 Snapshot mode writes artifacts to `dist/` and does not create a GitHub release.
-The Homebrew publisher and keyless signing are skipped locally because they need
-GitHub credentials and an Actions OIDC identity. Docker Buildx may create local
-platform-suffixed images during snapshot validation.
+The Homebrew publisher and keyless checksum and container signing are skipped
+locally because they need GitHub credentials and an Actions OIDC identity.
+Docker Buildx may create local platform-suffixed images during snapshot
+validation.
 
 Before merging a release-triggering change, also confirm that generated assets
 are non-empty and current:
@@ -118,8 +135,8 @@ from the same GitHub release. Verify the signature first, then the checksum:
 ```sh
 cosign verify-blob \
   --bundle jobman_<version>_checksums.txt.sigstore.json \
-  --certificate-identity-regexp \
-    '^https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/.*$' \
+  --certificate-identity \
+    'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   jobman_<version>_checksums.txt
 
@@ -131,14 +148,19 @@ required. For containers, pull an immutable version tag rather than `latest`:
 
 ```sh
 docker pull ghcr.io/ryancswallace/jobman:<version>
+cosign verify \
+  --certificate-identity \
+    'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/ryancswallace/jobman:<version>
 ```
 
 ## Recovering or retrying a release
 
 Do not delete and recreate tags as a first response. Open the `Release` workflow,
-choose **Run workflow**, and enter the existing tag (for example, `v1.2.3`). The
-workflow validates the tag, checks it out, rebuilds from that exact commit, and
-replaces same-named GitHub release artifacts.
+select the `main` branch, choose **Run workflow**, and enter the existing tag
+(for example, `v1.2.3`). The workflow validates the tag, checks it out, rebuilds
+from that exact commit, and replaces same-named GitHub release artifacts.
 
 Before retrying, diagnose the failed publishing stage:
 
@@ -163,6 +185,7 @@ Before relying on the first automated release:
 - check that all release-worthy commits use Conventional Commit syntax;
 - run the local snapshot commands above;
 - verify GitHub Actions, GHCR, and tag-protection permissions;
+- verify the `main` environment's deployment protection rules;
 - confirm the `jobman` GHCR package grants this repository's Actions workflow
   write access, especially if the package already exists;
 - ensure `Casks/jobman.rb` can be updated by the workflow identity;

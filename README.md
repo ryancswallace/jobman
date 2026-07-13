@@ -4,6 +4,7 @@
 
 [![Test](https://github.com/ryancswallace/jobman/actions/workflows/test.yml/badge.svg)](https://github.com/ryancswallace/jobman/actions/workflows/test.yml)
 [![CodeQL](https://github.com/ryancswallace/jobman/actions/workflows/codeql.yml/badge.svg)](https://github.com/ryancswallace/jobman/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryancswallace/jobman/badge)](https://scorecard.dev/viewer/?uri=github.com/ryancswallace/jobman)
 [![Codecov](https://codecov.io/gh/ryancswallace/jobman/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ryancswallace/jobman)](https://goreportcard.com/report/github.com/ryancswallace/jobman)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman)
@@ -43,6 +44,16 @@ with `.apk`, `.deb`, or `.rpm` extensions.
 Verify downloaded artifacts using the checksum and Sigstore instructions in
 [RELEASE.md](RELEASE.md#verifying-a-release).
 
+### Homebrew
+
+The generated Cask lives in this repository, so add it as an explicit custom
+tap before installation:
+
+```console
+brew tap ryancswallace/jobman https://github.com/ryancswallace/jobman
+brew install --cask jobman
+```
+
 ### Container image
 
 Versioned Linux images are published to GitHub Container Registry:
@@ -75,6 +86,12 @@ cd jobman
 make install
 ```
 
+To install the latest tagged version without cloning the repository:
+
+```console
+go install github.com/ryancswallace/jobman@latest
+```
+
 Run `make help` to see all development, validation, packaging, and container
 targets.
 
@@ -90,9 +107,10 @@ make check
 ```
 
 `make check` verifies modules, formatting, lint, workflows, shell scripts,
-known vulnerabilities, tests, generated documentation, spelling, the binary,
-and the GoReleaser configuration. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development and pull-request conventions.
+known vulnerabilities, tests, generated documentation, spelling, the local
+binary, the GoReleaser configuration, and every declared release build target.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and pull-request
+conventions.
 
 ## Documentation and support
 

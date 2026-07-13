@@ -12,6 +12,8 @@ semantic-release.
 
 - Modernized repository automation, dependency management, documentation, and
   production-readiness checks.
+- Hardened workflow dependencies and permissions, expanded supported-platform
+  validation, and added supply-chain analysis and container signing.
 
 ## [0.1.0] - 2026-07-12
 

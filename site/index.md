@@ -31,8 +31,8 @@ cd jobman
 make install
 ```
 
-Release archives, native Linux packages, signed checksums, SBOMs, and container
-images are published through [GitHub Releases] as the release pipeline becomes
-available.
+Release archives, native Linux packages, signed checksums, SBOMs, and signed
+container images are published through [GitHub Releases] as the release
+pipeline becomes available.
 
 [GitHub Releases]: https://github.com/ryancswallace/jobman/releases

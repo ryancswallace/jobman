@@ -43,6 +43,7 @@ Useful focused checks include:
 - `make lint` and `make format-check` for Go source quality;
 - `make workflow-check shellcheck` for automation changes;
 - `make vulncheck` for reachable Go vulnerabilities;
+- `make release-build` to compile every supported release platform;
 - `make snapshot` for release or packaging changes;
 - `make docker-image` for runtime-image changes.
 
@@ -68,3 +69,18 @@ issues, test fixtures, or workflow output. Pull requests from forks should not
 require access to repository secrets.
 
 Contributions are accepted under the project's [MIT License](LICENSE).
+
+## Maintainer repository settings
+
+Protect `main` with a repository ruleset that requires pull requests, successful
+`Test` and `CodeQL` checks, resolved review conversations, and code-owner review
+when another maintainer is available. Block force pushes and branch deletion.
+Keep the default Actions token read-only and grant write permissions only in the
+specific jobs that publish maintenance updates, Pages, releases, or security
+results.
+
+Enable private vulnerability reporting, Dependabot alerts and security updates,
+secret scanning, and push protection when they are available for the repository.
+The `main` release environment and `github-pages` environment should permit
+deployments only from `main`; add required reviewers to the `main` environment
+when a manual release approval boundary is desired.

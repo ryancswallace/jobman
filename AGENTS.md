@@ -222,8 +222,9 @@ instructions consistent. Update `CHANGELOG.md` for notable user-visible changes.
   non-interactive, and safe to rerun. Required-tool failures must return a
   nonzero status. Validate them with `make shellcheck`.
 - Validate GitHub Actions with `make workflow-check`. Keep permissions minimal,
-  pin compatible action majors, use concurrency and timeouts, and avoid exposing
-  secrets to forked pull requests.
+  pin actions to full commit SHAs with a release-version comment for Dependabot,
+  use concurrency and timeouts, and avoid exposing secrets to forked pull
+  requests.
 - Runtime containers must remain unprivileged, signal-correct, and minimal.
   Keep the ordinary `Dockerfile` and `Dockerfile.goreleaser` behavior aligned.
 - Use `make docker-check` for Dockerfile validation and `make docker-image` for
@@ -231,9 +232,10 @@ instructions consistent. Update `CHANGELOG.md` for notable user-visible changes.
 - Release changes must keep `.goreleaser.yml`, `.releaserc`,
   `.github/workflows/release.yml`, `Dockerfile.goreleaser`, `RELEASE.md`, and
   installation documentation consistent.
-- Use `make release-check` for configuration-only changes and `make snapshot`
-  when archives, packages, SBOMs, generated assets, checksums, or release images
-  may be affected. Snapshot builds must never publish.
+- Use `make release-check` for configuration-only changes, `make release-build`
+  to compile every declared release target, and `make snapshot` when archives,
+  packages, SBOMs, generated assets, checksums, or release images may be
+  affected. Snapshot builds must never publish.
 - If asked to create commits, use Conventional Commit messages because
   semantic-release derives versions from commits on `main`.
 
@@ -250,7 +252,7 @@ Use focused checks first, selected according to the change:
 | Shell scripts | `make shellcheck` |
 | GitHub Actions | `make workflow-check` |
 | Container runtime | `make docker-check`, `make docker-image` |
-| Release packaging | `make release-check`, `make snapshot` |
+| Release packaging | `make release-check`, `make release-build`, `make snapshot` |
 
 `make quick-check` is the normal fast repository loop. Before final handoff,
 run the complete gate whenever the environment permits:
