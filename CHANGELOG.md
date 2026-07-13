@@ -14,6 +14,9 @@ semantic-release.
   production-readiness checks.
 - Hardened workflow dependencies and permissions, expanded supported-platform
   validation, and added supply-chain analysis and container signing.
+- Added continuous configuration fuzzing, digest-pinned build images, and
+  GitHub and SLSA provenance attestations for release artifacts and container
+  images.
 
 ## [0.1.0] - 2026-07-12
 

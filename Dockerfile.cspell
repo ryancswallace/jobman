@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG CSPELL_VERSION=10.0.1
-FROM ghcr.io/streetsidesoftware/cspell:${CSPELL_VERSION}
+FROM ghcr.io/streetsidesoftware/cspell:${CSPELL_VERSION}@sha256:cb2eab4ec34956aca554e35615da65401d510fa5983cce2773391e2fd9f4fc20
 
 WORKDIR /workdir
 COPY . .

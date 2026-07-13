@@ -14,7 +14,9 @@ builds, signs, and publishes the release artifacts.
 5. GoReleaser checks out that exact tag and publishes binaries, archives, native
    Linux packages, SBOMs, checksums, a checksum signature, a multi-platform GHCR
    image, image signatures, and the Homebrew Cask update.
-6. If there are no releasable commits, the workflow exits successfully without
+6. An isolated SLSA generator signs provenance for every checksummed artifact
+   and uploads `jobman.intoto.jsonl` to the GitHub release.
+7. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
 Release jobs are serialized and are never cancelled in progress. The workflow
@@ -46,6 +48,10 @@ Each GitHub release contains:
   README, and changelog inside the portable archives;
 - SPDX JSON SBOMs for archives and native packages;
 - a SHA-256 checksum manifest and a keyless Sigstore bundle for that manifest;
+- a keyless, verifiable SLSA provenance bundle named `jobman.intoto.jsonl` for
+  every file in the checksum manifest;
+- GitHub-hosted, Sigstore-signed build provenance attestations for every file
+  in the checksum manifest and every published container digest;
 - keyless Sigstore signatures for the multi-platform container manifest and
   its platform-specific images.
 
@@ -80,7 +86,14 @@ private key is required. Keep these workflow permissions enabled:
 
 - `contents: write` for tags, releases, assets, and the Homebrew Cask;
 - `packages: write` for GHCR;
-- `id-token: write` for keyless Sigstore signing.
+- `id-token: write` for keyless Sigstore signing;
+- `attestations: write` and `artifact-metadata: write` for provenance.
+
+The isolated SLSA provenance job additionally receives `actions: read`,
+`contents: write`, and `id-token: write`. The SLSA generator must be referenced
+by a complete release tag such as `v2.1.0`: its verifier currently rejects a
+commit-SHA reference. This is an intentional exception to the repository's
+normal action-pinning policy. Dependabot monitors the tag for updates.
 
 In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions
 to create and approve the configured repository writes. In the package settings,
@@ -141,10 +154,23 @@ cosign verify-blob \
   jobman_<version>_checksums.txt
 
 sha256sum --check jobman_<version>_checksums.txt --ignore-missing
+
+gh attestation verify \
+  --owner ryancswallace \
+  jobman_<version>_linux_amd64.tar.gz
+
+slsa-verifier verify-artifact \
+  --provenance-path jobman.intoto.jsonl \
+  --source-uri github.com/ryancswallace/jobman \
+  jobman_<version>_linux_amd64.tar.gz
 ```
 
-Inspect an SBOM before installation when provenance or dependency review is
-required. For containers, pull an immutable version tag rather than `latest`:
+The GitHub attestation and downloadable SLSA bundle independently bind the
+artifact name and digest to the release workflow and source commit. The SLSA
+bundle covers all files listed by the release checksum manifest, so the same
+bundle verifies any archive, native package, or SBOM from that release. Inspect
+an SBOM before installation when provenance or dependency review is required.
+For containers, pull an immutable version tag rather than `latest`:
 
 ```sh
 docker pull ghcr.io/ryancswallace/jobman:<version>
@@ -168,6 +194,8 @@ Before retrying, diagnose the failed publishing stage:
 - Homebrew failures usually indicate branch protection or repository write
   restrictions;
 - signing failures usually indicate missing `id-token: write` permission;
+- a missing `jobman.intoto.jsonl` asset usually indicates that the isolated
+  provenance job could not read the release or obtain its OIDC identity;
 - an absent man page or completion file means the generator failed or produced
   an empty file;
 - a duplicate asset error should be handled automatically by GoReleaser's

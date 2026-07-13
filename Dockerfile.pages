@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG JEKYLL_BUILD_PAGES_VERSION=v1.0.13
-FROM ghcr.io/actions/jekyll-build-pages:${JEKYLL_BUILD_PAGES_VERSION}
+FROM ghcr.io/actions/jekyll-build-pages:${JEKYLL_BUILD_PAGES_VERSION}@sha256:6791ebfd912185ed59bfb5fb102664fa872496b79f87ff8b9cfba292a7345041
 
 COPY . /github/workspace
 WORKDIR /github/workspace

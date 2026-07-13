@@ -16,3 +16,8 @@ maintenance cannot publish its branch.
 - `copyright-date.sh` updates copyright ranges in tracked files.
 - `go-vers.sh` synchronizes Go version declarations across tooling, containers,
   workflows, and documentation.
+
+Container base images are pinned by both tag and digest. When changing a base
+image tag manually, update its digest in the same change; an old digest paired
+with a new tag intentionally fails closed. Dependabot covers the root and
+devcontainer Dockerfiles to automate routine tag and digest updates.

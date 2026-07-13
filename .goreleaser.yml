@@ -90,6 +90,10 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
+# Record immutable image digests for provenance attestations and verification.
+docker_digest:
+  name_template: digests.txt
+
 # Generate SPDX JSON SBOMs for both portable archives and native packages.
 sboms:
   - id: archives

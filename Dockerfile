@@ -5,7 +5,7 @@
 ARG GO_VERSION=1.26.5
 ARG ALPINE_VERSION=3.24
 
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS build
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION}@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS build
 
 RUN apk add --no-cache ca-certificates git
 
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
       -o /out/jobman \
       .
 
-FROM alpine:${ALPINE_VERSION} AS runtime
+FROM alpine:${ALPINE_VERSION}@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS runtime
 
 # Bash is required by jobman's command runner. Tini forwards signals and reaps
 # orphaned child processes when jobman is PID 1. CA roots and timezone data make

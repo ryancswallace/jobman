@@ -54,6 +54,8 @@ IMAGE ?= $(PROJECT):local
 GO_BUILD_FLAGS ?= -trimpath
 GO_LDFLAGS ?= -s -w -buildid=
 GO_TEST_FLAGS ?= -race -shuffle=on
+FUZZ_TARGET ?= FuzzConfigYAML
+FUZZ_TIME ?= 30s
 
 .PHONY: help
 help: ## Show available targets.
@@ -208,6 +210,11 @@ perftest: ## Run benchmarks when the performance suite contains Go tests.
 		echo 'No performance tests are implemented yet; skipping.'; \
 	fi
 bench: perftest
+
+.PHONY: fuzz
+fuzz: ## Fuzz a selected Go target (FUZZ_TARGET, FUZZ_TIME).
+	$(GO) test -run '^$$' -fuzz '^$(FUZZ_TARGET)$$' \
+		-fuzztime=$(FUZZ_TIME) ./jobman
 
 .PHONY: test
 test: unittest e2etest perftest ## Run unit, end-to-end, and performance tests.

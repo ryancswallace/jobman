@@ -26,10 +26,7 @@ concurrency:
   # Never terminate a release while it may be publishing artifacts.
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  packages: write
-  id-token: write
+permissions: read-all
 
 jobs:
   release:
@@ -43,26 +40,58 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      base64_subjects: ${{ steps.provenance-subjects.outputs.base64_subjects }}
+      published: ${{ steps.provenance-subjects.outputs.published }}
+      release_tag: ${{ steps.release-tag.outputs.tag }}
+    permissions:
+      attestations: write
+      artifact-metadata: write
+      contents: write
+      id-token: write
+      packages: write
     environment:
       name: main
       url: https://github.com/ryancswallace/jobman/releases
 
     steps:
-      - name: Validate recovery tag
-        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Expected a semantic version tag such as v1.2.3 or v1.2.3-rc.1" >&2
-            exit 1
-          fi
-
-      - name: Checkout tested commit
+      # Never pass workflow_run or workflow_dispatch data to actions/checkout.
+      # The checkout action first obtains trusted default-branch history; the
+      # next step validates and selects the exact tested commit or recovery tag.
+      - name: Checkout release repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Select release source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ -n "${RELEASE_TAG}" ]]; then
+            if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Expected a semantic version tag such as v1.2.3 or v1.2.3-rc.1" >&2
+              exit 1
+            fi
+
+            git fetch --force origin \
+              "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            release_commit=$(git rev-parse --verify \
+              "refs/tags/${RELEASE_TAG}^{commit}")
+            git checkout --detach "${release_commit}"
+          elif [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            if [[ ! "${TESTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "The completed Test workflow did not provide a valid commit." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "${TESTED_COMMIT}" origin/main; then
+              echo "The tested commit is not reachable from main." >&2
+              exit 1
+            fi
+
+            git checkout --detach "${TESTED_COMMIT}"
+          fi
 
       - name: Determine version and create GitHub release
         id: semantic
@@ -74,13 +103,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout release tag
+        id: release-tag
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.tag || steps.semantic.outputs.new_release_git_tag }}
+        env:
+          RELEASE_TAG: ${{ inputs.tag || steps.semantic.outputs.new_release_git_tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tooling produced an invalid tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          git fetch --force origin \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          release_commit=$(git rev-parse --verify \
+            "refs/tags/${RELEASE_TAG}^{commit}")
+          git checkout --detach "${release_commit}"
+          echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Go
         if: >-
@@ -138,8 +178,58 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare artifact attestation input
+        id: provenance-subjects
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          checksum_files=(dist/jobman_*_checksums.txt)
+          if [[ ${#checksum_files[@]} -ne 1 || ! -f "${checksum_files[0]}" ]]; then
+            echo "Expected exactly one release checksum manifest." >&2
+            exit 1
+          fi
+          cp "${checksum_files[0]}" dist/attestation-checksums.txt
+          echo "base64_subjects=$(base64 -w 0 "${checksum_files[0]}")" \
+            >> "${GITHUB_OUTPUT}"
+          echo "published=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest release artifacts
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-checksums: dist/attestation-checksums.txt
+
+      - name: Attest container images
+        if: >-
+          inputs.tag != '' ||
+          steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-checksums: dist/digests.txt
+
       - name: No release required
         if: >-
           inputs.tag == '' &&
           steps.semantic.outputs.new_release_published != 'true'
         run: echo "No releasable commits were found since the previous tag."
+
+  provenance:
+    name: Generate and publish SLSA provenance
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    # The SLSA verifier currently requires this reusable workflow to use an
+    # exact version tag; a commit SHA produces provenance it will not trust.
+    uses: >-
+      slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.release.outputs.base64_subjects }}
+      provenance-name: jobman.intoto.jsonl
+      upload-assets: true
+      upload-tag-name: ${{ needs.release.outputs.release_tag }}
