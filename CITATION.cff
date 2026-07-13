@@ -1,8 +1,12 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: If you use Jobman, please cite this software.
+type: software
+title: Jobman
 authors:
-- family-names: "Wallace"
-  given-names: "Ryan"
-title: "jobman"
-date-released: 2022-08-29
-url: "https://github.com/ryancswallace/jobman"
+  - family-names: Wallace
+    given-names: Ryan
+repository-code: https://github.com/ryancswallace/jobman
+url: https://ryancswallace.github.io/jobman/
+license: MIT
+version: 0.1.0
+date-released: 2026-07-12

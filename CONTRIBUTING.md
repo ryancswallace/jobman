@@ -12,6 +12,12 @@ By participating, you agree to follow the [code of conduct](CODE_OF_CONDUCT.md).
 Please report security vulnerabilities through [SECURITY.md](SECURITY.md), not a
 public issue.
 
+The project uses the Go version recorded in `go.version`. The included
+devcontainer is the supported reproducible contributor environment; local Go
+installations are equally welcome when they use the same version.
+The full documentation and container checks also require a running Docker
+daemon. ShellCheck is required when Docker is unavailable for script checks.
+
 ## Local checks
 
 The normal pre-submission loop is:
@@ -31,10 +37,34 @@ Documentation changes should pass `make docs`, and public API behavior changes
 should update tests, docs, and [CHANGELOG.md](CHANGELOG.md) when users will
 notice the change.
 
+Useful focused checks include:
+
+- `make quick-check` for the normal edit-test loop;
+- `make lint` and `make format-check` for Go source quality;
+- `make workflow-check shellcheck` for automation changes;
+- `make vulncheck` for reachable Go vulnerabilities;
+- `make snapshot` for release or packaging changes;
+- `make docker-image` for runtime-image changes.
+
+Generated man pages and completions are ignored in the working tree and are
+created during releases. Change their generators under `devel/`, then run
+`make docs` to validate the generated output.
+
+## Commit messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) because commit
+messages on `main` determine release versions. Common prefixes are `fix:`,
+`feat:`, `docs:`, `test:`, `ci:`, and `chore:`. Mark breaking changes with `!`
+or a `BREAKING CHANGE:` footer.
+
 ## Pull requests
 
 Keep each pull request focused on one coherent change. In the description,
 explain the problem, the chosen approach, compatibility impact, and verification
 performed.
+
+Do not include secrets, credentials, private logs, or personal data in commits,
+issues, test fixtures, or workflow output. Pull requests from forks should not
+require access to repository secrets.
 
 Contributions are accepted under the project's [MIT License](LICENSE).

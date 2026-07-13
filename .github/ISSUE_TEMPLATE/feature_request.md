@@ -1,20 +1,31 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: ''
-labels: ''
-assignees: ''
-
+about: Propose a new capability or improvement
+title: "feat: "
+labels:
+  - enhancement
+assignees: []
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+Describe the user problem or workflow limitation. Explain who encounters it and
+why the current behavior is insufficient.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Proposed outcome
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+Describe the behavior you would like jobman to provide. Examples of commands,
+configuration, or output are especially helpful.
+
+## Alternatives
+
+Describe workarounds or alternative designs you considered.
+
+## Compatibility and risks
+
+Call out any expected compatibility, security, performance, or migration
+considerations.
+
+## Additional context
+
+Add links, prior art, or other relevant information.

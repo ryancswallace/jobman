@@ -1,23 +1,30 @@
 # Security policy
 
-Please do not open a public issue for a suspected vulnerability.
+## Supported versions
+
+Jobman is currently pre-1.0. Security fixes are provided for the latest release
+and for `main`; older minor releases are not routinely backported.
+
+| Version | Supported |
+| --- | --- |
+| Latest release | Yes |
+| `main` | Yes |
+| Older releases | No |
 
 ## Reporting a vulnerability
 
-Email Ryan Wallace at <ryancswallace@gmail.com> with:
+Do not open a public issue for a suspected vulnerability. Prefer a private
+[GitHub security advisory] so the report, discussion, and coordinated fix remain
+confidential. If that is not possible, email Ryan Wallace at
+<ryancswallace@gmail.com>.
 
-* the affected version;
-* steps to reproduce the issue;
-* the potential impact;
-* any suggested mitigation, if known.
+Include the affected version, reproduction steps or a proof of concept,
+potential impact, and any known mitigation. Remove unrelated credentials and
+personal data.
 
 You should receive an acknowledgement within seven days. The maintainer will
-coordinate validation, remediation, and disclosure with the reporter. Please
-allow a reasonable period for a fix before publishing details.
+coordinate validation, remediation, release timing, and disclosure with the
+reporter. Please allow a reasonable remediation period before publishing
+details.
 
-## Support scope
-
-Security fixes are provided for the latest released version of jobman.
-Because the project is currently pre-1.0, older minor versions are not routinely
-backported. Security and compatibility fixes are normally prepared on `main` and
-released from there.
+[GitHub security advisory]: https://github.com/ryancswallace/jobman/security/advisories/new

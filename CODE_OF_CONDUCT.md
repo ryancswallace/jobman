@@ -2,7 +2,7 @@
 
 ## Our commitment
 
-We are committed to making participation in the jobman community a welcoming and
+We are committed to making participation in the Jobman community a welcoming and
 harassment-free experience for everyone, regardless of background, identity,
 appearance, experience level, or ability.
 
