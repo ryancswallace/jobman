@@ -2,109 +2,109 @@
 # Keep automated label names synchronized with .github/labeler.yml.
 
 - name: bug
-  color: d73a4a
+  color: "d73a4a"
   description: Something is broken or behaving incorrectly.
 
 - name: enhancement
-  color: a2eeef
+  color: "a2eeef"
   description: A new feature or improvement request.
 
 - name: go
-  color: 00add8
+  color: "00add8"
   description: Go source, module metadata, or toolchain configuration.
 
 - name: cli
-  color: 1d76db
+  color: "1d76db"
   description: Command-line behavior, commands, flags, or terminal output.
 
 - name: api
-  color: 1d76db
+  color: "1d76db"
   description: Exported Go symbols, public behavior, or compatibility surface.
 
 - name: configuration
-  color: 006b75
+  color: "006b75"
   description: Jobman configuration parsing, defaults, schema, or examples.
 
 - name: documentation
-  color: 0075ca
+  color: "0075ca"
   description: Documentation, examples, generated manuals, or site content.
 
 - name: tests
-  color: c2e0c6
+  color: "c2e0c6"
   description: Tests, fixtures, coverage, or test infrastructure.
 
 - name: performance
-  color: 5319e7
+  color: "5319e7"
   description: Performance tests, benchmarks, resource use, or speed.
 
 - name: ci
-  color: 0e8a16
+  color: "0e8a16"
   description: Continuous integration and repository check behavior.
 
 - name: github-actions
-  color: 0e8a16
+  color: "0e8a16"
   description: GitHub Actions workflow configuration.
 
 - name: dependencies
-  color: 0366d6
+  color: "0366d6"
   description: Go modules, Actions, images, or development tool dependencies.
 
 - name: containers
-  color: 0db7ed
+  color: "0db7ed"
   description: Runtime, release, documentation, or development containers.
 
 - name: packaging
-  color: fef2c0
+  color: "fef2c0"
   description: Release artifacts, native packages, images, or installation.
 
 - name: security
-  color: b60205
+  color: "b60205"
   description: Security posture, vulnerability handling, or secret hygiene.
 
 - name: automation
-  color: fbca04
+  color: "fbca04"
   description: Build, formatting, linting, generation, or update automation.
 
 - name: dev-environment
-  color: d4c5f9
+  color: "d4c5f9"
   description: Devcontainer, editor, or local development setup.
 
 - name: release
-  color: fef2c0
+  color: "fef2c0"
   description: Release preparation, versioning, signing, or publishing.
 
 - name: maintenance
-  color: c5def5
+  color: "c5def5"
   description: Repository maintenance that is not directly user-facing.
 
 - name: breaking-change
-  color: b60205
+  color: "b60205"
   description: Public behavior or API change requiring migration.
 
 - name: good first issue
-  color: 7057ff
+  color: "7057ff"
   description: Good for a first contribution.
 
 - name: help wanted
-  color: 008672
+  color: "008672"
   description: Maintainer help is welcome.
 
 - name: question
-  color: d876e3
+  color: "d876e3"
   description: Question or clarification request.
 
 - name: needs-triage
-  color: ededed
+  color: "ededed"
   description: Needs maintainer review and categorization.
 
 - name: duplicate
-  color: cfd3d7
+  color: "cfd3d7"
   description: This issue or pull request already exists.
 
 - name: invalid
-  color: e4e669
+  color: "e4e669"
   description: This does not look actionable as filed.
 
 - name: wontfix
-  color: ffffff
+  color: "ffffff"
   description: This will not be worked on.
