@@ -1,7 +1,6 @@
 package jobman
 
 import (
-	"fmt"
 	"os/exec"
 	"strings"
 
@@ -27,8 +26,6 @@ func Run(cmd *cobra.Command, args []string) error {
 	command.Stdin = cmd.InOrStdin()
 	command.Stdout = cmd.OutOrStdout()
 	command.Stderr = cmd.ErrOrStderr()
-
-	fmt.Println("test")
 
 	return command.Run()
 }
