@@ -12,12 +12,12 @@ import (
 	"github.com/ryancswallace/jobman/jobman"
 )
 
-func genManpages() error {
+func genManpages(outputRoot string) error {
 	header := &doc.GenManHeader{
 		Title:   "jobman",
 		Section: "1",
 	}
-	manPath := filepath.Join(".", "docs", "manpage")
+	manPath := filepath.Join(outputRoot, "docs", "manpage")
 	if err := os.MkdirAll(manPath, 0o750); err != nil {
 		return fmt.Errorf("create man page directory: %w", err)
 	}
@@ -30,7 +30,7 @@ func genManpages() error {
 }
 
 func main() {
-	if err := genManpages(); err != nil {
+	if err := genManpages("."); err != nil {
 		log.Fatal(err)
 	}
 }

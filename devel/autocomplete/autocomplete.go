@@ -16,18 +16,18 @@ type completion struct {
 	generate func(io.Writer) error
 }
 
-func genAutocomplete() error {
+func genAutocomplete(outputRoot string) error {
 	completions := []completion{
 		{
-			path:     "docs/completions/bash/jobman",
+			path:     filepath.Join(outputRoot, "docs", "completions", "bash", "jobman"),
 			generate: jobman.JobmanRootCmd.GenBashCompletion,
 		},
 		{
-			path:     "docs/completions/powershell/jobman.ps1",
+			path:     filepath.Join(outputRoot, "docs", "completions", "powershell", "jobman.ps1"),
 			generate: jobman.JobmanRootCmd.GenPowerShellCompletion,
 		},
 		{
-			path:     "docs/completions/zsh/_jobman",
+			path:     filepath.Join(outputRoot, "docs", "completions", "zsh", "_jobman"),
 			generate: jobman.JobmanRootCmd.GenZshCompletion,
 		},
 	}
@@ -64,7 +64,7 @@ func writeCompletion(item completion) error {
 }
 
 func main() {
-	if err := genAutocomplete(); err != nil {
+	if err := genAutocomplete("."); err != nil {
 		log.Fatal(err)
 	}
 }
