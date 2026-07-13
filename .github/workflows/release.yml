@@ -35,10 +35,17 @@ jobs:
   release:
     name: Create and publish release
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/jobman/releases
 
     steps:
       - name: Validate recovery tag
@@ -46,13 +53,13 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Expected a semantic version tag such as v1.2.3 or v1.2.3-rc.1" >&2
             exit 1
           fi
 
       - name: Checkout tested commit
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag || github.event.workflow_run.head_sha || github.sha }}
@@ -60,7 +67,7 @@ jobs:
       - name: Determine version and create GitHub release
         id: semantic
         if: inputs.tag == ''
-        uses: cycjimmy/semantic-release-action@v6
+        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         with:
           semantic_version: 25
         env:
@@ -70,7 +77,7 @@ jobs:
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag || steps.semantic.outputs.new_release_git_tag }}
@@ -79,7 +86,7 @@ jobs:
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26.5"
           check-latest: true
@@ -89,19 +96,19 @@ jobs:
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GitHub Container Registry
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -111,19 +118,19 @@ jobs:
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: anchore/sbom-action/download-syft@v0
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Install Cosign
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Build and publish artifacts
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: "~> v2.17"

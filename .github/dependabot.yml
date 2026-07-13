@@ -9,9 +9,12 @@ updates:
       time: "05:00"
       timezone: Etc/UTC
     groups:
-      go-dependencies:
+      go-minor-and-patch:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -21,9 +24,12 @@ updates:
       time: "05:10"
       timezone: Etc/UTC
     groups:
-      github-actions:
+      github-actions-minor-and-patch:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: docker
     directory: /
@@ -33,9 +39,12 @@ updates:
       time: "05:20"
       timezone: Etc/UTC
     groups:
-      container-images:
+      container-images-minor-and-patch:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: devcontainers
     directory: /.devcontainer
@@ -45,6 +54,9 @@ updates:
       time: "05:30"
       timezone: Etc/UTC
     groups:
-      devcontainer-features:
+      devcontainer-features-minor-and-patch:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch

@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.version
           check-latest: true
@@ -37,7 +37,7 @@ jobs:
         run: make quick-check
 
       - name: Create maintenance pull request
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: automation/repository-maintenance
           delete-branch: true
@@ -48,4 +48,4 @@ jobs:
 
             - Synchronizes pinned Go version declarations.
             - Updates copyright years.
-            - Refreshes generated documentation assets.
+            - Regenerates and validates documentation assets.
