@@ -1,5 +1,5 @@
 # GoReleaser supplies one pre-built jobman binary for each TARGETPLATFORM.
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache bash ca-certificates tini tzdata \
     && addgroup -S -g 10001 jobman \
