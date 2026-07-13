@@ -117,7 +117,7 @@ jobs:
         if: >-
           inputs.tag != '' ||
           steps.semantic.outputs.new_release_published == 'true'
-        uses: sigstore/cosign-installer@v4.1.0
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Build and publish artifacts
         if: >-
