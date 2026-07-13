@@ -1,125 +1,112 @@
-![jobman](https://github.com/ryancswallace/jobman/raw/main/assets/logo.png?raw=true)
+# Jobman
 
-Jobman automates the process of running and monitoring jobs on the command line. Jobman supports
-* running commands in the background immune to hangups
-* retrying commands
-* aborting commands after a timeout period
-* logging command output
-* sending notifications on command success or failure
-* delaying command execution for a specified time or event
+![Jobman logo](assets/logo.png)
 
-![Build Status](https://github.com/ryancswallace/jobman/actions/workflows/test.yml/badge.svg)
-[![codecov](https://codecov.io/gh/ryancswallace/jobman/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman)
+[![Test](https://github.com/ryancswallace/jobman/actions/workflows/test.yml/badge.svg)](https://github.com/ryancswallace/jobman/actions/workflows/test.yml)
+[![CodeQL](https://github.com/ryancswallace/jobman/actions/workflows/codeql.yml/badge.svg)](https://github.com/ryancswallace/jobman/actions/workflows/codeql.yml)
+[![Codecov](https://codecov.io/gh/ryancswallace/jobman/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ryancswallace/jobman)](https://goreportcard.com/report/github.com/ryancswallace/jobman)
-[![Docs site](https://img.shields.io/badge/docs-GitHub_Pages-blue)](https://ryancswallace.github.io/jobman/)
-[![GoDoc](https://godoc.org/gotest.tools?status.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue)](https://ryancswallace.github.io/jobman/)
 
-# Documentation
-**Visit the :book: [jobman documentation site](https://ryancswallace.github.io/jobman/) :book: for complete information on using jobman.**
+Jobman is a daemonless command-line job manager. It is being designed to run
+and monitor commands with retries, timeouts, durable logs, delayed execution,
+and success or failure notifications without requiring a resident service.
 
-For package implementation details, see the [jobman page](https://pkg.go.dev/github.com/ryancswallace/jobman) in the Go reference.
+> [!WARNING]
+> Jobman is under active development. The command surface and configuration
+> format are not yet stable, and the current implementation does not provide
+> every capability described in the design documentation. Evaluate it before
+> using it for important workloads.
 
-# Example
-The example below uses jobman to run a Python script `train.py` in the background and immune to hangups (e.g., a SIGHUP from an SHH timeout).
+## Design goals
 
-Jobman will ensure 60 seconds have passed *and* that the file `data.csv` exists before starting the program. If those conditions haven't been met by 5:00PM on March 5, 2032, jobman will abort the job.
+- Work without a system daemon or privileged installation.
+- Survive terminal disconnects and propagate signals predictably.
+- Keep job state and logs inspectable from ordinary CLI commands.
+- Make retry, timeout, waiting, and notification policies composable.
+- Remain useful as a native binary, package-manager installation, or container.
 
-Jobman will retry the program up to five times until there's one successful run, defined as an exit code of `0` or `42`, waiting ten seconds between retries.
+The target command and configuration model is documented in
+[docs/design](docs/design/README.md). Generated man pages and shell completions
+are included in release archives.
 
-If the job succeeds, jobman will send a notification email. If the job fails, jobman will send an SMS message.
-```bash
-jobman \
-    -wait.timedelta 60s -wait.file data.csv -wait.abort-datetime "2032-03-05T17:00:00" \
-    -retries.num-successes 1 -retries.num-runs 5 -retries.success-codes 0,42 -retries.delay 10s \
-    -notify.on-success my-email -notify.on-failure my-cell \
-    train.py
+## Installation
+
+### Release archives and native packages
+
+Download a release from the [GitHub Releases page]. Portable archives use names
+such as `jobman_0.1.0_linux_amd64.tar.gz` and
+`jobman_0.1.0_windows_arm64.zip`. Linux packages use the same platform suffix
+with `.apk`, `.deb`, or `.rpm` extensions.
+
+Verify downloaded artifacts using the checksum and Sigstore instructions in
+[RELEASE.md](RELEASE.md#verifying-a-release).
+
+### Container image
+
+Versioned Linux images are published to GitHub Container Registry:
+
+```console
+docker pull ghcr.io/ryancswallace/jobman:vX.Y.Z
+docker run --rm ghcr.io/ryancswallace/jobman:vX.Y.Z --help
 ```
 
-After submitting the `train.py` job above, use `jobman show` to display details on job progress:
-```bash
-jobman show train.py
-```
+The image runs as an unprivileged user, uses `/work` as its working directory,
+and includes Bash, CA roots, timezone data, and Tini. Mount a working directory
+when a managed command needs access to host files:
 
-To view a running log of the consolidated stdout and stderr streams of the latest run of the `train.py` job, use `jobman logs`:
-```bash
-jobman logs train.py -follow
-```
-
-# Installation
-There are multiple ways to install jobman. The recommended method is to use the RPM, deb, or apk package, if applicable, or a precompiled binary otherwise.
-
-### Package manager packages
-Jobman is available via RPM, deb, and apk packages as `jobman_<version>-_linux_(amd64|386).(rpm|deb|apk)`. Download packages for the latest jobman version from the [latest releases page](https://github.com/ryancswallace/jobman/releases/latest) on the GitHub repository.
-
-### Precompiled binaries
-Precompiled binaries are available for Linux, MacOS, and Windows as `jobman_(Linux|Darwin|Windows)_<(x86_64|i386)>.tar.gz`. Download binaries for the latest jobman version from the [latest releases page](https://github.com/ryancswallace/jobman/releases/latest) on the GitHub repository.
-
-### Docker image
-Use a versioned image from GitHub Container Registry for reproducible runs:
-
-```shell
+```console
 docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  --env HOME=/tmp \
-  --env XDG_CONFIG_HOME=/tmp/.config \
   --volume "$PWD:/work" \
-  ghcr.io/ryancswallace/jobman:latest --help
+  ghcr.io/ryancswallace/jobman:vX.Y.Z --help
 ```
 
-The image runs as an unprivileged user with `/work` as its working directory.
-It includes Bash, CA certificates, timezone data, and Tini so child jobs receive
-signals correctly. Override the command after the image name to run a jobman
-subcommand. Pin a release tag in automation; `latest` is intended for interactive
-evaluation only.
-
-To build the image locally instead, use the `docker-image` make target:
-
-```shell
-make docker-image
-docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  --env HOME=/tmp \
-  --env XDG_CONFIG_HOME=/tmp/.config \
-  --volume "$PWD:/work" \
-  jobman --help
-```
+Pin a release tag in automation. The `latest` tag is updated only for stable
+releases and is intended for interactive evaluation.
 
 ### Build from source
-Building jobman from source requires [Go](https://go.dev/doc/install) 1.26.
 
-Start by cloning the repository:
-```bash
+Building Jobman requires [Go](https://go.dev/doc/install) 1.26.5.
+
+```console
 git clone https://github.com/ryancswallace/jobman.git
 cd jobman
-```
-
-Then build and install the jobman binary under your `GOPATH` using make:
-```bash
 make install
 ```
 
-The Makefile automates the common development workflows. Start with `make help`
-for the complete target list. The primary targets are:
+Run `make help` to see all development, validation, packaging, and container
+targets.
 
-- `make setup`: installs pinned tools and downloads dependencies;
-- `make format`: formats Go source with the configured formatters;
-- `make check`: runs module, format, lint, test, documentation, build, and
-  release-configuration checks;
-- `make test`: runs unit, end-to-end, and performance suites;
-- `make docs`: generates and validates man pages and shell completions;
-- `make build`: builds `bin/jobman` for the current platform;
-- `make docker-image`: builds the local container image;
-- `make snapshot`: builds release artifacts locally without publishing them.
+## Development
 
-# Alternatives
-Jobman aims to be reliable and fully-featured. It operates *without* requiring a system service/daemon for orchestration.
+The fastest contributor setup is the included devcontainer. For a local Go
+installation:
 
-cron
-Airflow/prefect/dagster
-supervisord
-https://github.com/kadwanev/retry
-https://github.com/linyows/go-retry
-https://github.com/martinezdelariva/retry
+```console
+make setup
+make format
+make check
+```
 
-# Contributing
-Feature requests, bug reports, and pull requests are welcome! See [CONTRIBUTING.md](https://github.com/ryancswallace/jobman/blob/main/CONTRIBUTING.md) for details on how to contribute to jobman.
+`make check` verifies modules, formatting, lint, workflows, shell scripts,
+known vulnerabilities, tests, generated documentation, spelling, the binary,
+and the GoReleaser configuration. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development and pull-request conventions.
+
+## Documentation and support
+
+- [Documentation site](https://ryancswallace.github.io/jobman/)
+- [Design documentation](docs/design/README.md)
+- [Release and artifact verification guide](RELEASE.md)
+- [Security policy](SECURITY.md)
+- [Issue tracker](https://github.com/ryancswallace/jobman/issues)
+
+Please use the issue templates for reproducible bugs and feature proposals.
+Report suspected vulnerabilities privately as described in the security policy.
+
+## License
+
+Jobman is available under the [MIT License](LICENSE).
+
+[GitHub Releases page]: https://github.com/ryancswallace/jobman/releases

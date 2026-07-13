@@ -75,12 +75,18 @@ private key is required. Keep these workflow permissions enabled:
 In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions
 to create and approve the configured repository writes. In the package settings,
 ensure this repository's workflow has write access to the `jobman` GHCR package.
+This is required even when the workflow has `packages: write`; an existing
+package can retain access settings from the repository or token that first
+created it. A `403 Forbidden` while pushing layers indicates package access,
+ownership, or organization-policy configuration rather than a GoReleaser build
+failure.
+
 If tag protection rules cover `v*`, allow the GitHub Actions release identity to
 create those tags.
 
 ## Local validation
 
-Install Go 1.26, GoReleaser 2.17, Syft, Cosign, Docker with Buildx, and QEMU/binfmt
+Install Go 1.26.5, GoReleaser 2.17, Syft, Cosign, Docker with Buildx, and QEMU/binfmt
 for multi-platform container tests. Then run:
 
 ```sh
@@ -157,6 +163,8 @@ Before relying on the first automated release:
 - check that all release-worthy commits use Conventional Commit syntax;
 - run the local snapshot commands above;
 - verify GitHub Actions, GHCR, and tag-protection permissions;
+- confirm the `jobman` GHCR package grants this repository's Actions workflow
+  write access, especially if the package already exists;
 - ensure `Casks/jobman.rb` can be updated by the workflow identity;
 - review the generated GitHub release notes and all artifacts after publication;
 - install at least one archive or native package and run the versioned container.

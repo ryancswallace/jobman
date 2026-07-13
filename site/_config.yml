@@ -1,4 +1,20 @@
+title: Jobman
+description: A daemonless command-line job manager.
+url: https://ryancswallace.github.io
+baseurl: /jobman
+repository: ryancswallace/jobman
+
 remote_theme: just-the-docs/just-the-docs
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+
+aux_links:
+  Jobman on GitHub: https://github.com/ryancswallace/jobman
 
 plugins:
+  - jekyll-remote-theme
   - jekyll-sitemap
+
+exclude:
+  - README.md

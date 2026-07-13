@@ -1,1 +1,6 @@
 ---
+# System-wide Jobman configuration.
+#
+# The stable configuration schema is still under development. This intentionally
+# contains no active settings, so installing a native package cannot change
+# runtime behavior. Document supported keys here as they become stable.
