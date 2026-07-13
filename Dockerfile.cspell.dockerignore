@@ -1,10 +1,7 @@
 .git
-.github
 .agents
 .codex
 .vscode
-AGENTS.md
-
 .env
 .env.*
 !.env.example

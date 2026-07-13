@@ -1,8 +1,8 @@
 # Build artifacts
 build/
 dist/
-*.egg-info/
-site/
+_site/
+site/_site/
 
 # Environment and secrets
 .env
@@ -21,7 +21,6 @@ Thumbs.db
 *.so
 *.dylib
 bin/
-dist/
 
 # Test binary, built with `go test -c`
 *.test

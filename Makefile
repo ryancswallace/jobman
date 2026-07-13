@@ -3,6 +3,15 @@ SHELL := /bin/bash
 .DELETE_ON_ERROR:
 .NOTPARALLEL: check
 
+# Validation targets must not take over the terminal with an interactive pager.
+# Individual commands can still opt into one outside the Makefile.
+PAGER := cat
+GIT_PAGER := cat
+GH_PAGER := cat
+MANPAGER := cat
+SYSTEMD_PAGER := cat
+export PAGER GIT_PAGER GH_PAGER MANPAGER SYSTEMD_PAGER
+
 PROJECT := jobman
 MODULE := github.com/ryancswallace/jobman
 
@@ -20,15 +29,22 @@ UPDATE_SCRIPTS := ./devel/updates
 
 GO ?= go
 DOCKER ?= docker
-CURL ?= curl
+DOCKER_PROGRESS ?= plain
 
 GO_VERSION := $(shell tr -d '[:space:]' < go.version)
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GORELEASER_VERSION ?= v2.17.0
+ACTIONLINT_VERSION ?= v1.7.12
+GOVULNCHECK_VERSION ?= v1.6.0
+SYFT_VERSION ?= v1.46.0
 CSPELL_VERSION ?= 10.0.1
 
-GOLANGCI_LINT ?= $(shell command -v golangci-lint 2>/dev/null || printf '%s' '$(BIN_DIR)/golangci-lint')
-GORELEASER ?= $(shell command -v goreleaser 2>/dev/null || printf '%s' '$(BIN_DIR)/goreleaser')
+GOLANGCI_LINT ?= $(BIN_DIR)/golangci-lint
+GORELEASER ?= $(BIN_DIR)/goreleaser
+ACTIONLINT ?= $(BIN_DIR)/actionlint
+GOVULNCHECK ?= $(BIN_DIR)/govulncheck
+SYFT ?= $(BIN_DIR)/syft
+SYFT_VERSION_FILE := $(BIN_DIR)/.syft-$(SYFT_VERSION)
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || printf '%s' dev)
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf '%s' unknown)
@@ -51,24 +67,56 @@ setup: bootstrap ## Install tools and download Go modules.
 bootstrap: tools download
 
 .PHONY: tools
-tools: tool-golangci-lint tool-goreleaser ## Install pinned development tools into bin/ when absent.
+tools: tool-golangci-lint tool-goreleaser tool-actionlint tool-govulncheck tool-syft ## Install pinned development tools into bin/ when absent.
 
 .PHONY: tool-golangci-lint
 tool-golangci-lint:
-	@if ! $(GOLANGCI_LINT) version >/dev/null 2>&1; then \
+	@if ! $(GOLANGCI_LINT) version 2>/dev/null \
+		| grep -Fq 'version $(patsubst v%,%,$(GOLANGCI_LINT_VERSION))'; then \
 		echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION) into $(BIN_DIR)/"; \
 		mkdir -p $(BIN_DIR); \
-		$(CURL) -sSfL https://golangci-lint.run/install.sh \
-			| sh -s -- -b $(abspath $(BIN_DIR)) $(GOLANGCI_LINT_VERSION); \
+		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
+			github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	fi
 
 .PHONY: tool-goreleaser
 tool-goreleaser:
-	@if ! $(GORELEASER) --version >/dev/null 2>&1; then \
+	@if ! $(GORELEASER) --version 2>/dev/null \
+		| grep -Fq '$(patsubst v%,%,$(GORELEASER_VERSION))'; then \
 		echo "Installing GoReleaser $(GORELEASER_VERSION) into $(BIN_DIR)/"; \
 		mkdir -p $(BIN_DIR); \
 		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
 			github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION); \
+	fi
+
+.PHONY: tool-actionlint
+tool-actionlint:
+	@if ! $(ACTIONLINT) -version 2>/dev/null \
+		| grep -Fq '$(patsubst v%,%,$(ACTIONLINT_VERSION))'; then \
+		echo "Installing actionlint $(ACTIONLINT_VERSION) into $(BIN_DIR)/"; \
+		mkdir -p $(BIN_DIR); \
+		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
+			github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION); \
+	fi
+
+.PHONY: tool-govulncheck
+tool-govulncheck:
+	@if ! $(GOVULNCHECK) -version 2>/dev/null \
+		| grep -Fq '$(GOVULNCHECK_VERSION)'; then \
+		echo "Installing govulncheck $(GOVULNCHECK_VERSION) into $(BIN_DIR)/"; \
+		mkdir -p $(BIN_DIR); \
+		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
+			golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION); \
+	fi
+
+.PHONY: tool-syft
+tool-syft:
+	@if ! test -x '$(SYFT)' || ! test -f '$(SYFT_VERSION_FILE)'; then \
+		echo "Installing Syft $(SYFT_VERSION) into $(BIN_DIR)/"; \
+		mkdir -p $(BIN_DIR); \
+		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
+			github.com/anchore/syft/cmd/syft@$(SYFT_VERSION); \
+		touch '$(SYFT_VERSION_FILE)'; \
 	fi
 
 .PHONY: versions
@@ -80,6 +128,12 @@ versions: ## Print the versions used by development and release tooling.
 	@$(GOLANGCI_LINT) version
 	@$(MAKE) --no-print-directory tool-goreleaser
 	@$(GORELEASER) --version
+	@$(MAKE) --no-print-directory tool-actionlint
+	@$(ACTIONLINT) -version
+	@$(MAKE) --no-print-directory tool-govulncheck
+	@$(GOVULNCHECK) -version
+	@$(MAKE) --no-print-directory tool-syft
+	@$(SYFT) version
 
 .PHONY: download
 download: ## Download and verify Go module dependencies.
@@ -107,6 +161,26 @@ format-check: tool-golangci-lint ## Check formatting without changing files.
 .PHONY: lint
 lint: tool-golangci-lint ## Run the configured Go linters.
 	$(GOLANGCI_LINT) run ./...
+
+.PHONY: workflow-check
+workflow-check: tool-actionlint ## Validate all GitHub Actions workflows.
+	$(ACTIONLINT) .github/workflows/*.yml
+
+.PHONY: shellcheck
+shellcheck: ## Statically analyze repository shell scripts.
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck devel/updates/*.sh; \
+	elif $(DOCKER) info >/dev/null 2>&1; then \
+		$(DOCKER) run --rm -v '$(CURDIR):/src:ro' -w /src \
+			koalaman/shellcheck-alpine:v0.11.0 devel/updates/*.sh; \
+	else \
+		echo 'shellcheck requires shellcheck or a running Docker daemon.' >&2; \
+		exit 2; \
+	fi
+
+.PHONY: vulncheck
+vulncheck: tool-govulncheck ## Check reachable Go code for known vulnerabilities.
+	$(GOVULNCHECK) ./...
 
 .PHONY: vet
 vet: ## Run go vet independently of the aggregate linter.
@@ -165,7 +239,10 @@ generate: gen-all
 
 .PHONY: docs-check
 docs-check: ## Check Markdown whitespace and generated documentation assets.
-	@! find . -path './.git' -prune -o -type f -name '*.md' -exec grep -nH -E '[[:blank:]]+$$' {} + | grep .
+	@if git --no-pager grep -nI -E '[[:blank:]]+$$' -- '*.md'; then \
+		echo 'Markdown files contain trailing whitespace.' >&2; \
+		exit 1; \
+	fi
 	@test -s $(MANPAGE_DIR)/$(PROJECT).1
 	@test -s $(COMPLETIONS_DIR)/bash/$(PROJECT)
 	@test -s $(COMPLETIONS_DIR)/zsh/_$(PROJECT)
@@ -178,7 +255,8 @@ spellcheck: ## Spell-check the repository using cspell or its pinned container.
 	elif command -v npx >/dev/null 2>&1; then \
 		npx --yes cspell@$(CSPELL_VERSION) lint .; \
 	elif $(DOCKER) info >/dev/null 2>&1; then \
-		$(DOCKER) build --file Dockerfile.cspell \
+		$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
+			--file Dockerfile.cspell \
 			--build-arg CSPELL_VERSION=$(CSPELL_VERSION) \
 			--output type=cacheonly .; \
 	else \
@@ -186,8 +264,13 @@ spellcheck: ## Spell-check the repository using cspell or its pinned container.
 		exit 2; \
 	fi
 
+.PHONY: docs-site-check
+docs-site-check: ## Build the GitHub Pages site with its production builder.
+	$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
+		--file Dockerfile.pages --output type=cacheonly .
+
 .PHONY: docs
-docs: gen-all docs-check spellcheck ## Generate and validate documentation.
+docs: gen-all docs-check spellcheck docs-site-check ## Generate and validate documentation.
 
 .PHONY: build
 build: ## Build the jobman binary for the current platform.
@@ -204,11 +287,11 @@ run: build ## Build and run jobman; pass arguments with ARGS='...'.
 
 .PHONY: docker-check
 docker-check: ## Validate the Dockerfile without building an image.
-	$(DOCKER) build --check .
+	$(DOCKER) build --progress=$(DOCKER_PROGRESS) --check .
 
 .PHONY: docker-image
 docker-image: ## Build the local container image.
-	$(DOCKER) build \
+	$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
 		--build-arg VERSION='$(VERSION)' \
 		--build-arg VCS_REF='$(COMMIT)' \
 		--build-arg BUILD_DATE='$(BUILD_DATE)' \
@@ -227,17 +310,24 @@ release-check: tool-goreleaser ## Validate the GoReleaser configuration.
 	$(GORELEASER) check
 
 .PHONY: snapshot
-snapshot: tool-goreleaser ## Build a local release snapshot without publishing.
-	$(GORELEASER) release --snapshot --clean --skip=sign,homebrew
+snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without publishing.
+	PATH='$(abspath $(BIN_DIR))':$$PATH \
+		$(GORELEASER) release --snapshot --clean --parallelism 2 \
+			--skip=sign,homebrew
 
 .PHONY: check quick-check ci
-check: mod-check format-check lint test docs build release-check ## Run all presubmission checks.
-quick-check: mod-check format-check unittest build ## Run the fast presubmission checks.
+check: mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check ## Run all presubmission checks.
+quick-check: mod-check format-check lint unittest build ## Run the fast presubmission checks.
 ci: check ## Alias for the complete CI verification workflow.
 
 .PHONY: update
 update: ## Run repository maintenance scripts.
-	GO_VERS=$(GO_VERSION) run-parts $(UPDATE_SCRIPTS)
+	@set -eu; \
+	export GO_VERS='$(GO_VERSION)'; \
+	for script in $(sort $(wildcard $(UPDATE_SCRIPTS)/*.sh)); do \
+		echo "Running $$script"; \
+		"$$script"; \
+	done
 
 .PHONY: update-all
 update-all: update format gen-all ## Run maintenance, formatting, and generation.
@@ -257,3 +347,6 @@ clean: clean-generated ## Remove build, release, and test artifacts.
 .PHONY: clean-tools
 clean-tools: ## Remove tools installed into bin/ by this Makefile.
 	$(RM) $(BIN_DIR)/golangci-lint $(BIN_DIR)/goreleaser
+	$(RM) $(BIN_DIR)/actionlint $(BIN_DIR)/govulncheck
+	$(RM) $(BIN_DIR)/syft
+	$(RM) $(BIN_DIR)/.syft-*

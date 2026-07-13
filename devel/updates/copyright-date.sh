@@ -1,29 +1,31 @@
 #!/usr/bin/sh
 
-# Updates the ending year of the copyright starting date range
-# to the current year across all files
+# Update the ending year of the project's copyright ranges in tracked files.
 
-set -e
+set -eu
 
-# required commands
-DATE=date
-GREP=grep
-XARGS=xargs
-SED=sed
-
-# check if required commands available
-# if not available, exit with success return code
-# but print warning message to stderr
-for CMD in $DATE $GREP $XARGS $SED
+for command in date git sed xargs
 do
-    if ! command -v "$CMD" &> /dev/null
+    if ! command -v "$command" >/dev/null 2>&1
     then
-        >&2 echo "warning: command "$CMD" required for copyright date hook not found. Aborting hook."
-        exit
+        echo "error: required command not found: $command" >&2
+        exit 127
     fi
 done
 
-# replace all instances of © 2021-[0-9]{4} with © 2021-$CURRENT_YEAR
 START_YEAR=2021
-CURRENT_YEAR=$("$DATE" '+%Y')
-"$GREP" -rl --exclude-dir=.git "© $START_YEAR-" . | "$XARGS" "$SED" -i "s/© $START_YEAR-[0-9]\{4\}/© $START_YEAR-$CURRENT_YEAR/g"
+CURRENT_YEAR=$(date -u '+%Y')
+
+pattern="© $START_YEAR-[0-9][0-9][0-9][0-9]"
+if git grep -Iq "$pattern" -- .
+then
+    git grep -Ilz "$pattern" -- . \
+        | xargs -0 -r sed -i \
+            "s/© $START_YEAR-[0-9]\{4\}/© $START_YEAR-$CURRENT_YEAR/g"
+else
+    status=$?
+    if [ "$status" -ne 1 ]
+    then
+        exit "$status"
+    fi
+fi

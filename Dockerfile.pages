@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+
+ARG JEKYLL_BUILD_PAGES_VERSION=v1.0.13
+FROM ghcr.io/actions/jekyll-build-pages:${JEKYLL_BUILD_PAGES_VERSION}
+
+COPY . /github/workspace
+WORKDIR /github/workspace
+
+ENV INPUT_SOURCE=./site \
+    INPUT_DESTINATION=./_site \
+    INPUT_FUTURE=false \
+    INPUT_VERBOSE=false \
+    INPUT_TOKEN= \
+    GITHUB_WORKSPACE=/github/workspace
+
+RUN /entrypoint.sh

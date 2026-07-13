@@ -1,38 +1,51 @@
 #!/usr/bin/sh
 
-# Ensures all Go version declarations have the value
-# of the $GO_VERS environment variable
+# Synchronize the version in go.version with every pinned Go declaration.
 
-set -e
+set -eu
 
-# return codes
 EXIT_VAR_UNDEF=166
 EXIT_VAR_INVALID=167
 
-# required commands
-SED=sed
-GREP=grep
-
-# confirm GO_VERS environment variable set
-if [[ -z "$GO_VERS" ]]
+if [ -z "${GO_VERS:-}" ]
 then
-    >&2 echo "error: variable GO_VERS is undefined. Aborting"
-    exit $EXIT_VAR_UNDEF
+    echo "error: GO_VERS is undefined" >&2
+    exit "$EXIT_VAR_UNDEF"
 fi
 
-# confirm GO_VERS value conforms to semantic version
-# values used by Go project
-IS_VALID=true
-VALID_VERS_REGEX='^[0-9]+(\.[0-9]+)*((rc|beta)[0-9]*)?$'
-echo $GO_VERS | $GREP -Eq "$VALID_VERS_REGEX" || IS_VALID=false
-if [[ "$IS_VALID" = false ]]
+VALID_VERS_REGEX='^[0-9]+\.[0-9]+(\.[0-9]+)?((rc|beta)[0-9]+)?$'
+if ! printf '%s\n' "$GO_VERS" | grep -Eq "$VALID_VERS_REGEX"
 then
-    >&2 echo "error: GO_VERS value "$GO_VERS" does not conform to a valid semantic version, "$VALID_VERS_REGEX". Aborting"
-    exit $EXIT_VAR_INVALID
+    echo "error: GO_VERS is not a supported Go version: $GO_VERS" >&2
+    exit "$EXIT_VAR_INVALID"
 fi
 
-# perform updates by editing known instances of
-# the Go version number in place
-"$SED" -i "s/go_vers=.*/go_vers=$GO_VERS/g" Dockerfile
-"$SED" -i "s/^go .*/go $GO_VERS/g" go.mod
-"$SED" -i "s/go-version: .*/go-version: $GO_VERS/g" .github/workflows/*
+for command in grep sed
+do
+    if ! command -v "$command" >/dev/null 2>&1
+    then
+        echo "error: required command not found: $command" >&2
+        exit 127
+    fi
+done
+
+GO_LANG_VERSION=$(printf '%s\n' "$GO_VERS" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+
+printf '%s\n' "$GO_VERS" > go.version
+sed -i "s/^go .*/go $GO_LANG_VERSION/" go.mod
+sed -i "s/^  go: \".*\"/  go: \"$GO_LANG_VERSION\"/" .golangci.yml
+sed -i "s/^ARG GO_VERSION=.*/ARG GO_VERSION=$GO_VERS/" Dockerfile .devcontainer/Dockerfile
+sed -i "s/^ARG GO_FEATURE_VERSION=.*/ARG GO_FEATURE_VERSION=$GO_LANG_VERSION/" \
+    .devcontainer/Dockerfile
+sed -i "s/\"GO_VERSION\": \"[^\"]*\"/\"GO_VERSION\": \"$GO_VERS\"/" \
+    .devcontainer/devcontainer.json
+sed -i "s/go-version: \"[^\"]*\"/go-version: \"$GO_VERS\"/" \
+    .github/workflows/*.yml
+sed -E -i "s/Go [0-9]+(\.[0-9]+){1,2}/Go $GO_VERS/g" \
+    .devcontainer/README.md
+sed -E -i "s/Go](https:\/\/go.dev\/doc\/install) [0-9]+(\.[0-9]+){1,2}/Go](https:\/\/go.dev\/doc\/install) $GO_VERS/" \
+    README.md
+sed -E -i "s/Install Go [0-9]+(\.[0-9]+){1,2}/Install Go $GO_VERS/" \
+    RELEASE.md
+sed -E -i "s/requires Go [0-9]+(\.[0-9]+){1,2}/requires Go $GO_VERS/" \
+    site/index.md
