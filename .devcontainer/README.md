@@ -4,8 +4,9 @@ This devcontainer is the reproducible contributor environment for the project.
 
 It provides:
 
-* Go 1.26 on Debian Bookworm.
-* Common Go tooling.
+* Go 1.26.5 on Debian Bookworm.
+* Pinned Go editor and debugging tools plus the repository tools installed by
+    `make bootstrap`.
 * GitHub CLI for pull request and release workflows.
 * Docker-outside-of-Docker for optional local container checks.
 * VS Code recommendations for Go, Markdown, CSpell, GitHub Actions, containers,
@@ -14,7 +15,8 @@ It provides:
 Docker-outside-of-Docker exposes the host Docker socket inside the container,
 which means the devcontainer should be treated as a trusted development
 environment. Keep local secrets in your editor, Codespaces secrets, or ignored
-shell environment files instead of adding required container run arguments.
+shell environment files. The shared configuration has no required host mounts
+or environment files, so a clean clone can start without local preparation.
 
 ## Local Runtime Options
 
@@ -26,17 +28,17 @@ developer-specific local patches to `devcontainer.json`:
 * host Git configuration;
 * a relaxed seccomp profile.
 
-### Preliminary: ignoring changes to `devcontainer.json`
+### Preliminary: managing a local patch
 
-Before making local-only changes, tell Git to leave your local devcontainer
-edits alone:
+If you choose to edit the tracked configuration locally, keep that patch out of
+commits. As an optional convenience, tell Git to suppress routine status output:
 
 ```bash
 git update-index --skip-worktree .devcontainer/devcontainer.json
 ```
 
-Then, before intentionally editing the shared devcontainer config again,
-re-enable Git tracking for the file:
+Remember that `skip-worktree` can hide upstream changes. Re-enable normal
+tracking before pulling or intentionally editing the shared configuration:
 
 ```bash
 git update-index --no-skip-worktree .devcontainer/devcontainer.json
