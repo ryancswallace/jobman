@@ -1,0 +1,152 @@
+# Pull request labels applied by actions/labeler.
+# Every key in this file must have a matching definition in .github/labels.yml.
+
+# Skip path-based labeling for unusually broad changes instead of flooding a
+# pull request with labels. See actions/labeler for the precise limit behavior.
+changed-files-labels-limit: "8"
+max-files-changed: "200"
+
+go:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.go"
+          - go.mod
+          - go.sum
+          - go.version
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - main.go
+          - "jobman/**/*.go"
+
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "jobman/**/*.go"
+
+configuration:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "jobman/config*.go"
+          - "etc/jobman/**"
+
+documentation:
+  - head-branch:
+      - "^docs?(?:/|$)"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+          - "site/**"
+          - "assets/**"
+          - CITATION.cff
+
+tests:
+  - head-branch:
+      - "^tests?(?:/|$)"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*_test.go"
+          - "tests/**"
+          - coverage.txt
+
+performance:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/perf/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - .github/dependabot.yml
+          - .github/labeler.yml
+          - .github/labels.yml
+
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+
+dependencies:
+  - head-branch:
+      - "^dependabot/"
+      - "^deps?(?:/|$)"
+  - changed-files:
+      - any-glob-to-any-file:
+          - go.mod
+          - go.sum
+          - go.version
+          - .github/dependabot.yml
+          - ".devcontainer/devcontainer-lock.json"
+
+containers:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Dockerfile*"
+          - ".dockerignore"
+          - "*.dockerignore"
+          - ".devcontainer/Dockerfile"
+
+packaging:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .goreleaser.yml
+          - .releaserc
+          - Dockerfile.goreleaser
+          - Dockerfile
+          - .dockerignore
+          - LICENSE
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - SECURITY.md
+          - .github/dependabot.yml
+          - .github/workflows/codeql.yml
+          - .github/workflows/scorecard.yml
+          - Dockerfile
+          - Dockerfile.goreleaser
+
+automation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - Makefile
+          - "devel/**"
+          - .golangci.yml
+          - cspell.json
+          - .editorconfig
+          - .gitattributes
+          - "Dockerfile*"
+          - "*.dockerignore"
+
+dev-environment:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".devcontainer/**"
+          - ".vscode/**"
+          - .editorconfig
+
+release:
+  - head-branch:
+      - "^(?:release|prepare-release)(?:/|$)"
+  - changed-files:
+      - any-glob-to-any-file:
+          - CHANGELOG.md
+          - RELEASE.md
+          - .goreleaser.yml
+          - .releaserc
+          - .github/workflows/release.yml
+          - Dockerfile.goreleaser
+
+maintenance:
+  - head-branch:
+      - "^(?:chore|maintenance)(?:/|$)"
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - AGENTS.md
+          - CODEOWNERS
+          - .gitattributes
+          - .gitignore

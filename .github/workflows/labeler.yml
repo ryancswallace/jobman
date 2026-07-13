@@ -1,0 +1,65 @@
+---
+name: Labels
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  push:
+    branches:
+      - main
+    paths:
+      - .github/labels.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: labels-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  label-pull-request:
+    name: Label pull request
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      # This job intentionally does not check out or execute pull request code.
+      - name: Apply pull request labels
+        uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213 # v6.1.0
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+  sync-repository-labels:
+    name: Sync repository labels
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout label definitions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/labels.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Synchronize repository labels
+        uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2.3.3
+        with:
+          config-file: .github/labels.yml
+          delete-other-labels: false
