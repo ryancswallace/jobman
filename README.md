@@ -33,6 +33,39 @@ The target command, state, and configuration model is documented in the
 [design specification](docs/design/SPEC.md). Generated man pages and shell
 completions are included in release archives.
 
+## Available today
+
+The first production-shaped slice supports one detached direct command per
+job, durable inspection, lossless stdout/stderr capture, and cancellation:
+
+```console
+$ jobman run --name example -- sh -c 'printf "hello\\n"; sleep 30'
+01980f4c-7b2a-7a6f-8c10-0123456789ab
+$ jobman status 01980f4c
+01980f4c-7b2a-7a6f-8c10-0123456789ab  example  running
+$ jobman logs --stream stdout 01980f4c
+hello
+$ jobman cancel 01980f4c
+01980f4c-7b2a-7a6f-8c10-0123456789ab  stopping
+```
+
+The implemented commands are `run`, `list`, `status`, `show`, `logs`, and
+`cancel`. Inspection commands support versioned JSON where documented by
+`--help`. Selectors accept a canonical ID, a unique ID prefix of at least eight
+characters, or an unambiguous exact name. Target arguments are passed directly
+to the operating system and are never joined into an implicit shell command.
+
+By default, metadata and logs live in the platform's private per-user state
+directory. Use `--state-dir PATH` or `JOBMAN_STATE_DIR` to select another local
+directory. SQLite metadata and raw log files are implementation compatibility
+surfaces described in the [persisted-schema reference].
+
+Linux has assembled-binary lifecycle coverage. macOS and Windows builds are
+kept compiling, but their pre-v1 process-management gaps are listed in the
+[platform-capability record]. Retries, waits, dependencies, concurrency pools,
+timeouts, rotation, pause/resume, notifications, and live input remain planned
+features rather than hidden or partially functional flags.
+
 ## Installation
 
 ### Release archives and native packages
@@ -129,3 +162,5 @@ Report suspected vulnerabilities privately as described in the security policy.
 Jobman is available under the [MIT License](LICENSE).
 
 [GitHub Releases page]: https://github.com/ryancswallace/jobman/releases
+[persisted-schema reference]: docs/design/PERSISTED_SCHEMA.md
+[platform-capability record]: docs/design/PLATFORM_CAPABILITIES.md
