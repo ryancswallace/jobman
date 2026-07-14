@@ -54,7 +54,7 @@ archives:
       - README.md
       - CHANGELOG.md
       - src: etc/jobman/jobman.yml
-        dst: etc/jobman
+        dst: etc/jobman/jobman.yml
       - src: docs/manpage/jobman*.1
         dst: docs/manpage
       - src: docs/completions/**
