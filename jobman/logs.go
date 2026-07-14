@@ -4,18 +4,36 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/ryancswallace/jobman/internal/app"
 )
 
-var logsCmd = &cobra.Command{
-	Use:   "logs",
-	Short: "Read output captured for a job",
-	Long:  "Print the standard output and standard error retained for a managed job.",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		fmt.Fprintln(cmd.OutOrStdout(), "logs called")
-	},
-}
+func newLogsCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+	stream := string(app.LogBoth)
+	command := &cobra.Command{
+		Use:   "logs JOB",
+		Short: "Read output captured for a job",
+		Args:  usageArgs(cobra.ExactArgs(1)),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			selected := app.LogStream(stream)
+			if selected != app.LogStdout && selected != app.LogStderr && selected != app.LogBoth {
+				return usageError(fmt.Errorf("invalid --stream %q: expected stdout, stderr, or both", stream))
+			}
 
-func init() {
-	JobmanRootCmd.AddCommand(logsCmd)
+			return withBackend(command, dependencies, root, func(backend app.Backend) error {
+				content, err := backend.ReadLogs(command.Context(), arguments[0], selected)
+				if err != nil {
+					return err
+				}
+				if _, err := command.OutOrStdout().Write(content); err != nil {
+					return fmt.Errorf("write job logs: %w", err)
+				}
+
+				return nil
+			})
+		},
+	}
+	command.Flags().StringVar(&stream, "stream", stream, "select stdout, stderr, or both")
+
+	return command
 }
