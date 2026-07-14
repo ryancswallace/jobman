@@ -1,8 +1,8 @@
 # ADR-0002: Use SQLite metadata and filesystem-backed logs
 
-Status: proposed  
-Date: 2026-07-14  
-Owners: Jobman maintainers  
+Status: accepted
+Date: 2026-07-14
+Owners: Jobman maintainers
 Specification: [Persistence and concurrency](../SPEC.md#7-persistence-and-concurrency)
 
 ## Context
@@ -287,7 +287,7 @@ administration.
 - Support requests must collect the database schema/version and integrity
   output, never the database or logs by default because they may be sensitive.
 
-## Validation required before acceptance
+## Validation required before stable release
 
 - Verify the exact bundled SQLite version and WAL-reset fix.
 - Compile database code for every release GOOS/GOARCH and run CRUD/migration

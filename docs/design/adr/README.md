@@ -7,8 +7,8 @@ ADRs explain how and why the implementation intends to satisfy it.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| [0001](0001-per-job-supervisor.md) | Proposed | Use one detached supervisor process per active job. |
-| [0002](0002-sqlite-metadata-and-filesystem-logs.md) | Proposed | Use pure-Go SQLite for metadata and private filesystem files for logs. |
+| [0001](0001-per-job-supervisor.md) | Accepted | Use one detached supervisor process per active job. |
+| [0002](0002-sqlite-metadata-and-filesystem-logs.md) | Accepted | Use pure-Go SQLite for metadata and private filesystem files for logs. |
 
 ## Statuses
 

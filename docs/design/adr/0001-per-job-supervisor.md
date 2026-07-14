@@ -1,8 +1,8 @@
 # ADR-0001: Use one detached supervisor process per active job
 
-Status: proposed  
-Date: 2026-07-14  
-Owners: Jobman maintainers  
+Status: accepted
+Date: 2026-07-14
+Owners: Jobman maintainers
 Specification: [Execution architecture](../SPEC.md#6-execution-architecture)
 
 ## Context
@@ -224,7 +224,7 @@ secret is logged. A malformed private invocation cannot choose an executable,
 working directory, environment, or log path independently of the durable job
 record.
 
-## Validation required before acceptance
+## Validation required before stable release
 
 - Linux, macOS, and Windows launch/acknowledgement spike.
 - Terminal and SSH disconnection test without inherited terminal handles.
