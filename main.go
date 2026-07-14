@@ -31,6 +31,6 @@ import (
 func main() {
 	if err := jobman.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(jobman.ExitCode(err))
 	}
 }
