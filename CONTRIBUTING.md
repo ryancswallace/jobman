@@ -43,7 +43,8 @@ Useful focused checks include:
 - `make lint` and `make format-check` for Go source quality;
 - `make workflow-check shellcheck` for automation changes;
 - `make vulncheck` for reachable Go vulnerabilities;
-- `make fuzz` to fuzz configuration parsing (override `FUZZ_TIME` as needed);
+- `make fuzz` to fuzz strict persisted-model parsing (override
+  `FUZZ_PACKAGE`, `FUZZ_TARGET`, or `FUZZ_TIME` as needed);
 - `make release-build` to compile every supported release platform;
 - `make snapshot` for release or packaging changes;
 - `make docker-image` for runtime-image changes.

@@ -54,7 +54,8 @@ IMAGE ?= $(PROJECT):local
 GO_BUILD_FLAGS ?= -trimpath
 GO_LDFLAGS ?= -s -w -buildid=
 GO_TEST_FLAGS ?= -race -shuffle=on
-FUZZ_TARGET ?= FuzzConfigYAML
+FUZZ_PACKAGE ?= ./internal/model
+FUZZ_TARGET ?= FuzzParseJobSpecJSON
 FUZZ_TIME ?= 30s
 
 .PHONY: help
@@ -212,9 +213,9 @@ perftest: ## Run benchmarks when the performance suite contains Go tests.
 bench: perftest
 
 .PHONY: fuzz
-fuzz: ## Fuzz a selected Go target (FUZZ_TARGET, FUZZ_TIME).
+fuzz: ## Fuzz a selected Go target (FUZZ_PACKAGE, FUZZ_TARGET, FUZZ_TIME).
 	$(GO) test -run '^$$' -fuzz '^$(FUZZ_TARGET)$$' \
-		-fuzztime=$(FUZZ_TIME) ./jobman
+		-fuzztime=$(FUZZ_TIME) $(FUZZ_PACKAGE)
 
 .PHONY: test
 test: unittest e2etest perftest ## Run unit, end-to-end, and performance tests.

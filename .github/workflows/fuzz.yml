@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - ".github/workflows/fuzz.yml"
+      - "internal/**/*.go"
       - "jobman/**/*.go"
       - go.mod
       - go.sum
@@ -24,7 +25,7 @@ concurrency:
 
 jobs:
   fuzz:
-    name: Fuzz configuration parsing
+    name: Fuzz persisted model parsing
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
