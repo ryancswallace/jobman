@@ -52,7 +52,10 @@ BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE ?= $(PROJECT):local
 
 GO_BUILD_FLAGS ?= -trimpath
-GO_LDFLAGS ?= -s -w -buildid=
+GO_LDFLAGS ?= -s -w -buildid= \
+	-X github.com/ryancswallace/jobman/internal/buildinfo.Version=$(VERSION) \
+	-X github.com/ryancswallace/jobman/internal/buildinfo.Commit=$(COMMIT) \
+	-X github.com/ryancswallace/jobman/internal/buildinfo.Date=$(BUILD_DATE)
 GO_TEST_FLAGS ?= -race -shuffle=on
 FUZZ_PACKAGE ?= ./internal/model
 FUZZ_TARGET ?= FuzzParseJobSpecJSON

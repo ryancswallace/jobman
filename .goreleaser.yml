@@ -20,6 +20,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -buildid=
+      - -X github.com/ryancswallace/jobman/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/ryancswallace/jobman/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/ryancswallace/jobman/internal/buildinfo.Date={{ .Date }}
     goos:
       - linux
       - darwin

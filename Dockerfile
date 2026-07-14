@@ -4,8 +4,15 @@
 # --build-arg when testing a toolchain or base-image upgrade.
 ARG GO_VERSION=1.26.5
 ARG ALPINE_VERSION=3.24
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION}@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS build
+
+ARG VERSION
+ARG VCS_REF
+ARG BUILD_DATE
 
 RUN apk add --no-cache ca-certificates git
 
@@ -29,7 +36,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
       -trimpath \
-      -ldflags="-s -w -buildid=" \
+      -ldflags="-s -w -buildid= \
+        -X github.com/ryancswallace/jobman/internal/buildinfo.Version=${VERSION} \
+        -X github.com/ryancswallace/jobman/internal/buildinfo.Commit=${VCS_REF} \
+        -X github.com/ryancswallace/jobman/internal/buildinfo.Date=${BUILD_DATE}" \
       -o /out/jobman \
       .
 
@@ -44,9 +54,9 @@ RUN apk add --no-cache bash ca-certificates tini tzdata \
     && mkdir -p /home/jobman/.config/jobman /work \
     && chown -R jobman:jobman /home/jobman /work
 
-ARG VERSION=dev
-ARG VCS_REF=unknown
-ARG BUILD_DATE=unknown
+ARG VERSION
+ARG VCS_REF
+ARG BUILD_DATE
 LABEL org.opencontainers.image.title="jobman" \
       org.opencontainers.image.description="A daemon-less command line job manager" \
       org.opencontainers.image.url="https://github.com/ryancswallace/jobman" \
