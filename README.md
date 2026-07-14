@@ -29,9 +29,9 @@ and success or failure notifications without requiring a resident service.
 - Make retry, timeout, waiting, and notification policies composable.
 - Remain useful as a native binary, package-manager installation, or container.
 
-The target command and configuration model is documented in
-[docs/design](docs/design/README.md). Generated man pages and shell completions
-are included in release archives.
+The target command, state, and configuration model is documented in the
+[design specification](docs/design/SPEC.md). Generated man pages and shell
+completions are included in release archives.
 
 ## Installation
 

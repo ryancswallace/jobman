@@ -35,5 +35,8 @@ profile.cov
 go.work
 go.work.sum
 
+# Work-in-progress files
+*_WIP.*
+
 # Notes
 TODO.md

@@ -1,8 +1,16 @@
 # Jobman design
 
-This document records the target behavior and architectural constraints for
-Jobman. It is a design contract, not a claim that every feature is implemented.
-User-facing behavior should graduate into command help, tests, and the published
+The [formal design specification](SPEC.md) records Jobman's target behavior,
+architecture, requirements, implementation milestones, and product decisions.
+It is the authoritative design contract, not a claim that every
+feature is implemented. This page is a short overview; if the two documents
+conflict, the formal specification controls.
+
+Implementation is guided by the
+[initial vertical-slice plan](IMPLEMENTATION_PLAN.md) and the indexed
+[architecture decision records](adr/README.md).
+
+User-facing behavior should graduate into command help, tests, and published
 documentation as it becomes stable.
 
 ## Product model
@@ -17,15 +25,23 @@ cleaning jobs must not depend on a continuously running privileged service.
 Background execution may use a detached worker process, but all durable state
 must remain inspectable after the submitting terminal exits.
 
+Per-job supervisors coordinate through the local transactional store. There is
+no shared scheduler, recovery daemon, or remote-control listener; remote users
+invoke Jobman through an existing channel such as SSH.
+
 ## Target commands
 
 | Command | Purpose |
 | --- | --- |
 | `jobman run COMMAND [ARG...]` | Submit and execute a managed command. |
 | `jobman list` | List jobs and their current state. |
+| `jobman status JOB` | Show a concise current status. |
 | `jobman show JOB` | Show a job and its run history. |
 | `jobman logs JOB` | Read or follow recorded output. |
-| `jobman kill JOB` | Request termination with a configurable signal. |
+| `jobman cancel JOB` | Durably request cancellation of a job. |
+| `jobman pause JOB` | Pause policy progress and best-effort suspend an active process tree. |
+| `jobman resume JOB` | Resume a paused job. |
+| `jobman input JOB` | Stream local standard input to an active run. |
 | `jobman clean` | Remove eligible completed jobs and logs. |
 | `jobman config` | Inspect the effective configuration. |
 
@@ -38,6 +54,9 @@ match multiple jobs require an explicit selection policy or an error.
 A job specification may combine:
 
 - wait conditions based on time, files, or executable probes;
+- dependencies on another job's success, failure, selected outcome, or any
+  terminal result;
+- store-wide and named-pool integer concurrency limits;
 - an abort deadline for waiting or retrying;
 - accepted success and failure exit codes;
 - maximum run, success, or failure counts;
@@ -46,6 +65,12 @@ A job specification may combine:
 - success, retry, and failure notification callbacks;
 - log retention limits by age, size, job count, or run count.
 
+Concurrency admission is local and transactional. Every active run consumes a
+configurable number of slots from the store-wide limit and, when selected, one
+named pool. Groups remain descriptive labels rather than hidden queues. These
+limits do not perform CPU/GPU discovery, resource placement, preemption, or
+fair-share scheduling. Limits default to unlimited until configured.
+
 Policy validation happens before background execution. Invalid combinations
 must fail without creating partial state. Durations and timestamps use Go's
 documented duration syntax and RFC 3339 unless a command explicitly documents
@@ -53,25 +78,23 @@ another representation.
 
 ## State and concurrency
 
-The default store is local and per-user. Updates must be atomic, tolerate an
-interrupted writer, and coordinate concurrent Jobman processes. State schema
-versions are recorded so migrations can be explicit and testable.
-
-A practical layout is:
+The default store is local and per-user. Transactional metadata is stored in
+SQLite, while raw stdout/stderr and their ordering index use private filesystem
+files. Updates must be atomic, tolerate an interrupted writer, and coordinate
+concurrent Jobman processes. State schema versions are recorded so migrations
+can be explicit and testable. A simplified layout is:
 
 ```text
 state/
-  version
-  jobs/
+  jobman.db
+  jobman.db-wal
+  jobman.db-shm
+  logs/
     <job-id>/
-      spec
-      state
-      jobman.log
-      runs/
-        <run-number>/
-          state
-          jobman.log
-          output/
+      <run-number>/
+        stdout.log
+        stderr.log
+        chunks.idx
 ```
 
 Files containing commands, environment values, logs, or callback data may be
@@ -84,6 +107,10 @@ output must not expose secret values.
 - Terminal hangup does not terminate a deliberately detached job.
 - Stop requests target the process group and escalate only according to an
   explicit policy.
+- Pause/resume operates on a verified process tree where the platform exposes a
+  safe suspension mechanism; unsupported platforms report that limitation.
+- Opted-in detached jobs may accept bounded binary input through a private
+  local supervisor channel near the end of v1 implementation.
 - Jobman forwards container and operating-system termination signals.
 - State transitions remain valid if either Jobman or the managed command exits
   unexpectedly.
@@ -110,8 +137,10 @@ Precedence is explicit and testable:
 1. command-line flags;
 2. environment variables;
 3. an explicitly selected configuration file;
-4. the per-user configuration file;
-5. built-in defaults.
+4. an explicitly trusted project configuration;
+5. the per-user configuration file;
+6. the system configuration file; and
+7. built-in defaults.
 
 Unknown keys and invalid values should produce actionable errors. Configuration
 paths follow platform conventions, with `XDG_CONFIG_HOME` honored on Unix-like
