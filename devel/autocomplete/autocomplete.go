@@ -17,18 +17,19 @@ type completion struct {
 }
 
 func genAutocomplete(outputRoot string) error {
+	command := jobman.NewCommand(jobman.Dependencies{})
 	completions := []completion{
 		{
 			path:     filepath.Join(outputRoot, "docs", "completions", "bash", "jobman"),
-			generate: jobman.JobmanRootCmd.GenBashCompletion,
+			generate: command.GenBashCompletion,
 		},
 		{
 			path:     filepath.Join(outputRoot, "docs", "completions", "powershell", "jobman.ps1"),
-			generate: jobman.JobmanRootCmd.GenPowerShellCompletion,
+			generate: command.GenPowerShellCompletion,
 		},
 		{
 			path:     filepath.Join(outputRoot, "docs", "completions", "zsh", "_jobman"),
-			generate: jobman.JobmanRootCmd.GenZshCompletion,
+			generate: command.GenZshCompletion,
 		},
 	}
 
