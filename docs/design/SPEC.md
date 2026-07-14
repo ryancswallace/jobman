@@ -100,10 +100,10 @@ within a job.
 
 ```console
 $ jobman run --name backup -- ./backup.sh /srv/data
-01JZ8M2A7R6S1N40YF7ETB8VNE
-$ jobman status 01JZ8M2A
+01980f4c-7b2a-7a6f-8c10-0123456789ab
+$ jobman status 01980f4c
 backup  running  run=1  elapsed=2m14s
-$ jobman logs --follow 01JZ8M2A
+$ jobman logs --follow 01980f4c
 ...
 ```
 
@@ -135,8 +135,8 @@ Jobman invocation.
 ### 3.4 Scripted inspection
 
 ```console
-$ jobman show --json 01JZ8M2A
-{"schema_version":1,"job":{...}}
+$ jobman show --json 01980f4c
+{"schema_version":1,"data":{"job":{...}}}
 ```
 
 JSON goes to standard output. Diagnostics go to standard error. Color,
@@ -147,10 +147,10 @@ mode.
 
 ```console
 $ jobman run --name prepare -- ./prepare-data
-01JZ8M2A7R6S1N40YF7ETB8VNE
-$ jobman run --name analyze --after-success 01JZ8M2A \
+01980f4c-7b2a-7a6f-8c10-0123456789ab
+$ jobman run --name analyze --after-success 01980f4c \
     --pool experiments --slots 2 -- ./analyze
-01JZ8N00KRH01R1ES6P3D9P7MW
+01980f4d-1234-7bcd-9e20-abcdef012345
 ```
 
 The second job becomes eligible only after the first succeeds. Its supervisor
