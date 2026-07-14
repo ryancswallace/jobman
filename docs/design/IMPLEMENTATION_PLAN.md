@@ -1,8 +1,8 @@
 # Initial vertical-slice implementation plan
 
-Status: proposed for maintainer review  
-Scope: first end-to-end Jobman implementation slice  
-Specification: [Jobman design specification](SPEC.md)  
+Status: initial Linux slice implemented; portability and hardening in progress
+Scope: first end-to-end Jobman implementation slice
+Specification: [Jobman design specification](SPEC.md)
 Decisions: [ADR-0001](adr/0001-per-job-supervisor.md),
 [ADR-0002](adr/0002-sqlite-metadata-and-filesystem-logs.md)
 
@@ -20,7 +20,7 @@ later milestones. Its feature set is deliberately narrow.
 
 ### 1.1 Review focus
 
-Approval of this plan also approves these proposed slice-level choices:
+The accepted plan establishes these slice-level choices:
 
 - implement all six scoped commands before adding retry or wait flags;
 - use UUIDv7 as the canonical opaque identifier format;
@@ -32,8 +32,29 @@ Approval of this plan also approves these proposed slice-level choices:
 - permit Linux-first end-to-end implementation while macOS and Windows remain
   compiling, explicitly gated platform work during pre-1.0 development.
 
-Reviewers should challenge these choices now, before migration 1 or the log
-index becomes persistent compatibility surface.
+These choices are now implemented as pre-1.0 compatibility surfaces. Any
+challenge should be resolved before the first release; after a format ships,
+changes require a new migration or format version rather than rewriting
+history.
+
+### 1.2 Implementation checkpoint
+
+This checkpoint records evidence as of 2026-07-14. The
+[persisted-schema reference](PERSISTED_SCHEMA.md) and
+[platform capability record](PLATFORM_CAPABILITIES.md) contain the detailed
+handoff. "Implemented" below means present for the narrow scope in Section 2;
+it does not include any deferred specification feature.
+
+| Workstream | Current evidence | Remaining gate |
+| --- | --- | --- |
+| CLI construction | The six scoped commands use an isolated, dependency-injected Cobra tree. Unit tests cover help, argument boundaries, environment parsing, JSON envelopes, binary log output, cancellation dispatch, and exit-code mapping. | Regenerate and review published command documentation as the pre-1.0 CLI contract evolves. |
+| Model and SQLite store | UUIDv7 IDs, canonical immutable specifications, transition rules, migration 1, snapshot/event transactions, compare-and-swap updates, selectors, bounded busy handling, and Unix privacy checks are implemented and unit tested. | Add process-level abrupt-writer and broader fault/property tests; retain migration upgrade tests as later schemas are added. |
+| Raw logs and executor | Separate raw streams and the checksummed version 1 index are implemented. Tests cover binary bytes, observed ordering, concurrent appends, a torn tail, corruption, an unindexed raw tail, and malformed-index fuzz input. Direct execution preserves arguments. | Add supervisor-crash injection at log-write boundaries and sustained high-volume backpressure and recovery tests. |
+| Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, one-run orchestration, signal-driven target shutdown, start-failure handling, and terminal finalization are implemented. A killed-supervisor end-to-end case is reconciled to `lost`. | Add lost-ack and additional crash-boundary process tests plus a real terminal or SSH-disconnection test. |
+| Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, shell-and-child process-group cancellation, concurrent reader/canceller, and stale killed-supervisor scenarios. Process identity uses start time and boot ID. | Add grandchild-tree, forced-escalation, actual PID-reuse, and full session-hangup scenarios. |
+| macOS portability | Platform adapters compile and select native session, process-group, identity, and signal APIs. | Run the full suite natively and close every gap in the platform capability record before claiming support. |
+| Windows portability | Platform adapters compile and select detached-process and creation-time APIs. | Implement Job Object tree ownership, graceful escalation, restart-scoped identity, and user-only ACL enforcement, then run native tests. |
+| Repository handoff | The aggregate `make check` passes, including race-enabled unit/end-to-end tests, vulnerability analysis, generated docs, spelling, the production-equivalent site build, and all release build targets. Model/log-index fuzzing, a complete non-publishing release snapshot, and the runtime container build also pass. | The complete fault matrix and native macOS/Windows validation remain stable-release gates. |
 
 ## 2. User-visible scope
 
@@ -92,7 +113,9 @@ known incompatible schema, but they MUST NOT expose nonfunctional CLI flags.
 
 ## 3. Success criteria
 
-The vertical slice is complete when all of the following are true:
+The vertical slice is complete when all of the following are true. The current
+evidence and open gaps are tracked in Section 1.2; this list remains a gate and
+must not be read as a declaration that every item already passes.
 
 1. A command submitted from a terminal continues after that terminal closes.
 2. A separate invocation can inspect the active job and read growing logs.
@@ -347,8 +370,10 @@ normalized through injected dependencies.
 
 ### Phase 0: validate architectural assumptions
 
-These disposable spikes must complete before production packages depend on the
-results:
+The original plan required these disposable spikes before production packages
+depended on their results. Linux assumptions now have production and native
+test evidence, but native macOS and Windows spikes and the full crash matrix
+remain open. That known deviation prevents a portable-support claim.
 
 1. **Supervisor detach spike:** demonstrate launch, pipe acknowledgement,
    process-handle release, terminal closure survival, and no inherited terminal
@@ -470,14 +495,13 @@ never valid unless the target result was durably observed.
 
 ## 13. Review checkpoints
 
-Maintainer review is required before:
-
-1. accepting the ADRs and beginning production code;
-2. committing migration 1 or a persisted log-index format;
-3. merging private supervisor mode and platform launch code;
-4. declaring selector, JSON, or exit-code behavior stable; and
-5. expanding the slice into dependencies, concurrency admission, retries,
-   waits, timeouts, pause/resume, live input, or notifications.
+| Checkpoint | Status |
+| --- | --- |
+| Accept ADR-0001 and ADR-0002 before production code. | Complete: both ADRs are accepted. |
+| Review migration 1 and the persisted log-index format. | Implemented and documented for pre-1.0 use. Compatibility review remains required before declaring either format stable. |
+| Review private supervisor mode and platform launch code. | Linux implementation exists; native macOS and Windows review is open. |
+| Declare selector, JSON, or exit-code behavior stable. | Open. The implemented contracts remain pre-1.0 and are not declared stable by this plan. |
+| Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Open by design. None of these deferred features is part of the implemented slice. |
 
 Schema and supervisor reviews include a failure-sequence walkthrough, not only
 an API or happy-path review.
@@ -500,7 +524,8 @@ an API or happy-path review.
 
 ## 15. Deliverables
 
-The slice produces:
+The completed slice is expected to produce the following. Section 1.2 records
+which deliverables have evidence and which remain release gates:
 
 - accepted ADR-0001 and ADR-0002 with spike findings;
 - production package boundaries described above;

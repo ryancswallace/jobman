@@ -10,6 +10,12 @@ Implementation is guided by the
 [initial vertical-slice plan](IMPLEMENTATION_PLAN.md) and the indexed
 [architecture decision records](adr/README.md).
 
+The implemented slice's storage formats and measured portability are recorded
+separately in the [persisted-schema reference](PERSISTED_SCHEMA.md) and
+[platform capability record](PLATFORM_CAPABILITIES.md). Those records describe
+current evidence and gaps; they do not imply that deferred specification
+features are implemented.
+
 User-facing behavior should graduate into command help, tests, and published
 documentation as it becomes stable.
 
