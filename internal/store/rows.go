@@ -26,9 +26,12 @@ const runColumns = `
     reserved_at_ns, started_at_ns, stop_requested_at_ns, stop_reason, completed_at_ns,
     process_pid, process_identity_json,
     exit_code, exit_signal, exit_platform_reason, exit_observed_at_ns,
-    stdout_path, stderr_path, index_path, stdout_size, stderr_size,
-    log_index_version, log_integrity, recording_health, log_diagnostic_code,
-    last_diagnostic_code`
+	stdout_path, stderr_path, index_path, stdout_size, stderr_size,
+	log_index_version, log_integrity, recording_health, log_diagnostic_code,
+	(SELECT pruned_at_ns FROM run_log_pruning WHERE run_id = runs.id),
+	(SELECT removed_files FROM run_log_pruning WHERE run_id = runs.id),
+	(SELECT removed_bytes FROM run_log_pruning WHERE run_id = runs.id),
+	last_diagnostic_code`
 
 const supervisorColumns = `
     id, job_id, revision, process_pid, process_identity_json,
@@ -156,6 +159,7 @@ func populateOptionalJobFields(
 	return nil
 }
 
+//nolint:gocognit,cyclop // Decoding a normalized run row must validate every optional persisted field.
 func scanRun(row rowScanner) (model.RunState, error) {
 	var (
 		id                  string
@@ -185,6 +189,9 @@ func scanRun(row rowScanner) (model.RunState, error) {
 		logIntegrity        string
 		recordingHealth     string
 		logDiagnosticCode   sql.NullString
+		logsPrunedAt        sql.NullInt64
+		logsPrunedFiles     sql.NullInt64
+		logsPrunedBytes     sql.NullInt64
 		lastDiagnosticCode  sql.NullString
 	)
 	if err := row.Scan(
@@ -215,6 +222,9 @@ func scanRun(row rowScanner) (model.RunState, error) {
 		&logIntegrity,
 		&recordingHealth,
 		&logDiagnosticCode,
+		&logsPrunedAt,
+		&logsPrunedFiles,
+		&logsPrunedBytes,
 		&lastDiagnosticCode,
 	); err != nil {
 		return model.RunState{}, err
@@ -233,6 +243,14 @@ func scanRun(row rowScanner) (model.RunState, error) {
 		return model.RunState{}, err
 	}
 	parsedRevision, err := uintFromDatabase("run revision", revision)
+	if err != nil {
+		return model.RunState{}, err
+	}
+	parsedPrunedFiles, err := optionalUintFromDatabase("pruned log file count", logsPrunedFiles)
+	if err != nil {
+		return model.RunState{}, err
+	}
+	parsedPrunedBytes, err := optionalUintFromDatabase("pruned log byte count", logsPrunedBytes)
 	if err != nil {
 		return model.RunState{}, err
 	}
@@ -259,6 +277,9 @@ func scanRun(row rowScanner) (model.RunState, error) {
 			Integrity:       model.LogIntegrity(logIntegrity),
 			RecordingHealth: model.RecordingHealth(recordingHealth),
 			DiagnosticCode:  logDiagnosticCode.String,
+			PrunedAt:        optionalTime(logsPrunedAt),
+			PrunedFiles:     parsedPrunedFiles,
+			PrunedBytes:     parsedPrunedBytes,
 		},
 		LastDiagnosticCode: lastDiagnosticCode.String,
 	}
@@ -380,6 +401,17 @@ func uintFromDatabase(field string, value int64) (uint64, error) {
 	}
 
 	return uint64(value), nil
+}
+
+func optionalUintFromDatabase(field string, value sql.NullInt64) (uint64, error) {
+	if !value.Valid {
+		return 0, nil
+	}
+	if value.Int64 < 0 {
+		return 0, fmt.Errorf("persisted %s must not be negative", field)
+	}
+
+	return uint64(value.Int64), nil
 }
 
 func databaseUint(field string, value uint64) (int64, error) {
