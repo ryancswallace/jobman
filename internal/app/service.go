@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/ryancswallace/jobman/internal/buildinfo"
 	"github.com/ryancswallace/jobman/internal/config"
+	"github.com/ryancswallace/jobman/internal/faultinject"
 	"github.com/ryancswallace/jobman/internal/liveinput"
 	"github.com/ryancswallace/jobman/internal/logstore"
 	"github.com/ryancswallace/jobman/internal/model"
@@ -81,31 +83,67 @@ func (service *Service) Close() error {
 	return service.store.Close()
 }
 
-// ApplyConfig synchronizes global and named-pool capacities. Reapplying an
-// unchanged effective configuration is safe; revisions remain an audit of
-// command-observed configuration.
-func (service *Service) ApplyConfig(ctx context.Context, configuration config.Config) error {
+// Doctor verifies the store and performs only explicitly requested,
+// conservative repair work. Recovery uses persisted job specifications and is
+// independent of the current configuration files.
+func (service *Service) Doctor(ctx context.Context, request DoctorRequest) (DoctorReport, error) {
+	report := DoctorReport{}
+	if request.BackupPath != "" {
+		if err := service.store.Backup(ctx, request.BackupPath); err != nil {
+			return report, err
+		}
+		report.BackupPath = request.BackupPath
+	}
+	health, err := service.store.CheckHealth(ctx, request.Repair)
+	report.Store = health
+	if err != nil {
+		return report, err
+	}
+	if !request.Repair {
+		return report, nil
+	}
+	if _, err := service.List(ctx); err != nil {
+		return report, fmt.Errorf("reconcile stale lifecycle state: %w", err)
+	}
+	report.StaleOwnershipReconciled = true
+	if err := supervisor.RecoverNotifications(ctx, service.store); err != nil {
+		return report, fmt.Errorf("recover notifications: %w", err)
+	}
+	report.NotificationsRecovered = true
+
+	return report, nil
+}
+
+// ConfigureInvocation installs non-durable policy needed by one command.
+func (service *Service) ConfigureInvocation(configuration config.Config) {
 	service.retention = configuration.Retention
 	service.knownPools = make(map[string]struct{}, len(configuration.Concurrency.Pools))
-	now := service.now().UTC()
+	for name := range configuration.Concurrency.Pools {
+		service.knownPools[name] = struct{}{}
+	}
+}
+
+// ApplyConfig synchronizes global and named-pool capacities. Reapplying an
+// unchanged effective configuration is idempotent and does not advance durable
+// revisions.
+func (service *Service) ApplyConfig(ctx context.Context, configuration config.Config) error {
+	service.ConfigureInvocation(configuration)
 	var global *uint64
 	if value, finite := configuration.Concurrency.MaxActiveSlots.Value(); finite {
 		converted := uint64(value)
 		global = &converted
 	}
-	if err := service.store.SetConcurrencyLimit(ctx, "", global, now); err != nil {
-		return fmt.Errorf("apply global concurrency limit: %w", err)
-	}
+	pools := make(map[string]*uint64, len(configuration.Concurrency.Pools))
 	for name, limit := range configuration.Concurrency.Pools {
-		service.knownPools[name] = struct{}{}
 		var capacity *uint64
 		if value, finite := limit.Value(); finite {
 			converted := uint64(value)
 			capacity = &converted
 		}
-		if err := service.store.SetConcurrencyLimit(ctx, name, capacity, now); err != nil {
-			return fmt.Errorf("apply concurrency pool %q: %w", name, err)
-		}
+		pools[name] = capacity
+	}
+	if err := service.store.SynchronizeConcurrencyLimits(ctx, global, pools, service.now().UTC()); err != nil {
+		return fmt.Errorf("synchronize concurrency limits: %w", err)
 	}
 
 	return nil
@@ -166,6 +204,7 @@ func (service *Service) Submit(
 	); submitErr != nil {
 		return model.JobState{}, translateStoreError("submit job", submitErr)
 	}
+	faultinject.Hit("job-insert-committed")
 
 	if _, launchErr := service.launch(ctx, supervisor.LaunchOptions{
 		Store:      service.store,
@@ -264,7 +303,7 @@ func (service *Service) resolveDependencies(
 
 // List returns jobs newest first.
 func (service *Service) List(ctx context.Context) ([]model.JobState, error) {
-	jobs, err := service.store.ListJobs(ctx, store.ListJobsOptions{})
+	jobs, err := service.store.ListJobs(ctx, store.ListJobsOptions{Limit: store.MaximumListLimit})
 	if err != nil {
 		return nil, translateStoreError("list jobs", err)
 	}
@@ -290,13 +329,97 @@ func (service *Service) List(ctx context.Context) ([]model.JobState, error) {
 		}
 	}
 	if changed {
-		jobs, err = service.store.ListJobs(ctx, store.ListJobsOptions{})
+		jobs, err = service.store.ListJobs(ctx, store.ListJobsOptions{Limit: store.MaximumListLimit})
 		if err != nil {
 			return nil, translateStoreError("reload reconciled jobs", err)
 		}
 	}
 
 	return jobs, nil
+}
+
+// ListJobs applies the v1 bounded list filters after lifecycle reconciliation.
+func (service *Service) ListJobs(ctx context.Context, request ListRequest) ([]ListedJob, error) {
+	if err := validateListRequest(request); err != nil {
+		return nil, err
+	}
+	jobs, err := service.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ListedJob, 0, request.Limit)
+	for _, job := range jobs {
+		if !jobMatchesListRequest(job, request) {
+			continue
+		}
+		listed := ListedJob{Job: job}
+		if request.ShowRuns {
+			listed.Runs, err = service.store.ListRuns(ctx, job.ID)
+			if err != nil {
+				return nil, translateStoreError("list job runs", err)
+			}
+		}
+		result = append(result, listed)
+		if len(result) == request.Limit {
+			break
+		}
+	}
+
+	return result, nil
+}
+
+func validateListRequest(request ListRequest) error {
+	if request.Limit < 1 || request.Limit > store.MaximumListLimit {
+		return fmt.Errorf("list jobs: limit must be between 1 and %d", store.MaximumListLimit)
+	}
+	if request.Active && request.Completed {
+		return fmt.Errorf("list jobs: active and completed filters are mutually exclusive: %w", ErrConflict)
+	}
+	if request.Phase != "" && !request.Phase.Valid() {
+		return fmt.Errorf("list jobs: invalid phase %q: %w", request.Phase, ErrConflict)
+	}
+	if request.Outcome != "" && !request.Outcome.Valid() {
+		return fmt.Errorf("list jobs: invalid outcome %q: %w", request.Outcome, ErrConflict)
+	}
+
+	return nil
+}
+
+func jobMatchesListRequest(job model.JobState, request ListRequest) bool {
+	policy := job.Spec.ExecutionPolicy()
+
+	return matchesOptional(request.Phase, job.Phase) &&
+		matchesOptional(request.Outcome, job.Outcome) &&
+		matchesOptional(request.Name, job.Spec.Name()) &&
+		matchesGroup(request.Group, policy.Groups) &&
+		matchesCompletion(request.Active, request.Completed, job.Phase) &&
+		matchesTimeBounds(request.SubmittedAfter, request.SubmittedBefore, job.SubmittedAt)
+}
+
+func matchesOptional[T comparable](filter, value T) bool {
+	var zero T
+
+	return filter == zero || filter == value
+}
+
+func matchesGroup(group string, groups []string) bool {
+	return group == "" || slices.Contains(groups, group)
+}
+
+func matchesCompletion(active, completed bool, phase model.JobPhase) bool {
+	if active {
+		return phase != model.JobPhaseCompleted
+	}
+	if completed {
+		return phase == model.JobPhaseCompleted
+	}
+
+	return true
+}
+
+func matchesTimeBounds(after, before, submitted time.Time) bool {
+	return (after.IsZero() || submitted.After(after)) &&
+		(before.IsZero() || submitted.Before(before))
 }
 
 // Inspect resolves one selector and returns a transactionally consistent job
@@ -431,6 +554,7 @@ func (service *Service) reconcileStaleOwnership(
 		PID:      owner.Process.PID,
 		Creation: owner.Process.CreationID,
 		Boot:     owner.Process.BootID,
+		Tree:     owner.Process.TreeID,
 	}
 	alive, aliveErr := service.targetAlive(identity)
 	if aliveErr != nil && !errors.Is(aliveErr, platform.ErrIdentityMismatch) {
@@ -589,8 +713,12 @@ func (service *Service) Cancel(ctx context.Context, selector string) (model.JobS
 	if err != nil {
 		return model.JobState{}, translateStoreError("request cancellation", err)
 	}
+	faultinject.Hit("cancellation-intent-committed")
 
-	return service.stopCancelledTarget(ctx, job, result)
+	stopped, err := service.stopCancelledTarget(ctx, job, result)
+	faultinject.Hit("cancellation-signal-sent")
+
+	return stopped, err
 }
 
 func (service *Service) reconcileBeforeCancellation(
@@ -623,6 +751,7 @@ func (service *Service) stopCancelledTarget(
 		PID:      result.Run.Process.PID,
 		Creation: result.Run.Process.CreationID,
 		Boot:     result.Run.Process.BootID,
+		Tree:     result.Run.Process.TreeID,
 	}
 	if result.Run.Phase == model.RunPhaseStopping && prior.Phase == model.JobPhasePaused {
 		if resumeErr := service.resumeTarget(identity); resumeErr != nil &&
@@ -679,6 +808,7 @@ func (service *Service) Pause(ctx context.Context, selector string) (model.JobSt
 	}
 	identity := platform.ProcessIdentity{
 		PID: result.Run.Process.PID, Creation: result.Run.Process.CreationID, Boot: result.Run.Process.BootID,
+		Tree: result.Run.Process.TreeID,
 	}
 	if err := service.pauseTarget(identity); err != nil {
 		rollback, rollbackErr := service.store.Resume(ctx, job.ID, service.now().UTC())
@@ -710,6 +840,7 @@ func (service *Service) Resume(ctx context.Context, selector string) (model.JobS
 	}
 	identity := platform.ProcessIdentity{
 		PID: result.Run.Process.PID, Creation: result.Run.Process.CreationID, Boot: result.Run.Process.BootID,
+		Tree: result.Run.Process.TreeID,
 	}
 	if err := service.resumeTarget(identity); err != nil {
 		rollback, rollbackErr := service.store.Pause(ctx, job.ID, service.now().UTC())
@@ -1025,7 +1156,7 @@ func (service *Service) FollowLogs(
 // retention policy. Job/run tombstone metadata remains available for history
 // and dependency evaluation.
 //
-//nolint:gocognit,cyclop // Cleanup intentionally keeps policy planning, state rechecks, deletion, and tombstoning together.
+//nolint:gocognit,cyclop,nestif // Cleanup intentionally keeps policy planning, state rechecks, deletion, and tombstoning together.
 func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanResult, error) {
 	var jobs []model.JobState
 	if request.Selector != "" {
@@ -1084,6 +1215,14 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 				selected[cleanupCandidateKey(item.candidate.JobID, item.candidate.RunNumber)] = struct{}{}
 			}
 		}
+		if maximumAge, finite := service.retention.CompletedMetadataMaxAge.Value(); finite {
+			metadataCutoff := now.Add(-maximumAge)
+			for _, item := range all {
+				if item.job.CompletedAt != nil && !item.job.CompletedAt.After(metadataCutoff) {
+					selected[cleanupCandidateKey(item.candidate.JobID, item.candidate.RunNumber)] = struct{}{}
+				}
+			}
+		}
 	} else {
 		cutoff := now.Add(-request.OlderThan)
 		for _, item := range all {
@@ -1138,6 +1277,28 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		result.Files += cleaned.Files
 		result.Bytes += cleaned.Bytes
 	}
+	if request.UsePolicy {
+		if maximumAge, finite := service.retention.CompletedMetadataMaxAge.Value(); finite {
+			cutoff := now.Add(-maximumAge)
+			for _, job := range jobs {
+				if job.Phase != model.JobPhaseCompleted || job.CompletedAt == nil || job.CompletedAt.After(cutoff) {
+					continue
+				}
+				pruned, pruneErr := service.store.PruneCompletedJobMetadata(
+					ctx,
+					job.ID,
+					cutoff,
+					request.DryRun,
+				)
+				if pruneErr != nil {
+					return result, fmt.Errorf("clean job metadata %s: %w", job.ID, pruneErr)
+				}
+				if pruned {
+					result.Jobs++
+				}
+			}
+		}
+	}
 
 	return result, nil
 }
@@ -1147,8 +1308,12 @@ func cleanupCandidateKey(jobID string, runNumber uint64) string {
 }
 
 func retentionPlanPolicy(configuration config.Retention) logstore.RetentionPolicy {
+	maximumAge := logstore.UnlimitedRetentionAge()
+	if value, finite := configuration.CompletedLogMaxAge.Value(); finite {
+		maximumAge = logstore.RetentionAgeLimit{Maximum: value}
+	}
 	return logstore.RetentionPolicy{
-		MaxAge:         logstore.UnlimitedRetentionAge(),
+		MaxAge:         maximumAge,
 		MaxJobs:        integerRetentionLimit(configuration.MaxJobs),
 		MaxRunsPerJob:  integerRetentionLimit(configuration.MaxRunsPerJob),
 		MaxBytesPerJob: byteRetentionLimit(configuration.MaxLogBytesPerJob),

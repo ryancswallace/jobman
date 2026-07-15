@@ -75,6 +75,33 @@ type Backend interface {
 	Cancel(context.Context, string) (model.JobState, error)
 }
 
+// QueryBackend exposes bounded list filtering without expanding the stable
+// minimal Backend interface used by embedders.
+type QueryBackend interface {
+	ListJobs(context.Context, ListRequest) ([]ListedJob, error)
+}
+
+// ListRequest is the v1 list filter contract. Zero times and empty strings do
+// not filter. Limit must be between one and the store maximum.
+type ListRequest struct {
+	Phase           model.JobPhase
+	Outcome         model.JobOutcome
+	Name            string
+	Group           string
+	SubmittedAfter  time.Time
+	SubmittedBefore time.Time
+	Active          bool
+	Completed       bool
+	Limit           int
+	ShowRuns        bool
+}
+
+// ListedJob contains one list row and optional ordered run history.
+type ListedJob struct {
+	Job  model.JobState   `json:"job"`
+	Runs []model.RunState `json:"runs,omitempty"`
+}
+
 // LifecycleBackend exposes optional v1 lifecycle controls to the CLI while
 // retaining the small base interface used by existing embedders.
 type LifecycleBackend interface {
@@ -101,10 +128,36 @@ type CleanupBackend interface {
 	Clean(context.Context, CleanRequest) (CleanResult, error)
 }
 
-// ConfigurableBackend applies store-wide mutable settings from the effective
-// configuration before a command performs work.
+// ConfigurationBackend applies effective policy to one short-lived invocation
+// without mutating durable store-wide configuration.
+type ConfigurationBackend interface {
+	ConfigureInvocation(config.Config)
+}
+
+// ConfigurableBackend explicitly applies store-wide mutable settings from the
+// effective configuration.
 type ConfigurableBackend interface {
 	ApplyConfig(context.Context, config.Config) error
+}
+
+// DoctorBackend exposes explicit store verification, backup, and conservative
+// recovery operations.
+type DoctorBackend interface {
+	Doctor(context.Context, DoctorRequest) (DoctorReport, error)
+}
+
+// DoctorRequest selects optional, explicitly authorized recovery work.
+type DoctorRequest struct {
+	Repair     bool
+	BackupPath string
+}
+
+// DoctorReport combines storage health with recovery actions.
+type DoctorReport struct {
+	Store                    store.HealthReport `json:"store"`
+	BackupPath               string             `json:"backup_path,omitempty"`
+	StaleOwnershipReconciled bool               `json:"stale_ownership_reconciled"`
+	NotificationsRecovered   bool               `json:"notifications_recovered"`
 }
 
 // RerunRequest contains the intentionally small set of overrides applied to a
@@ -124,6 +177,7 @@ type CleanRequest struct {
 
 // CleanResult summarizes deterministic cleanup work.
 type CleanResult struct {
+	Jobs  uint64 `json:"jobs"`
 	Runs  uint64 `json:"runs"`
 	Files uint64 `json:"files"`
 	Bytes uint64 `json:"bytes"`

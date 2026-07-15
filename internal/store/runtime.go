@@ -919,10 +919,160 @@ func (s *Store) SetConcurrencyLimit(
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT(scope_kind, scope_name) DO UPDATE SET
 			capacity = excluded.capacity, revision = concurrency_limits.revision + 1,
-			updated_at_ns = excluded.updated_at_ns`, scope, pool, stored, at.UTC().UnixNano())
+			updated_at_ns = excluded.updated_at_ns
+			WHERE concurrency_limits.capacity IS NOT excluded.capacity`,
+			scope, pool, stored, at.UTC().UnixNano())
 
 		return classifySQLite("set concurrency limit", err)
 	})
+}
+
+// SynchronizeConcurrencyLimits atomically replaces the durable global and
+// named-pool configuration. Pools that are no longer declared are removed only
+// when no active admission or queued request still references them.
+func (s *Store) SynchronizeConcurrencyLimits(
+	ctx context.Context,
+	global *uint64,
+	pools map[string]*uint64,
+	at time.Time,
+) error {
+	if err := validateSynchronizedConcurrencyLimits(global, pools); err != nil {
+		return err
+	}
+
+	return s.writeTransaction(ctx, "synchronize concurrency limits", func(tx *sql.Tx) error {
+		return synchronizeConcurrencyLimits(ctx, tx, global, pools, at)
+	})
+}
+
+func validateSynchronizedConcurrencyLimits(global *uint64, pools map[string]*uint64) error {
+	if global != nil && *global == 0 {
+		return errors.New("synchronize concurrency limits: global capacity must be positive")
+	}
+	for name, capacity := range pools {
+		if name == "" || strings.TrimSpace(name) != name {
+			return fmt.Errorf("synchronize concurrency limits: invalid pool name %q", name)
+		}
+		if capacity != nil && *capacity == 0 {
+			return fmt.Errorf("synchronize concurrency limits: pool %q capacity must be positive", name)
+		}
+	}
+
+	return nil
+}
+
+func synchronizeConcurrencyLimits(
+	ctx context.Context,
+	tx *sql.Tx,
+	global *uint64,
+	pools map[string]*uint64,
+	at time.Time,
+) error {
+	if err := queuedRequestsFitLimit(ctx, tx, "", global); err != nil {
+		return err
+	}
+	for name, capacity := range pools {
+		if err := queuedRequestsFitLimit(ctx, tx, name, capacity); err != nil {
+			return err
+		}
+	}
+	if err := removeOmittedConcurrencyPools(ctx, tx, pools); err != nil {
+		return err
+	}
+	if err := upsertConcurrencyLimit(ctx, tx, "global", "", global, at); err != nil {
+		return err
+	}
+	for name, capacity := range pools {
+		if err := upsertConcurrencyLimit(ctx, tx, "pool", name, capacity, at); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func removeOmittedConcurrencyPools(ctx context.Context, tx *sql.Tx, retained map[string]*uint64) error {
+	existing, err := listConcurrencyPools(ctx, tx)
+	if err != nil {
+		return err
+	}
+	for _, name := range existing {
+		if _, keep := retained[name]; keep {
+			continue
+		}
+		var references int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM admissions WHERE pool_name = ? AND released_at_ns IS NULL
+				UNION ALL
+				SELECT 1 FROM admission_requests WHERE pool_name = ?
+			)`, name, name).Scan(&references); err != nil {
+			return err
+		}
+		if references != 0 {
+			return fmt.Errorf("pool %q is still referenced by active or queued jobs: %w", name, ErrConflict)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM concurrency_limits WHERE scope_kind = 'pool' AND scope_name = ?`, name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func listConcurrencyPools(ctx context.Context, tx *sql.Tx) (pools []string, returnedErr error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT scope_name FROM concurrency_limits WHERE scope_kind = 'pool' ORDER BY scope_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			returnedErr = errors.Join(returnedErr, closeErr)
+		}
+	}()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		pools = append(pools, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return pools, nil
+}
+
+func upsertConcurrencyLimit(
+	ctx context.Context,
+	tx *sql.Tx,
+	scope,
+	name string,
+	capacity *uint64,
+	at time.Time,
+) error {
+	var stored any
+	if capacity != nil {
+		value, err := databaseUint("concurrency capacity", *capacity)
+		if err != nil {
+			return err
+		}
+		stored = value
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO concurrency_limits(scope_kind, scope_name, capacity, updated_at_ns)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(scope_kind, scope_name) DO UPDATE SET
+		capacity = excluded.capacity,
+		revision = concurrency_limits.revision + 1,
+		updated_at_ns = excluded.updated_at_ns
+		WHERE concurrency_limits.capacity IS NOT excluded.capacity`,
+		scope, name, stored, at.UTC().UnixNano())
+
+	return err
 }
 
 func queuedRequestsFitLimit(

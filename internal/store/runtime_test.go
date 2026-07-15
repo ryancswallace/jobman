@@ -255,6 +255,55 @@ func TestDependencyEvaluationPersistsTerminalObservation(t *testing.T) {
 	if len(edges) != 1 || edges[0].ObservedRevision == 0 || edges[0].SatisfiedAt == nil {
 		t.Fatalf("observed dependencies = %#v", edges)
 	}
+	repeated, err := database.EvaluateDependencies(t.Context(), dependentID, now.Add(33*time.Second))
+	if err != nil {
+		t.Fatalf("EvaluateDependencies(repeated) error = %v", err)
+	}
+	if !repeated.Ready || repeated.Impossible || repeated.Pending != 0 {
+		t.Fatalf("repeated dependency status = %#v", repeated)
+	}
+}
+
+func TestDependencyEvaluationReportsImpossiblePredicate(t *testing.T) {
+	t.Parallel()
+
+	database := openTestStore(t, "dependency-impossible", newSequentialEventIDs(0xb080))
+	now := storeTestTime()
+	dependencyID := mustJobID(t, 0xb081, 1)
+	dependentID := mustJobID(t, 0xb081, 2)
+	submitRuntimeJob(t, database, dependencyID, now)
+	submitRuntimeJob(t, database, dependentID, now)
+	if err := database.SetDependencies(t.Context(), dependentID, []Dependency{{
+		JobID: dependentID, DependsOn: dependencyID, Predicate: DependencySuccess,
+	}}); err != nil {
+		t.Fatalf("SetDependencies() error = %v", err)
+	}
+	if _, err := database.MarkSubmissionFailed(
+		t.Context(), dependencyID, "test_failure", now.Add(31*time.Second),
+	); err != nil {
+		t.Fatalf("MarkSubmissionFailed() error = %v", err)
+	}
+
+	status, err := database.EvaluateDependencies(t.Context(), dependentID, now.Add(32*time.Second))
+	if err != nil {
+		t.Fatalf("EvaluateDependencies() error = %v", err)
+	}
+	if status.Ready || !status.Impossible || status.Pending != 0 || len(status.Failed) != 1 {
+		t.Fatalf("dependency status = %#v, want one impossible dependency", status)
+	}
+	failed := status.Failed[0]
+	if failed.DependsOn != dependencyID || failed.ObservedOutcome != model.JobOutcomeSubmissionFailed ||
+		failed.SatisfiedAt != nil {
+		t.Fatalf("failed dependency = %#v", failed)
+	}
+
+	repeated, err := database.EvaluateDependencies(t.Context(), dependentID, now.Add(33*time.Second))
+	if err != nil {
+		t.Fatalf("EvaluateDependencies(repeated) error = %v", err)
+	}
+	if repeated.Ready || !repeated.Impossible || len(repeated.Failed) != 1 {
+		t.Fatalf("repeated dependency status = %#v", repeated)
+	}
 }
 
 func TestDependencyOutcomeSetIsCanonicalAndMatchesAnySelectedOutcome(t *testing.T) {
@@ -430,6 +479,77 @@ func TestAdmissionAppliesGlobalAndNamedPoolLimits(t *testing.T) {
 		t.Context(), second, "network", 1, now.Add(2*time.Second), time.Minute,
 	); err != nil {
 		t.Fatalf("TryAcquireAdmission(after release) error = %v", err)
+	}
+}
+
+func TestAdmissionRejectsCompletedJobsAndChangedRequestParameters(t *testing.T) {
+	t.Parallel()
+
+	database := openTestStore(t, "admission-immutable", newSequentialEventIDs(0xc080))
+	now := storeTestTime()
+	capacity := uint64(3)
+	if err := database.SetConcurrencyLimit(t.Context(), "", &capacity, now); err != nil {
+		t.Fatal(err)
+	}
+
+	completedJob := mustJobID(t, 0xc081, 1)
+	credential := submitRuntimeJob(t, database, completedJob, now)
+	claimRuntimeJob(t, database, completedJob, mustSupervisorID(t, 0xc081, 2), credential, now)
+	if _, err := database.CompleteWithoutRun(
+		t.Context(), completedJob, model.JobOutcomeFailure, "test", now.Add(time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), completedJob, "", 1, now.Add(2*time.Second), time.Minute,
+	); !errors.Is(err, ErrConflict) {
+		t.Fatalf("completed job admission error = %v, want ErrConflict", err)
+	}
+
+	activeJob := mustJobID(t, 0xc081, 3)
+	submitRuntimeJob(t, database, activeJob, now)
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), activeJob, "", 1, now.Add(3*time.Second), time.Minute,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), activeJob, "", 2, now.Add(4*time.Second), time.Minute,
+	); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed active admission error = %v, want ErrConflict", err)
+	}
+
+	blockerJob := mustJobID(t, 0xc081, 4)
+	submitRuntimeJob(t, database, blockerJob, now)
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), blockerJob, "", 2, now.Add(5*time.Second), time.Minute,
+	); err != nil {
+		t.Fatal(err)
+	}
+	queuedJob := mustJobID(t, 0xc081, 5)
+	submitRuntimeJob(t, database, queuedJob, now)
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), queuedJob, "", 1, now.Add(6*time.Second), time.Minute,
+	); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("queued admission error = %v, want ErrCapacity", err)
+	}
+	if _, err := database.TryAcquireAdmission(
+		t.Context(), queuedJob, "", 2, now.Add(7*time.Second), time.Minute,
+	); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed queued admission error = %v, want ErrConflict", err)
+	}
+}
+
+func TestValidateAdmissionRequestRejectsOversizedNamedPoolRequest(t *testing.T) {
+	t.Parallel()
+
+	database := openTestStore(t, "admission-pool-size", newSequentialEventIDs(0xc090))
+	capacity := uint64(1)
+	if err := database.SetConcurrencyLimit(t.Context(), "build", &capacity, storeTestTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ValidateAdmissionRequest(t.Context(), "build", 2); !errors.Is(err, ErrAdmissionImpossible) {
+		t.Fatalf("ValidateAdmissionRequest() error = %v, want ErrAdmissionImpossible", err)
 	}
 }
 
