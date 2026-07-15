@@ -51,7 +51,8 @@ FROM alpine:${ALPINE_VERSION}@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db8
 RUN apk add --no-cache bash ca-certificates tini tzdata \
     && addgroup -S -g 10001 jobman \
     && adduser -S -D -u 10001 -G jobman -h /home/jobman jobman \
-    && mkdir -p /home/jobman/.config/jobman /work \
+    && mkdir -p /home/jobman/.config/jobman /home/jobman/.local/state/jobman /work \
+    && chmod 0700 /home/jobman/.local/state/jobman \
     && chown -R jobman:jobman /home/jobman /work
 
 ARG VERSION
@@ -69,7 +70,8 @@ LABEL org.opencontainers.image.title="jobman" \
 COPY --from=build --chown=root:root /out/jobman /usr/local/bin/jobman
 
 ENV HOME=/home/jobman \
-    XDG_CONFIG_HOME=/home/jobman/.config
+    XDG_CONFIG_HOME=/home/jobman/.config \
+    XDG_STATE_HOME=/home/jobman/.local/state
 
 USER 10001:10001
 WORKDIR /work
