@@ -31,7 +31,8 @@ type Dependencies struct {
 }
 
 type rootOptions struct {
-	stateDir string
+	stateDir   string
+	configPath string
 }
 
 // NewCommand constructs an independent Jobman command tree.
@@ -56,6 +57,12 @@ func NewCommand(dependencies Dependencies) *cobra.Command {
 		"",
 		"override the per-user state directory",
 	)
+	command.PersistentFlags().StringVar(
+		&options.configPath,
+		"config",
+		"",
+		"use an explicit YAML configuration file",
+	)
 	command.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return usageError(err)
 	})
@@ -67,6 +74,13 @@ func NewCommand(dependencies Dependencies) *cobra.Command {
 		newShowCommand(dependencies, options),
 		newLogsCommand(dependencies, options),
 		newCancelCommand(dependencies, options),
+		newPauseCommand(dependencies, options),
+		newResumeCommand(dependencies, options),
+		newWaitCommand(dependencies, options),
+		newInputCommand(dependencies, options),
+		newRerunCommand(dependencies, options),
+		newCleanCommand(dependencies, options),
+		newConfigCommand(options),
 		newSupervisorCommand(dependencies, options),
 	)
 
@@ -100,6 +114,8 @@ func ExitCode(err error) int {
 		return 4
 	case errors.Is(err, app.ErrConflict):
 		return 5
+	case errors.Is(err, io.ErrShortWrite):
+		return 6
 	default:
 		return 1
 	}
@@ -132,6 +148,17 @@ func withBackend(
 	options *rootOptions,
 	operation func(app.Backend) error,
 ) (returned error) {
+	return withConfiguredBackend(command, dependencies, options, func(backend app.Backend, _ config.Loaded) error {
+		return operation(backend)
+	})
+}
+
+func withConfiguredBackend(
+	command *cobra.Command,
+	dependencies Dependencies,
+	options *rootOptions,
+	operation func(app.Backend, config.Loaded) error,
+) (returned error) {
 	backend, err := openBackend(command.Context(), dependencies, options)
 	if err != nil {
 		return err
@@ -141,6 +168,15 @@ func withBackend(
 			returned = errors.Join(returned, fmt.Errorf("close job manager: %w", closeErr))
 		}
 	}()
+	loaded, err := loadConfiguration(options)
+	if err != nil {
+		return err
+	}
+	if configurable, ok := backend.(app.ConfigurableBackend); ok {
+		if err := configurable.ApplyConfig(command.Context(), loaded.Config); err != nil {
+			return fmt.Errorf("apply configuration: %w", err)
+		}
+	}
 
-	return operation(backend)
+	return operation(backend, loaded)
 }
