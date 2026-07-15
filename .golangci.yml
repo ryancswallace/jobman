@@ -275,3 +275,19 @@ linters:
           - dupl
           - gocognit
           - maintidx
+      # Exhaustive branch-coverage fixtures deliberately exercise failed
+      # cleanup, unsafe permissions, malformed SQL state, and short-lived
+      # subprocesses. Keep correctness analysis enabled while excluding rules
+      # that would prevent those fault-injection techniques themselves.
+      - path: (^|/)coverage_test\.go$
+        linters:
+          - contextcheck
+          - errcheck
+          - gosec
+          - noctx
+      # Reusing the conventional `err` name in independent assertions keeps
+      # large coverage matrices readable and cannot leak the shadowed value.
+      - path: (^|/)coverage_test\.go$
+        text: 'shadow: declaration of "err"'
+        linters:
+          - govet
