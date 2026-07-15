@@ -467,6 +467,7 @@ func reconcileExpiredJobOwner(
 	}
 	identity := platform.ProcessIdentity{
 		PID: owner.Process.PID, Creation: owner.Process.CreationID, Boot: owner.Process.BootID,
+		Tree: owner.Process.TreeID,
 	}
 	alive, aliveErr := platform.Alive(identity)
 	if aliveErr != nil && !errors.Is(aliveErr, platform.ErrIdentityMismatch) {

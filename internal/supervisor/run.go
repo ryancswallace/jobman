@@ -19,6 +19,7 @@ import (
 	"github.com/ryancswallace/jobman/internal/buildinfo"
 	"github.com/ryancswallace/jobman/internal/config"
 	"github.com/ryancswallace/jobman/internal/executor"
+	"github.com/ryancswallace/jobman/internal/faultinject"
 	"github.com/ryancswallace/jobman/internal/liveinput"
 	"github.com/ryancswallace/jobman/internal/logstore"
 	"github.com/ryancswallace/jobman/internal/model"
@@ -85,6 +86,7 @@ func Run(
 	if err != nil {
 		return fmt.Errorf("claim job: %w", err)
 	}
+	faultinject.Hit("supervisor-claimed-before-ack")
 
 	acknowledgement := Acknowledgement{
 		SchemaVersion: 1,
@@ -99,6 +101,7 @@ func Run(
 			return fmt.Errorf("close supervisor acknowledgement: %w", err)
 		}
 	}
+	faultinject.Hit("supervisor-acknowledged")
 
 	ownershipCtx := context.WithoutCancel(ctx)
 	leaseCtx, stopLease := context.WithCancel(ownershipCtx)
@@ -194,6 +197,7 @@ func executeClaimedJob(
 	}
 }
 
+//nolint:cyclop // Run execution intentionally owns ordered reservation, process, log, and terminal-state cleanup.
 func executeOneRun(
 	stopCtx context.Context,
 	operationCtx context.Context,
@@ -271,6 +275,7 @@ func executeOneRun(
 		return finalizeStartFailure(operationCtx, database, capture, job.ID, runID, logs, err, jitter)
 	}
 	defer target.closeInput() //nolint:errcheck // All result paths close or detach the same pipe; late duplicate-close errors are non-actionable.
+	faultinject.Hit("target-before-start")
 	if startErr := target.command.Start(); startErr != nil {
 		return finalizeStartFailure(
 			operationCtx,
@@ -280,6 +285,23 @@ func executeOneRun(
 			runID,
 			logs,
 			errors.Join(startErr, target.closeOutputPipes()),
+			jitter,
+		)
+	}
+	faultinject.Hit("target-started-before-identity")
+	treeID, err := platform.FinalizeTargetStart(target.command.Process.Pid)
+	if err != nil {
+		killErr := target.command.Process.Kill()
+		waitErr := target.command.Wait()
+
+		return finalizeStartFailure(
+			operationCtx,
+			database,
+			capture,
+			job.ID,
+			runID,
+			logs,
+			errors.Join(err, killErr, waitErr),
 			jitter,
 		)
 	}
@@ -300,6 +322,7 @@ func executeOneRun(
 			jitter,
 		)
 	}
+	targetIdentity.Tree = treeID
 
 	return superviseStartedTarget(
 		stopCtx,
@@ -365,6 +388,7 @@ func superviseStartedTarget(
 			err,
 		)
 	}
+	faultinject.Hit("target-identity-committed")
 	notifyRunStarted(operationCtx, database, started, startedAt)
 
 	return waitAndFinalizeRun(
@@ -530,6 +554,7 @@ func waitAndFinalizeRun(
 			outcome = model.RunOutcomeFailure
 		}
 	}
+	faultinject.Hit("run-completion-before-commit")
 	completed, err := database.CompleteRunWithDisposition(
 		operationCtx,
 		jobID,
@@ -543,6 +568,10 @@ func waitAndFinalizeRun(
 	)
 	if err != nil {
 		return false, errors.Join(fmt.Errorf("finalize run: %w", err), captureErr, closeErr)
+	}
+	faultinject.Hit("run-completion-committed")
+	if disposition.TerminalOutcome != "" {
+		faultinject.Hit("job-completion-committed")
 	}
 	notifyCompletedRun(operationCtx, database, completed, outcome, completedAt)
 
@@ -1006,7 +1035,7 @@ func modelIdentity(identity platform.ProcessIdentity) model.ProcessIdentity {
 		Platform:   runtime.GOOS,
 		CreationID: identity.Creation,
 		BootID:     identity.Boot,
-		TreeID:     strconv.Itoa(identity.PID),
+		TreeID:     identity.Tree,
 	}
 }
 
