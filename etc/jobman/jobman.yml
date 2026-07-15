@@ -1,6 +1,180 @@
 ---
 # System-wide Jobman configuration.
 #
-# The stable configuration schema is still under development. This intentionally
-# contains no active settings, so installing a native package cannot change
-# runtime behavior. Document supported keys here as they become stable.
+# The format is strict YAML: unknown keys, duplicate keys, invalid references,
+# and contradictory policies are errors. This packaged file selects only the
+# current schema, so installing it does not override Jobman's built-in runtime
+# defaults. Uncomment and adapt settings deliberately. Never place secret
+# values here; `secrets` stores only re-resolvable env: or file: references.
+schema_version: 1
+
+# Global admission and retention policy fields. `clean` currently prunes only
+# completed-run logs and retains metadata tombstones. Slot capacities are
+# positive; retention counts and byte limits may be zero. Limits also accept
+# the literal `unlimited`, and byte limits accept IEC sizes.
+# concurrency:
+#   max_active_slots: 8
+#   pools:
+#     experiments: 4
+#     downloads: 2
+# retention:
+#   completed_metadata_max_age: unlimited
+#   completed_log_max_age: 30d
+#   max_jobs: unlimited
+#   max_runs_per_job: unlimited
+#   max_log_bytes_per_job: 1GiB
+#   max_total_log_bytes: 10GiB
+
+# Named secret references are resolved only in the supervisor process. A file
+# secret must use a clean absolute path and user-private permissions on Unix.
+# secrets:
+#   webhook_token: env:JOBMAN_WEBHOOK_TOKEN
+#   smtp_password: file:/home/example/.config/jobman/smtp-password
+
+# Reusable prerequisites. `until`, `delay`, `file-exists`, and `probe` are the
+# supported condition types. Probe commands execute directly, without a shell.
+# wait_conditions:
+#   data_ready:
+#     type: file-exists
+#     file_exists:
+#       path: /srv/data/ready
+#       type: file
+#   service_ready:
+#     type: probe
+#     probe:
+#       command: [/usr/bin/curl, --fail, --silent, https://example.com/ready]
+#       timeout: 10s
+#       poll_interval: 2s
+#       output_limit: 64KiB
+#       fatal_on_error: false
+
+# Notifiers receive versioned event JSON. Command notifier executables must be
+# absolute. HTTP uses HTTPS by default and sensitive headers must reference a
+# secret. SMTP credentials likewise use a named secret reference.
+# notifiers:
+#   release_hook:
+#     type: http
+#     events: [job_succeeded, job_failed, job_timed_out]
+#     timeout: 10s
+#     retry:
+#       max_attempts: 3
+#       delay: 1s
+#       max_delay: 1m
+#     http:
+#       url: https://hooks.example.com/jobman
+#       headers:
+#         X-Jobman-Source: local
+#       secret_headers:
+#         Authorization: webhook_token
+#       signing_secret: webhook_token
+#       allow_http: false
+#       allow_private_hosts: false
+#       follow_redirects: false
+#   local_audit:
+#     type: command
+#     events: [job_failed, job_timed_out]
+#     timeout: 10s
+#     retry:
+#       max_attempts: 2
+#       delay: 1s
+#       max_delay: 10s
+#     command:
+#       command: [/usr/local/bin/jobman-notify]
+#       output_limit: 64KiB
+#   operations_email:
+#     type: smtp
+#     events: [job_failed, job_timed_out]
+#     timeout: 10s
+#     retry:
+#       max_attempts: 3
+#       delay: 1s
+#       max_delay: 1m
+#     smtp:
+#       address: smtp.example.com:587
+#       tls: starttls
+#       username: jobman
+#       password_secret: smtp_password
+#       from: jobman@example.com
+#       to: [operations@example.com]
+#       subject_prefix: '[jobman] '
+
+# Named job specifications compose execution and policy settings. Omitted
+# fields receive validated defaults: one run, exit code 0 success, null stdin,
+# ten-second graceful stop, unlimited concurrency, and 30-day cleanup
+# eligibility for completed logs.
+# job_specs:
+#   nightly-report:
+#     command: [/usr/local/bin/report, --format, json]
+#     name: nightly-report
+#     tags: [nightly]
+#     groups: [reports]
+#     working_directory: /srv/reports
+#     environment:
+#       set:
+#         MODE: batch
+#       unset: [DEBUG]
+#       secrets:
+#         API_TOKEN: webhook_token
+#     stdin: 'null'
+#     stop:
+#       grace_period: 20s
+#       force_after_grace: true
+#     # Dependency selectors resolve to immutable job IDs at submission time.
+#     dependencies:
+#       - job: prepare-data
+#         outcomes: [success]
+#     wait:
+#       mode: all
+#       conditions: [data_ready, service_ready]
+#     admission:
+#       pool: experiments
+#       slots: 2
+#     completion:
+#       max_runs: 4
+#       success_target: 1
+#       failure_limit: 4
+#       success_exit_codes: [0]
+#       retryable_exit_codes: [1, 2]
+#       retry_timeouts: true
+#       retry_start_failures: false
+#     delay:
+#       strategy: exponential
+#       initial: 5s
+#       max_delay: 1m
+#       base: 2
+#       jitter: 1s
+#     timeouts:
+#       run: 10m
+#       job: 1h
+#     logging:
+#       capture: both
+#       segment_bytes: 16MiB
+#       segments_per_run: 8
+#       completed_log_max_age: 14d
+#     notification:
+#       notifiers: [release_hook]
+#       events: [job_succeeded, job_failed, job_timed_out]
+
+# Profiles are applied explicitly with `--profile` and may start from a named
+# job spec. Lists replace lower-precedence lists; maps merge recursively.
+# profiles:
+#   fast-report:
+#     job_spec: nightly-report
+#     overrides:
+#       name: fast-report
+#       timeouts:
+#         run: 2m
+#         job: 10m
+
+# User configuration may opt in to project discovery by listing clean absolute
+# project roots. System and project files are forbidden from granting this
+# trust themselves:
+# trusted_project_roots:
+#   - /home/example/src/jobman-project
+
+# Redaction policy is parsed and validated for forward compatibility. Runtime
+# command diagnostics do not apply it yet, so it is not a secrecy boundary.
+# Patterns use Go's RE2 syntax and should be kept narrow and bounded.
+# redaction:
+#   names: [customer_id]
+#   patterns: ['acct-[0-9]{8}']
