@@ -10,7 +10,7 @@ import (
 
 const (
 	applicationID        = 0x4a4f424d // "JOBM" in big-endian ASCII.
-	currentSchemaVersion = 1
+	currentSchemaVersion = 7
 )
 
 const migration1SQL = `
@@ -139,12 +139,277 @@ CREATE INDEX runs_job ON runs(job_id, run_number);
 CREATE INDEX events_job ON state_events(job_id, occurred_at_ns, id);
 `
 
+const migration2SQL = `
+CREATE TABLE job_runtime (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    run_count INTEGER NOT NULL DEFAULT 0 CHECK (run_count >= 0),
+    success_count INTEGER NOT NULL DEFAULT 0 CHECK (success_count >= 0),
+    failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+    next_run_at_ns INTEGER CHECK (next_run_at_ns IS NULL OR next_run_at_ns >= 0),
+    waiting_reason TEXT,
+    paused_from_phase TEXT CHECK (paused_from_phase IS NULL OR paused_from_phase IN (
+        'waiting', 'queued', 'starting', 'running', 'backoff'
+    )),
+    paused_at_ns INTEGER CHECK (paused_at_ns IS NULL OR paused_at_ns >= 0),
+    total_paused_ns INTEGER NOT NULL DEFAULT 0 CHECK (total_paused_ns >= 0),
+    prerequisites_satisfied_at_ns INTEGER CHECK (
+        prerequisites_satisfied_at_ns IS NULL OR prerequisites_satisfied_at_ns >= 0
+    ),
+    input_endpoint TEXT,
+    input_eof_requested INTEGER NOT NULL DEFAULT 0 CHECK (input_eof_requested IN (0, 1)),
+    updated_at_ns INTEGER NOT NULL CHECK (updated_at_ns >= 0),
+    CHECK ((paused_from_phase IS NULL) = (paused_at_ns IS NULL)),
+    CHECK (success_count + failure_count <= run_count)
+) STRICT;
+
+INSERT INTO job_runtime(job_id, updated_at_ns)
+SELECT id, submitted_at_ns FROM jobs;
+
+CREATE TABLE job_dependencies (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    dependency_job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE RESTRICT,
+    predicate TEXT NOT NULL CHECK (predicate IN (
+        'success', 'finish', 'failed', 'timed_out', 'cancelled',
+        'aborted', 'lost', 'submission_failed'
+    )),
+    observed_revision INTEGER CHECK (observed_revision IS NULL OR observed_revision > 0),
+    observed_outcome TEXT,
+    satisfied_at_ns INTEGER CHECK (satisfied_at_ns IS NULL OR satisfied_at_ns >= 0),
+    PRIMARY KEY (job_id, dependency_job_id, predicate),
+    CHECK (job_id != dependency_job_id),
+    CHECK ((observed_revision IS NULL) = (observed_outcome IS NULL))
+) STRICT;
+
+CREATE INDEX job_dependencies_target
+    ON job_dependencies(dependency_job_id, job_id);
+
+CREATE TABLE wait_evaluations (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    condition_index INTEGER NOT NULL CHECK (condition_index >= 0),
+    condition_kind TEXT NOT NULL CHECK (condition_kind IN ('until', 'delay', 'file_exists', 'probe')),
+    evaluated_at_ns INTEGER CHECK (evaluated_at_ns IS NULL OR evaluated_at_ns >= 0),
+    satisfied_at_ns INTEGER CHECK (satisfied_at_ns IS NULL OR satisfied_at_ns >= 0),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    last_diagnostic_code TEXT,
+    PRIMARY KEY (job_id, condition_index)
+) STRICT;
+
+CREATE TABLE concurrency_limits (
+    scope_kind TEXT NOT NULL CHECK (scope_kind IN ('global', 'pool')),
+    scope_name TEXT NOT NULL,
+    capacity INTEGER CHECK (capacity IS NULL OR capacity > 0),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_at_ns INTEGER NOT NULL CHECK (updated_at_ns >= 0),
+    PRIMARY KEY (scope_kind, scope_name),
+    CHECK ((scope_kind = 'global') = (scope_name = ''))
+) STRICT;
+
+CREATE TABLE admissions (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
+    pool_name TEXT,
+    slots INTEGER NOT NULL CHECK (slots > 0),
+    acquired_at_ns INTEGER NOT NULL CHECK (acquired_at_ns >= 0),
+    lease_expires_at_ns INTEGER NOT NULL CHECK (lease_expires_at_ns > acquired_at_ns),
+    released_at_ns INTEGER CHECK (released_at_ns IS NULL OR released_at_ns >= acquired_at_ns)
+) STRICT;
+
+CREATE INDEX admissions_active_global
+    ON admissions(released_at_ns, lease_expires_at_ns);
+CREATE INDEX admissions_active_pool
+    ON admissions(pool_name, released_at_ns, lease_expires_at_ns);
+
+CREATE TABLE notification_attempts (
+    id TEXT PRIMARY KEY CHECK (length(id) = 36),
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    event_id TEXT NOT NULL CHECK (length(event_id) = 36),
+    notifier_name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'delivering', 'succeeded', 'failed')),
+    created_at_ns INTEGER NOT NULL CHECK (created_at_ns >= 0),
+    started_at_ns INTEGER CHECK (started_at_ns IS NULL OR started_at_ns >= created_at_ns),
+    completed_at_ns INTEGER CHECK (completed_at_ns IS NULL OR completed_at_ns >= created_at_ns),
+    next_attempt_at_ns INTEGER CHECK (next_attempt_at_ns IS NULL OR next_attempt_at_ns >= created_at_ns),
+    diagnostic_code TEXT,
+    retryable INTEGER NOT NULL DEFAULT 0 CHECK (retryable IN (0, 1)),
+    response_status_code INTEGER CHECK (
+        response_status_code IS NULL OR response_status_code BETWEEN 100 AND 999
+    ),
+    command_exit_code INTEGER,
+    message_id TEXT,
+    response_truncated INTEGER NOT NULL DEFAULT 0 CHECK (response_truncated IN (0, 1)),
+    UNIQUE (event_id, notifier_name, attempt_number),
+    CHECK (status != 'succeeded' OR diagnostic_code IS NULL),
+    CHECK (status != 'succeeded' OR retryable = 0)
+) STRICT;
+
+CREATE INDEX notification_attempts_pending
+    ON notification_attempts(status, next_attempt_at_ns, created_at_ns);
+
+CREATE TABLE job_tags (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL CHECK (tag != ''),
+    PRIMARY KEY (job_id, tag)
+) STRICT;
+
+CREATE INDEX job_tags_tag ON job_tags(tag, job_id);
+`
+
+const migration3SQL = `
+ALTER TABLE job_dependencies RENAME TO job_dependencies_v2;
+DROP INDEX job_dependencies_target;
+
+CREATE TABLE job_dependencies (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    dependency_job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE RESTRICT,
+    predicate TEXT NOT NULL CHECK (
+        predicate IN (
+            'success', 'finish', 'failed', 'timed_out', 'cancelled',
+            'aborted', 'lost', 'submission_failed'
+        ) OR (
+            predicate GLOB 'outcomes:*' AND length(predicate) BETWEEN 10 AND 256
+        )
+    ),
+    observed_revision INTEGER CHECK (observed_revision IS NULL OR observed_revision > 0),
+    observed_outcome TEXT,
+    satisfied_at_ns INTEGER CHECK (satisfied_at_ns IS NULL OR satisfied_at_ns >= 0),
+    PRIMARY KEY (job_id, dependency_job_id, predicate),
+    CHECK (job_id != dependency_job_id),
+    CHECK ((observed_revision IS NULL) = (observed_outcome IS NULL))
+) STRICT;
+
+INSERT INTO job_dependencies(
+    job_id, dependency_job_id, predicate, observed_revision, observed_outcome, satisfied_at_ns
+)
+SELECT job_id, dependency_job_id, predicate, observed_revision, observed_outcome, satisfied_at_ns
+FROM job_dependencies_v2;
+
+DROP TABLE job_dependencies_v2;
+
+CREATE INDEX job_dependencies_target
+    ON job_dependencies(dependency_job_id, job_id);
+`
+
+const migration4SQL = `
+CREATE TABLE admission_requests (
+    sequence INTEGER PRIMARY KEY,
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
+    pool_name TEXT,
+    slots INTEGER NOT NULL CHECK (slots > 0),
+    enqueued_at_ns INTEGER NOT NULL CHECK (enqueued_at_ns >= 0),
+    bypass_count INTEGER NOT NULL DEFAULT 0 CHECK (bypass_count >= 0),
+    CHECK (pool_name IS NULL OR pool_name != '')
+) STRICT;
+
+CREATE INDEX admission_requests_order
+    ON admission_requests(sequence);
+
+CREATE TRIGGER admission_requests_terminal_cleanup
+AFTER UPDATE OF phase ON jobs
+WHEN NEW.phase = 'completed' AND OLD.phase != 'completed'
+BEGIN
+    DELETE FROM admission_requests WHERE job_id = NEW.id;
+END;
+`
+
+const migration5SQL = `
+CREATE TABLE run_log_pruning (
+    run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    pruned_at_ns INTEGER NOT NULL CHECK (pruned_at_ns >= 0),
+    removed_files INTEGER NOT NULL CHECK (removed_files >= 0),
+    removed_bytes INTEGER NOT NULL CHECK (removed_bytes >= 0)
+) STRICT;
+`
+
+const migration6SQL = `
+CREATE TABLE notification_deliveries (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    event_id TEXT NOT NULL REFERENCES state_events(id) ON DELETE CASCADE,
+    notifier_name TEXT NOT NULL CHECK (
+        length(notifier_name) BETWEEN 1 AND 128 AND trim(notifier_name) = notifier_name
+    ),
+    event_type TEXT NOT NULL,
+    run_id TEXT REFERENCES runs(id) ON DELETE RESTRICT,
+    occurred_at_ns INTEGER NOT NULL CHECK (occurred_at_ns >= 0),
+    created_at_ns INTEGER NOT NULL CHECK (created_at_ns >= 0),
+    max_attempts INTEGER NOT NULL CHECK (max_attempts BETWEEN 1 AND 100),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (
+        attempt_count >= 0 AND attempt_count <= max_attempts
+    ),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'delivering', 'succeeded', 'failed')),
+    next_attempt_at_ns INTEGER CHECK (next_attempt_at_ns IS NULL OR next_attempt_at_ns >= created_at_ns),
+    claim_token TEXT CHECK (claim_token IS NULL OR length(claim_token) = 36),
+    claimed_at_ns INTEGER CHECK (claimed_at_ns IS NULL OR claimed_at_ns >= created_at_ns),
+    claim_expires_at_ns INTEGER CHECK (
+        claim_expires_at_ns IS NULL OR claim_expires_at_ns > claimed_at_ns
+    ),
+    completed_at_ns INTEGER CHECK (completed_at_ns IS NULL OR completed_at_ns >= created_at_ns),
+    PRIMARY KEY (event_id, notifier_name),
+    CHECK (
+        (status = 'pending' AND next_attempt_at_ns IS NOT NULL AND
+            claim_token IS NULL AND claimed_at_ns IS NULL AND
+            claim_expires_at_ns IS NULL AND completed_at_ns IS NULL) OR
+        (status = 'delivering' AND next_attempt_at_ns IS NULL AND
+            claim_token IS NOT NULL AND claimed_at_ns IS NOT NULL AND
+            claim_expires_at_ns IS NOT NULL AND completed_at_ns IS NULL) OR
+        (status IN ('succeeded', 'failed') AND next_attempt_at_ns IS NULL AND
+            claim_token IS NULL AND claimed_at_ns IS NULL AND
+            claim_expires_at_ns IS NULL AND completed_at_ns IS NOT NULL AND
+            attempt_count > 0)
+    )
+) STRICT;
+
+CREATE INDEX notification_deliveries_ready
+    ON notification_deliveries(status, next_attempt_at_ns, claim_expires_at_ns, created_at_ns);
+CREATE INDEX notification_deliveries_job
+    ON notification_deliveries(job_id, status, created_at_ns);
+`
+
+const migration7SQL = `
+UPDATE job_runtime
+SET run_count = (
+        SELECT COUNT(*) FROM runs
+        WHERE runs.job_id = job_runtime.job_id AND runs.phase = 'completed'
+    ),
+    success_count = (
+        SELECT COUNT(*) FROM runs
+        WHERE runs.job_id = job_runtime.job_id
+          AND runs.phase = 'completed' AND runs.outcome = 'success'
+    ),
+    failure_count = (
+        SELECT COUNT(*) FROM runs
+        WHERE runs.job_id = job_runtime.job_id
+          AND runs.phase = 'completed' AND runs.outcome != 'success'
+    ),
+    updated_at_ns = MAX(
+        updated_at_ns,
+        COALESCE((
+            SELECT MAX(runs.completed_at_ns) FROM runs
+            WHERE runs.job_id = job_runtime.job_id AND runs.phase = 'completed'
+        ), updated_at_ns)
+    );
+
+DROP INDEX admission_requests_order;
+CREATE INDEX admission_requests_order
+    ON admission_requests(enqueued_at_ns, job_id);
+`
+
 type migration struct {
 	version int
 	sql     string
 }
 
-var migrations = []migration{{version: 1, sql: migration1SQL}}
+var migrations = []migration{
+	{version: 1, sql: migration1SQL},
+	{version: 2, sql: migration2SQL},
+	{version: 3, sql: migration3SQL},
+	{version: 4, sql: migration4SQL},
+	{version: 5, sql: migration5SQL},
+	{version: 6, sql: migration6SQL},
+	{version: 7, sql: migration7SQL},
+}
 
 func (s *Store) migrate(ctx context.Context) error {
 	return s.writeTransaction(ctx, "store migration", func(tx *sql.Tx) error {

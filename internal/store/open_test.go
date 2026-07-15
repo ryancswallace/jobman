@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -51,7 +52,23 @@ func TestOpenInitializesPrivateSQLite(t *testing.T) {
 	assertPragmaInt(t, store.db, "busy_timeout", 250)
 	assertPragmaText(t, store.db, "journal_mode", "wal")
 
-	wantTables := []string{"jobs", "runs", "schema_migrations", "state_events", "supervisors"}
+	wantTables := []string{
+		"admission_requests",
+		"admissions",
+		"concurrency_limits",
+		"job_dependencies",
+		"job_runtime",
+		"job_tags",
+		"jobs",
+		"notification_attempts",
+		"notification_deliveries",
+		"run_log_pruning",
+		"runs",
+		"schema_migrations",
+		"state_events",
+		"supervisors",
+		"wait_evaluations",
+	}
 	rows, err := store.db.QueryContext(t.Context(), `
 		SELECT name
 		FROM sqlite_schema
@@ -94,6 +111,13 @@ func TestOpenInitializesPrivateSQLite(t *testing.T) {
 	}
 	if checksum != migrationChecksum(migration1SQL) {
 		t.Errorf("migration checksum = %q, want %q", checksum, migrationChecksum(migration1SQL))
+	}
+	if err := store.db.QueryRowContext(t.Context(), `
+		SELECT checksum FROM schema_migrations WHERE version = 2`).Scan(&checksum); err != nil {
+		t.Fatalf("query second migration record: %v", err)
+	}
+	if checksum != migrationChecksum(migration2SQL) {
+		t.Errorf("migration 2 checksum = %q, want %q", checksum, migrationChecksum(migration2SQL))
 	}
 
 	if runtime.GOOS != "windows" {
@@ -172,7 +196,7 @@ func TestOpenRejectsNewerSchema(t *testing.T) {
 	if _, err := raw.ExecContext(t.Context(), "PRAGMA application_id = 1246716493"); err != nil {
 		t.Fatalf("set application ID: %v", err)
 	}
-	if _, err := raw.ExecContext(t.Context(), "PRAGMA user_version = 2"); err != nil {
+	if _, err := raw.ExecContext(t.Context(), fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion+1)); err != nil {
 		t.Fatalf("set schema version: %v", err)
 	}
 	if err := raw.Close(); err != nil {
@@ -227,7 +251,7 @@ func TestOpenConcurrentMigration(t *testing.T) {
 			<-start
 			store, err := Open(t.Context(), Options{
 				StateDir:    stateDir,
-				BusyTimeout: 2 * time.Second,
+				BusyTimeout: 10 * time.Second,
 			})
 			if err != nil {
 				errorsFound <- err

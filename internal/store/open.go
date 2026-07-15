@@ -220,15 +220,29 @@ func versionLessThan(major, minor, patch, wantMajor, wantMinor, wantPatch int) b
 }
 
 func (s *Store) enableAndVerifyWAL(ctx context.Context) error {
-	var journalMode string
-	if err := s.db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
-		return fmt.Errorf("enable SQLite WAL: %w", classifySQLite("enable SQLite WAL", err))
-	}
-	if !strings.EqualFold(journalMode, "wal") {
-		return fmt.Errorf("enable SQLite WAL: database returned journal mode %q", journalMode)
-	}
+	deadline := time.Now().Add(s.busyTimeout)
+	for {
+		var journalMode string
+		err := s.db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode)
+		if err == nil {
+			if !strings.EqualFold(journalMode, "wal") {
+				return fmt.Errorf("enable SQLite WAL: database returned journal mode %q", journalMode)
+			}
 
-	return nil
+			return nil
+		}
+		classified := classifySQLite("enable SQLite WAL", err)
+		if !errors.Is(classified, ErrBusy) || !time.Now().Before(deadline) {
+			return fmt.Errorf("enable SQLite WAL: %w", classified)
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("enable SQLite WAL: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func (s *Store) verifyConnectionPragmas(ctx context.Context) error {
