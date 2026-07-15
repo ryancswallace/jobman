@@ -43,8 +43,16 @@ branches:
           - Documentation and release configuration
           - Lint
           - Test
-          - "Test (macos-latest)"
-          - "Test (windows-latest)"
+          - "Native race (macos-latest)"
+          - "Native race (windows-latest)"
+          - "Build (linux/amd64)"
+          - "Build (linux/arm64)"
+          - "Build (linux/386)"
+          - "Build (darwin/amd64)"
+          - "Build (darwin/arm64)"
+          - "Build (windows/amd64)"
+          - "Build (windows/arm64)"
+          - "Build (windows/386)"
 
       # Keep a break-glass path for the sole maintainer. Normal pull requests
       # remain subject to the review and check requirements above.
