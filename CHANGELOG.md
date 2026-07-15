@@ -68,6 +68,49 @@ semantic-release.
 - Separated unit coverage from assembled-binary and performance packages so
   each validation tier runs once with an explicit contract.
 
+### Fixed
+
+- Apply durable concurrency configuration before `run`, `rerun`, and
+  policy-based `clean`, while keeping explicit age cleanup and emergency
+  commands usable with malformed configuration.
+- Apply list filters in SQLite before the result limit and use keyset
+  pagination for full-store cleanup and doctor reconciliation.
+- Transition capacity-blocked submissions from `starting` to `queued` so
+  lifecycle output accurately reports admission waits.
+- Preserve a checksummed cleanup handoff until pruning metadata commits, making
+  log cleanup resumable across the filesystem/database crash boundary.
+- Correct protected-branch check names and require every release architecture
+  build in the settings-as-code policy.
+- Fail setup and aggregate checks early when the active Go patch release does
+  not match the security-patched version pinned in `go.version`.
+
+## [0.5.0] - 2026-07-13
+
+### Changed
+
+- Published Homebrew Cask updates through reviewed pull requests so protected
+  branch requirements no longer block artifact releases.
+
+## [0.4.0] - 2026-07-13
+
+### Changed
+
+- Improved repository security controls and OpenSSF Scorecard signals.
+
+## [0.3.0] - 2026-07-13
+
+### Changed
+
+- Validated the pull-request-triggered automated release path with a
+  prerelease test change.
+
+## [0.2.0] - 2026-07-13
+
+### Changed
+
+- Validated automated minor-version selection and publication with prerelease
+  test changes.
+
 ## [0.1.0] - 2026-07-12
 
 ### Changed
@@ -77,5 +120,9 @@ semantic-release.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ryancswallace/jobman/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/ryancswallace/jobman/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/ryancswallace/jobman/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/ryancswallace/jobman/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ryancswallace/jobman/releases/tag/v0.1.0
