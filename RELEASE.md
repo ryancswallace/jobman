@@ -38,6 +38,11 @@ Semantic-release follows Conventional Commits:
 Use squash-merge titles that follow this convention because the commits on
 `main`, not pull-request labels, determine the version.
 
+For the first stable release, the release-triggering squash commit must carry
+an explicit major-version signal, such as `feat!: freeze the v1 public
+contract` or a `BREAKING CHANGE:` footer. Confirm that semantic-release selects
+`v1.0.0`; do not manually replace a calculated `v0.x` tag with a v1 tag.
+
 ## Published artifacts
 
 Each GitHub release contains:
@@ -126,9 +131,8 @@ Install Go 1.26.5, GoReleaser 2.17, Syft, Cosign, Docker with Buildx, and QEMU/b
 for multi-platform container tests. Then run:
 
 ```sh
-go test ./...
-make release-check
-make release-build
+make check
+make docker-smoke
 make snapshot
 ```
 
@@ -137,6 +141,11 @@ The Homebrew publisher and keyless checksum and container signing are skipped
 locally because they need GitHub credentials and an Actions OIDC identity.
 Docker Buildx may create local platform-suffixed images during snapshot
 validation.
+
+Run every target in `.github/workflows/fuzz.yml` for 30 seconds and complete a
+race-enabled `make soaktest` run as recorded in the [dogfood runbook] before
+merging the v1 release commit. The scheduled workflows remain the authoritative
+long-running evidence for that exact commit.
 
 The GoReleaser pre-hook renders `.release/CITATION.cff` from the tracked
 template using the resolved release version and timestamp. Confirm the copy
@@ -221,7 +230,7 @@ version; released version numbers should not be reused for different source.
 
 ## Manual preflight for maintainers
 
-Before relying on the first automated release:
+Before relying on the first stable release:
 
 - confirm the latest `Test` run on `main` is green;
 - check that all release-worthy commits use Conventional Commit syntax;
@@ -233,7 +242,10 @@ Before relying on the first automated release:
 - ensure the workflow identity can create the Homebrew update branch and pull
   request, and merge that pull request after its checks pass;
 - review the generated GitHub release notes and all artifacts after publication;
-- install at least one archive or native package and run the versioned container.
+- install at least one archive or native package and run the versioned
+  container;
 - review the v1 release-commit checklist in [SUPPORT.md](SUPPORT.md), including
   README warnings, security support, platform evidence, upgrades, changelog,
   every fuzz target, performance/soak results, and `make docker-smoke`.
+
+[dogfood runbook]: docs/DOGFOOD.md
