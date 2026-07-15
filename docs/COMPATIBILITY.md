@@ -34,8 +34,8 @@ forward migrations for the SQLite state schema.
   RFC3339 submission-time filters. `--all` means the documented store maximum
   of 1000, not unbounded memory use.
 - Read/inspection and emergency operations do not require valid configuration
-  and never apply store-wide settings. `config apply`, `run`, and policy-based
-  `clean` are the explicit configuration-authority paths.
+  and never apply store-wide settings. `config apply`, `run`, `rerun`, and
+  policy-based `clean` are the explicit configuration-authority paths.
 - `doctor` is configuration-independent. `--repair` authorizes WAL checkpoint,
   stale lifecycle reconciliation, and due-notification recovery; `--backup`
   writes a new consistent SQLite snapshot.

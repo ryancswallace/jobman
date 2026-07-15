@@ -1,6 +1,6 @@
 # Configuration reference
 
-Status: implemented pre-1.0 schema
+Status: frozen v1 release-candidate schema
 Configuration schema: 1
 
 Jobman uses strict, versioned YAML. Unknown or duplicate keys, invalid scalar
@@ -89,6 +89,22 @@ The environment override surface is intentionally small and reversible:
 
 `JOBMAN_STATE_DIR` selects the runtime state directory separately from the
 YAML merge.
+
+## Durable configuration authority
+
+Store-wide and named-pool capacities are durable scheduler state. Before a
+submission, `jobman run` and `jobman rerun` validate their complete effective
+configuration and atomically synchronize those capacities; a submission never
+starts under stale limits merely because `config apply` was omitted. Use
+`jobman config apply` to perform the same synchronization without submitting a
+job.
+Policy-based `jobman clean` also synchronizes the capacities because it already
+uses the effective retention configuration as an administrative authority.
+
+Read-only inspection, lifecycle emergency commands, `doctor`, and explicit
+`clean --older-than` do not apply store-wide settings. They remain usable when
+the current configuration is malformed. Removing a named pool through an
+authority command fails while active admissions still reference that pool.
 
 ## Named objects
 

@@ -8,10 +8,11 @@
 # values here; `secrets` stores only re-resolvable env: or file: references.
 schema_version: 1
 
-# Global admission and retention policy fields. `clean` currently prunes only
-# completed-run logs and retains metadata tombstones. Slot capacities are
-# positive; retention counts and byte limits may be zero. Limits also accept
-# the literal `unlimited`, and byte limits accept IEC sizes.
+# Global admission and retention policy fields. Policy cleanup prunes eligible
+# completed-run logs first, then removes completed metadata only when every log
+# is pruned and no dependency, notification, or admission still needs it. Slot
+# capacities are positive; retention counts and byte limits may be zero. Limits
+# also accept the literal `unlimited`, and byte limits accept IEC sizes.
 # concurrency:
 #   max_active_slots: 8
 #   pools:
@@ -172,9 +173,10 @@ schema_version: 1
 # trusted_project_roots:
 #   - /home/example/src/jobman-project
 
-# Redaction policy is parsed and validated for forward compatibility. Runtime
-# command diagnostics do not apply it yet, so it is not a secrecy boundary.
-# Patterns use Go's RE2 syntax and should be kept narrow and bounded.
+# Redaction policy applies to Jobman diagnostics and structured output. It does
+# not rewrite captured target stdout or stderr, so it is not a substitute for
+# keeping secrets out of target logs. Patterns use Go's RE2 syntax and should
+# be kept narrow and bounded.
 # redaction:
 #   names: [customer_id]
 #   patterns: ['acct-[0-9]{8}']
