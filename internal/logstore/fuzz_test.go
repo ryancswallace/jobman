@@ -23,7 +23,11 @@ func FuzzScanIndexSafety(fuzz *testing.F) {
 	torn := append(bytes.Clone(valid), []byte("torn")...)
 	corrupt := bytes.Clone(valid)
 	corrupt[recordSize-1] ^= 0xff
-	for _, seed := range [][]byte{{}, valid, torn, corrupt, []byte("short record")} {
+	segmented := indexFixture(fuzz,
+		Chunk{Sequence: 1, Stream: Stdout, Segment: 1, Offset: 0, Length: 3, ObservedAt: time.Unix(1, 2)},
+		Chunk{Sequence: 2, Stream: Stdout, Segment: 2, Offset: 0, Length: 3, ObservedAt: time.Unix(3, 4)},
+	)
+	for _, seed := range [][]byte{{}, valid, torn, corrupt, segmented, []byte("short record")} {
 		fuzz.Add(seed)
 	}
 

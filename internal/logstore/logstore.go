@@ -20,6 +20,7 @@ const (
 	stdoutFilename = "stdout.log"
 	stderrFilename = "stderr.log"
 	indexFilename  = "chunks.idx"
+	activeFilename = ".active"
 )
 
 var (
@@ -31,6 +32,12 @@ var (
 	ErrUnsafePath = errors.New("unsafe log path")
 	// ErrCorruptIndex indicates that a complete chunk-index record is invalid.
 	ErrCorruptIndex = errors.New("corrupt log chunk index")
+	// ErrSegmentLimit indicates that capture filled every configured segment.
+	ErrSegmentLimit = errors.New("log segment limit reached")
+	// ErrActiveRun indicates that cleanup encountered capture ownership.
+	ErrActiveRun = errors.New("run log capture is active")
+	// ErrCleanupIneligible indicates that durable metadata does not permit removal.
+	ErrCleanupIneligible = errors.New("run logs are not eligible for cleanup")
 )
 
 // Stream identifies one raw target output stream.
@@ -61,6 +68,23 @@ type Paths struct {
 	Stdout    string
 	Stderr    string
 	Index     string
+	Active    string
+}
+
+// RunOptions controls filesystem capture for a newly-created run. The zero
+// value preserves the original, unsegmented version 1 log layout.
+type RunOptions struct {
+	Rotation RotationPolicy
+}
+
+// RotationPolicy bounds raw stream segments independently for stdout and
+// stderr. SegmentBytes zero disables rotation and requires
+// MaxSegmentsPerStream zero. MaxSegmentsPerStream zero means the on-disk
+// format maximum. Reaching a finite cap returns ErrSegmentLimit; capture never
+// deletes an earlier segment or rewrites index history.
+type RotationPolicy struct {
+	SegmentBytes         uint64
+	MaxSegmentsPerStream uint16
 }
 
 // Run serializes capture of stdout, stderr, and their observed chunk order.
@@ -73,15 +97,28 @@ type Run struct {
 	stderr *os.File
 	index  *os.File
 
-	nextSequence uint64
-	stdoutOffset uint64
-	stderrOffset uint64
-	writeErr     error
-	closed       bool
+	nextSequence  uint64
+	stdoutOffset  uint64
+	stderrOffset  uint64
+	stdoutSegment uint16
+	stderrSegment uint16
+	rotation      RotationPolicy
+	segmented     bool
+	writeErr      error
+	closed        bool
 }
 
 // CreateRun exclusively creates a private log directory for a positive run number.
 func CreateRun(stateDir, jobID string, runNumber uint64) (*Run, error) {
+	return CreateRunWithOptions(stateDir, jobID, runNumber, RunOptions{})
+}
+
+// CreateRunWithOptions exclusively creates a private log directory and
+// selects the version 2 index format when segment rotation is enabled.
+func CreateRunWithOptions(stateDir, jobID string, runNumber uint64, options RunOptions) (*Run, error) {
+	if err := validateRotationPolicy(options.Rotation); err != nil {
+		return nil, err
+	}
 	paths, parentDirs, err := pathsForRun(stateDir, jobID, runNumber)
 	if err != nil {
 		return nil, err
@@ -100,6 +137,12 @@ func CreateRun(stateDir, jobID string, runNumber uint64) (*Run, error) {
 	run := &Run{
 		paths:        paths,
 		nextSequence: 1,
+		rotation:     options.Rotation,
+		segmented:    options.Rotation.SegmentBytes != 0,
+	}
+	if run.segmented {
+		run.stdoutSegment = 1
+		run.stderrSegment = 1
 	}
 	if err := run.createFiles(); err != nil {
 		return nil, errors.Join(err, run.abortCreate(), rollbackRunDirectory(paths))
@@ -113,6 +156,7 @@ func (run *Run) abortCreate() error {
 		closeFile("incomplete stdout log", run.stdout),
 		closeFile("incomplete stderr log", run.stderr),
 		closeFile("incomplete log chunk index", run.index),
+		removeFile("incomplete active marker", run.paths.Active),
 	)
 }
 
@@ -132,6 +176,13 @@ func (run *Run) createFiles() error {
 	if err != nil {
 		return err
 	}
+	active, err := createPrivateFile(run.paths.Active)
+	if err != nil {
+		return err
+	}
+	if err := closeFile("active log marker", active); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -139,6 +190,15 @@ func (run *Run) createFiles() error {
 // Paths returns the canonical path set for this run.
 func (run *Run) Paths() Paths {
 	return run.paths
+}
+
+// IndexVersion returns the format version emitted by this capture.
+func (run *Run) IndexVersion() int {
+	if run.segmented {
+		return IndexVersionSegmented
+	}
+
+	return IndexVersionUnsegmented
 }
 
 // Append writes bytes to their raw stream before recording their observed order.
@@ -165,7 +225,25 @@ func (run *Run) Append(stream Stream, data []byte, observedAt time.Time) (int, e
 
 	written := 0
 	for len(data) > 0 {
+		if err := run.rotateFullSegment(stream); err != nil {
+			run.writeErr = err
+
+			return written, err
+		}
 		chunkLength := min(len(data), MaxChunkSize)
+		if run.segmented {
+			_, offset, _ := run.streamFileOffsetAndSegment(stream)
+			remaining := run.rotation.SegmentBytes - offset
+			if uint64(chunkLength) > remaining {
+				remainingLength, conversionErr := boundedUint64ToInt(remaining)
+				if conversionErr != nil {
+					run.writeErr = conversionErr
+
+					return written, conversionErr
+				}
+				chunkLength = remainingLength
+			}
+		}
 		count, err := run.appendChunk(stream, data[:chunkLength], observedAt)
 		written += count
 		data = data[count:]
@@ -180,7 +258,7 @@ func (run *Run) Append(stream Stream, data []byte, observedAt time.Time) (int, e
 }
 
 func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (int, error) {
-	file, offset := run.streamFileAndOffset(stream)
+	file, offset, segment := run.streamFileOffsetAndSegment(stream)
 	written, err := writeAll(file, data)
 	writtenLength, conversionErr := boundedIntToUint64(written)
 	if conversionErr != nil {
@@ -201,6 +279,7 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 		Offset:     offset,
 		Length:     writtenLength,
 		ObservedAt: observedAt,
+		Segment:    segment,
 	}
 	encoded, err := encodeRecord(record)
 	if err != nil {
@@ -218,12 +297,49 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	return written, nil
 }
 
-func (run *Run) streamFileAndOffset(stream Stream) (file *os.File, offset uint64) {
+func (run *Run) streamFileOffsetAndSegment(stream Stream) (file *os.File, offset uint64, segment uint16) {
 	if stream == Stdout {
-		return run.stdout, run.stdoutOffset
+		return run.stdout, run.stdoutOffset, run.stdoutSegment
 	}
 
-	return run.stderr, run.stderrOffset
+	return run.stderr, run.stderrOffset, run.stderrSegment
+}
+
+func (run *Run) rotateFullSegment(stream Stream) error {
+	if !run.segmented {
+		return nil
+	}
+
+	file, offset, segment := run.streamFileOffsetAndSegment(stream)
+	if offset < run.rotation.SegmentBytes {
+		return nil
+	}
+	if segment == ^uint16(0) ||
+		run.rotation.MaxSegmentsPerStream != 0 && segment >= run.rotation.MaxSegmentsPerStream {
+		return fmt.Errorf("%w: %s has %d segments", ErrSegmentLimit, stream, segment)
+	}
+
+	nextSegment := segment + 1
+	path := segmentPath(run.paths, stream, nextSegment)
+	nextFile, err := createPrivateFile(path)
+	if err != nil {
+		return fmt.Errorf("create %s segment %d: %w", stream, nextSegment, err)
+	}
+	if err := errors.Join(syncFile(stream.String()+" log", file), closeFile(stream.String()+" log", file)); err != nil {
+		return errors.Join(err, closeFile("new log segment", nextFile))
+	}
+
+	if stream == Stdout {
+		run.stdout = nextFile
+		run.stdoutOffset = 0
+		run.stdoutSegment = nextSegment
+	} else {
+		run.stderr = nextFile
+		run.stderrOffset = 0
+		run.stderrSegment = nextSegment
+	}
+
+	return nil
 }
 
 func (run *Run) advanceOffset(stream Stream, length uint64) {
@@ -281,7 +397,7 @@ func (run *Run) Close() error {
 	}
 	run.closed = true
 
-	return errors.Join(
+	closeErr := errors.Join(
 		run.writeErr,
 		syncFile("stdout log", run.stdout),
 		syncFile("stderr log", run.stderr),
@@ -290,6 +406,15 @@ func (run *Run) Close() error {
 		closeFile("stderr log", run.stderr),
 		closeFile("log chunk index", run.index),
 	)
+	return errors.Join(closeErr, removeFile("active log marker", run.paths.Active))
+}
+
+func validateRotationPolicy(policy RotationPolicy) error {
+	if policy.SegmentBytes == 0 && policy.MaxSegmentsPerStream != 0 {
+		return errors.New("log rotation max segments requires a positive segment byte limit")
+	}
+
+	return nil
 }
 
 func validateStream(stream Stream) error {
@@ -328,6 +453,7 @@ func pathsForRun(stateDir, jobID string, runNumber uint64) (Paths, []string, err
 		Stdout:    filepath.Join(runDir, stdoutFilename),
 		Stderr:    filepath.Join(runDir, stderrFilename),
 		Index:     filepath.Join(runDir, indexFilename),
+		Active:    filepath.Join(runDir, activeFilename),
 	}, []string{stateRoot, logsDir, jobDir}, nil
 }
 
@@ -390,6 +516,14 @@ func boundedIntToUint64(value int) (uint64, error) {
 	return uint64(value), nil
 }
 
+func boundedUint64ToInt(value uint64) (int, error) {
+	if value > MaxChunkSize {
+		return 0, fmt.Errorf("log chunk length %d exceeds %d", value, MaxChunkSize)
+	}
+
+	return int(value), nil // #nosec G115 -- value is bounded by the platform-independent MaxChunkSize.
+}
+
 func nonnegativeInt64ToUint64(value int64) (uint64, error) {
 	if value < 0 {
 		return 0, fmt.Errorf("negative file size %d", value)
@@ -417,7 +551,7 @@ func createPrivateFile(path string) (*os.File, error) {
 
 func rollbackRunDirectory(paths Paths) error {
 	var errs []error
-	for _, path := range []string{paths.Stdout, paths.Stderr, paths.Index} {
+	for _, path := range []string{paths.Stdout, paths.Stderr, paths.Index, paths.Active} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, fmt.Errorf("remove incomplete log file %q: %w", path, err))
 		}
@@ -427,6 +561,18 @@ func rollbackRunDirectory(paths Paths) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func segmentPath(paths Paths, stream Stream, segment uint16) string {
+	if segment <= 1 {
+		if stream == Stdout {
+			return paths.Stdout
+		}
+
+		return paths.Stderr
+	}
+
+	return filepath.Join(paths.Directory, fmt.Sprintf("%s.%06d.log", stream, segment))
 }
 
 func writeAll(writer io.Writer, data []byte) (int, error) {
@@ -463,6 +609,14 @@ func closeFile(name string, file *os.File) error {
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", name, err)
+	}
+
+	return nil
+}
+
+func removeFile(name, path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove %s %q: %w", name, path, err)
 	}
 
 	return nil
