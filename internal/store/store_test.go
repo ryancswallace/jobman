@@ -651,6 +651,86 @@ func TestListAndResolveJobs(t *testing.T) {
 	}
 }
 
+func TestListJobsAppliesFiltersBeforeLimit(t *testing.T) {
+	t.Parallel()
+
+	database := openTestStore(t, "filtered-list", newSequentialEventIDs(0x6100))
+	at := storeTestTime()
+	hash, err := model.NewCredentialHash(bytes.Repeat([]byte{0x61}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	olderID := mustJobID(t, 0x61, 1)
+	newerID := mustJobID(t, 0x61, 2)
+	if _, submitErr := database.Submit(
+		t.Context(), olderID, testJobSpecWithGroups(t, "wanted", []string{"selected"}),
+		hash, at, at.Add(time.Minute),
+	); submitErr != nil {
+		t.Fatal(submitErr)
+	}
+	if _, submitErr := database.Submit(
+		t.Context(), newerID, testJobSpecWithGroups(t, "newest", []string{"other"}),
+		hash, at.Add(time.Second), at.Add(time.Minute+time.Second),
+	); submitErr != nil {
+		t.Fatal(submitErr)
+	}
+
+	for name, options := range map[string]ListJobsOptions{
+		"name":  {Name: "wanted", Limit: 1},
+		"group": {Group: "selected", Limit: 1},
+		"time":  {SubmittedBefore: at.Add(time.Second), Limit: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			listed, listErr := database.ListJobs(t.Context(), options)
+			if listErr != nil {
+				t.Fatal(listErr)
+			}
+			if len(listed) != 1 || listed[0].ID != olderID {
+				t.Fatalf("ListJobs(%s) = %+v, want older matching job %s", name, listed, olderID)
+			}
+		})
+	}
+
+	firstPage, err := database.ListJobs(t.Context(), ListJobsOptions{Limit: 1})
+	if err != nil || len(firstPage) != 1 || firstPage[0].ID != newerID {
+		t.Fatalf("ListJobs(first page) = %+v, %v", firstPage, err)
+	}
+	secondPage, err := database.ListJobs(t.Context(), ListJobsOptions{
+		Cursor: &JobListCursor{SubmittedAt: firstPage[0].SubmittedAt, ID: firstPage[0].ID},
+		Limit:  1,
+	})
+	if err != nil || len(secondPage) != 1 || secondPage[0].ID != olderID {
+		t.Fatalf("ListJobs(second page) = %+v, %v, want %s", secondPage, err, olderID)
+	}
+	if _, err := database.ListJobs(t.Context(), ListJobsOptions{
+		Cursor: &JobListCursor{SubmittedAt: firstPage[0].SubmittedAt}, Limit: 1,
+	}); err == nil {
+		t.Fatal("ListJobs(invalid cursor) error = nil")
+	}
+
+	extremes := []struct {
+		name    string
+		options ListJobsOptions
+		want    int
+	}{
+		{name: "after pre-epoch", options: ListJobsOptions{SubmittedAfter: time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), Limit: 2}, want: 2},
+		{name: "before pre-epoch", options: ListJobsOptions{SubmittedBefore: time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), Limit: 2}, want: 0},
+		{name: "after database range", options: ListJobsOptions{SubmittedAfter: time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC), Limit: 2}, want: 0},
+		{name: "before database range", options: ListJobsOptions{SubmittedBefore: time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC), Limit: 2}, want: 2},
+	}
+	for _, item := range extremes {
+		t.Run(item.name, func(t *testing.T) {
+			listed, listErr := database.ListJobs(t.Context(), item.options)
+			if listErr != nil {
+				t.Fatal(listErr)
+			}
+			if len(listed) != item.want {
+				t.Fatalf("ListJobs(%s) returned %d jobs, want %d", item.name, len(listed), item.want)
+			}
+		})
+	}
+}
+
 type sequentialEventIDs struct {
 	mu      sync.Mutex
 	prefix  uint64
@@ -707,6 +787,11 @@ func openTestStoreAt(t *testing.T, stateDir string, events EventIDSource) *Store
 
 func testJobSpec(t *testing.T, name string) model.JobSpec {
 	t.Helper()
+	return testJobSpecWithGroups(t, name, nil)
+}
+
+func testJobSpecWithGroups(t *testing.T, name string, groups []string) model.JobSpec {
+	t.Helper()
 
 	specification, err := model.NewJobSpec(model.JobSpecInput{
 		Executable:             "/test/bin/worker",
@@ -721,6 +806,9 @@ func testJobSpec(t *testing.T, name string) model.JobSpec {
 			ForceAfterGrace: true,
 		},
 		StdinPolicy: model.StdinNull,
+		ExecutionPolicy: model.ExecutionPolicy{
+			Groups: groups,
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewJobSpec() error = %v", err)

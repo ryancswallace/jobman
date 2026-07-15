@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/ryancswallace/jobman/internal/model"
 )
@@ -20,8 +22,24 @@ const (
 
 // ListJobsOptions filters and bounds a job listing.
 type ListJobsOptions struct {
-	Phase model.JobPhase
-	Limit int
+	Phase           model.JobPhase
+	Outcome         model.JobOutcome
+	Name            string
+	Group           string
+	SubmittedAfter  time.Time
+	SubmittedBefore time.Time
+	Active          bool
+	Completed       bool
+	Cursor          *JobListCursor
+	Limit           int
+}
+
+// JobListCursor identifies the last row of a previous newest-first listing.
+// It permits stable keyset pagination without an increasingly expensive SQL
+// offset or gaps when lifecycle fields change between pages.
+type JobListCursor struct {
+	SubmittedAt time.Time
+	ID          model.JobID
 }
 
 // GetJob returns one validated job snapshot by canonical ID.
@@ -74,6 +92,8 @@ func (s *Store) GetSupervisorForJob(ctx context.Context, jobID model.JobID) (mod
 }
 
 // ListJobs returns validated job snapshots ordered newest first.
+//
+//nolint:cyclop // Independent bounded filters and cursor validation remain explicit at the query boundary.
 func (s *Store) ListJobs(ctx context.Context, options ListJobsOptions) ([]model.JobState, error) {
 	limit := options.Limit
 	if limit == 0 {
@@ -85,15 +105,63 @@ func (s *Store) ListJobs(ctx context.Context, options ListJobsOptions) ([]model.
 	if options.Phase != "" && !options.Phase.Valid() {
 		return nil, errors.New("list jobs: invalid phase")
 	}
+	if options.Outcome != "" && !options.Outcome.Valid() {
+		return nil, errors.New("list jobs: invalid outcome")
+	}
+	if options.Active && options.Completed {
+		return nil, errors.New("list jobs: active and completed filters are mutually exclusive")
+	}
+	cursorSet := options.Cursor != nil
+	cursorTime := int64(0)
+	cursorID := ""
+	if cursorSet {
+		if options.Cursor.SubmittedAt.IsZero() || !options.Cursor.ID.Valid() {
+			return nil, errors.New("list jobs: invalid cursor")
+		}
+		cursorTime = boundedUnixNano(options.Cursor.SubmittedAt)
+		cursorID = options.Cursor.ID.String()
+	}
+	afterSet := !options.SubmittedAfter.IsZero()
+	beforeSet := !options.SubmittedBefore.IsZero()
+	after := boundedUnixNano(options.SubmittedAfter)
+	before := boundedUnixNano(options.SubmittedBefore)
 
 	rows, err := s.db.QueryContext(
 		ctx,
 		"SELECT "+jobColumns+` FROM jobs
 		 WHERE (? = '' OR phase = ?)
+		   AND (? = '' OR outcome = ?)
+		   AND (? = '' OR name = ?)
+		   AND (NOT ? OR phase != 'completed')
+		   AND (NOT ? OR phase = 'completed')
+		   AND (NOT ? OR submitted_at_ns > ?)
+		   AND (NOT ? OR submitted_at_ns < ?)
+		   AND (? = '' OR EXISTS (
+		       SELECT 1
+		       FROM json_each(jobs.spec_json, '$.execution_policy.groups')
+		       WHERE json_each.value = ?
+		   ))
+		   AND (NOT ? OR submitted_at_ns < ? OR (submitted_at_ns = ? AND id < ?))
 		 ORDER BY submitted_at_ns DESC, id DESC
 		 LIMIT ?`,
 		string(options.Phase),
 		string(options.Phase),
+		string(options.Outcome),
+		string(options.Outcome),
+		options.Name,
+		options.Name,
+		options.Active,
+		options.Completed,
+		afterSet,
+		after,
+		beforeSet,
+		before,
+		options.Group,
+		options.Group,
+		cursorSet,
+		cursorTime,
+		cursorTime,
+		cursorID,
 		limit,
 	)
 	if err != nil {
@@ -114,6 +182,18 @@ func (s *Store) ListJobs(ctx context.Context, options ListJobsOptions) ([]model.
 	}
 
 	return jobs, nil
+}
+
+func boundedUnixNano(value time.Time) int64 {
+	if value.IsZero() || value.Before(time.Unix(0, 0)) {
+		return -1
+	}
+	maximum := time.Unix(0, math.MaxInt64)
+	if value.After(maximum) {
+		return math.MaxInt64
+	}
+
+	return value.UnixNano()
 }
 
 // ListRuns returns every retained run for a job in ascending run-number order.

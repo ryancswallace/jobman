@@ -387,6 +387,12 @@ func TestStorePublicValidationMatrix(t *testing.T) {
 	if _, err := database.ListJobs(ctx, ListJobsOptions{Phase: model.JobPhase("invalid")}); err == nil {
 		t.Error("ListJobs(invalid phase) error = nil")
 	}
+	if _, err := database.ListJobs(ctx, ListJobsOptions{Outcome: model.JobOutcome("invalid")}); err == nil {
+		t.Error("ListJobs(invalid outcome) error = nil")
+	}
+	if _, err := database.ListJobs(ctx, ListJobsOptions{Active: true, Completed: true}); err == nil {
+		t.Error("ListJobs(conflicting completion filters) error = nil")
+	}
 }
 
 func TestPersistedConversionValidation(t *testing.T) {
