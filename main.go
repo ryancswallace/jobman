@@ -23,14 +23,21 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/ryancswallace/jobman/jobman"
 )
 
 func main() {
-	if err := jobman.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(jobman.ExitCode(err))
+	mainWith(jobman.Execute, os.Stderr, os.Exit)
+}
+
+func mainWith(execute func() error, stderr io.Writer, exit func(int)) {
+	err := execute()
+	if err == nil {
+		return
 	}
+	fmt.Fprintln(stderr, err)
+	exit(jobman.ExitCode(err))
 }
