@@ -1,12 +1,23 @@
 package logstore
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 )
+
+const (
+	cleanupSummaryFilename = ".cleanup-summary"
+	cleanupSummarySize     = 24
+)
+
+var cleanupSummaryMagic = [4]byte{'J', 'M', 'C', 1}
 
 // CleanupEligibility rechecks durable metadata before filesystem mutation. It
 // should return true only for a completed, transactionally claimed cleanup.
@@ -51,6 +62,48 @@ func CleanupRun(
 	}
 
 	return removeCleanupClaim(claim)
+}
+
+// FinalizeCleanupRun removes the empty durable cleanup claim after its pruning
+// result has committed to the metadata store. It is idempotent so a later
+// cleanup can finish the handoff after a client crash.
+func FinalizeCleanupRun(stateDir, jobID string, runNumber uint64) error {
+	paths, parentDirs, pathErr := pathsForRun(stateDir, jobID, runNumber)
+	if pathErr != nil {
+		return pathErr
+	}
+	for _, dir := range parentDirs {
+		if directoryErr := inspectPrivateDirectory(dir); directoryErr != nil {
+			return directoryErr
+		}
+	}
+	tombstone := paths.Directory + ".deleting"
+	if _, err := os.Lstat(tombstone); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect cleanup tombstone %q: %w", tombstone, err)
+	}
+	if _, entries, err := inspectCleanupDirectory(tombstone, true); err != nil {
+		return err
+	} else if len(entries) != 0 {
+		return fmt.Errorf("%w: cleanup tombstone %q still contains log files", ErrUnsafePath, tombstone)
+	}
+	summaryPath := filepath.Join(tombstone, cleanupSummaryFilename)
+	if _, err := os.Lstat(summaryPath); err == nil {
+		if _, readErr := readCleanupSummary(summaryPath); readErr != nil {
+			return readErr
+		}
+		if removeErr := removeFile("cleanup summary", summaryPath); removeErr != nil {
+			return removeErr
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect cleanup summary %q: %w", summaryPath, err)
+	}
+	if err := os.Remove(tombstone); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove empty cleanup tombstone %q: %w", tombstone, err)
+	}
+
+	return nil
 }
 
 // ReleaseAbandonedRun removes a conservative ownership marker only after an
@@ -110,6 +163,7 @@ type cleanupEntry struct {
 type cleanupClaim struct {
 	path    string
 	entries []cleanupEntry
+	result  CleanupResult
 }
 
 func claimCleanup(
@@ -122,7 +176,7 @@ func claimCleanup(
 	if sourceErr != nil {
 		return cleanupClaim{}, sourceErr
 	}
-	before, entries, inspectErr := inspectCleanupDirectory(source)
+	before, entries, inspectErr := inspectCleanupDirectory(source, alreadyMoved)
 	if inspectErr != nil {
 		return cleanupClaim{}, inspectErr
 	}
@@ -144,8 +198,12 @@ func claimCleanup(
 	if !os.SameFile(before, after) || !after.IsDir() || after.Mode()&os.ModeSymlink != 0 {
 		return cleanupClaim{}, fmt.Errorf("%w: run log directory changed during cleanup", ErrUnsafePath)
 	}
+	result, summaryErr := ensureCleanupSummary(claimedPath, entries)
+	if summaryErr != nil {
+		return cleanupClaim{}, summaryErr
+	}
 
-	return cleanupClaim{path: claimedPath, entries: entries}, nil
+	return cleanupClaim{path: claimedPath, entries: entries, result: result}, nil
 }
 
 func moveCleanupDirectory(source, tombstone string, alreadyMoved bool) (string, error) {
@@ -170,46 +228,110 @@ func moveCleanupDirectory(source, tombstone string, alreadyMoved bool) (string, 
 }
 
 func removeCleanupClaim(claim cleanupClaim) (CleanupResult, error) {
-	result := CleanupResult{}
 	for _, entry := range claim.entries {
-		size, removeErr := removeCleanupEntry(claim.path, entry)
+		removeErr := removeCleanupEntry(claim.path, entry)
 		if removeErr != nil {
-			return result, removeErr
+			return CleanupResult{}, removeErr
+		}
+	}
+
+	return claim.result, nil
+}
+
+func ensureCleanupSummary(directory string, entries []cleanupEntry) (CleanupResult, error) {
+	path := filepath.Join(directory, cleanupSummaryFilename)
+	if _, err := os.Lstat(path); err == nil {
+		result, readErr := readCleanupSummary(path)
+		if readErr == nil {
+			return result, nil
+		}
+		// Removal never begins until a complete summary has been synced and
+		// closed. A partial summary with original entries still present is
+		// therefore a recoverable process-crash boundary.
+		if len(entries) == 0 {
+			return CleanupResult{}, readErr
+		}
+		if removeErr := removeFile("incomplete cleanup summary", path); removeErr != nil {
+			return CleanupResult{}, errors.Join(readErr, removeErr)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return CleanupResult{}, fmt.Errorf("inspect cleanup summary %q: %w", path, err)
+	}
+	result := CleanupResult{}
+	for _, entry := range entries {
+		size, err := nonnegativeInt64ToUint64(entry.info.Size())
+		if err != nil {
+			return CleanupResult{}, err
 		}
 		if result.Bytes > ^uint64(0)-size {
-			return result, errors.New("cleaned log byte count overflows")
+			return CleanupResult{}, errors.New("cleaned log byte count overflows")
 		}
 		result.Bytes += size
 		result.Files++
 	}
-	if removeErr := os.Remove(claim.path); removeErr != nil {
-		return result, fmt.Errorf("remove empty run log directory %q: %w", claim.path, removeErr)
+	encoded := encodeCleanupSummary(result)
+	file, err := createPrivateFile(path)
+	if err != nil {
+		return CleanupResult{}, err
+	}
+	_, writeErr := writeAll(file, encoded[:])
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
+		return CleanupResult{}, errors.Join(fmt.Errorf("persist cleanup summary: %w", err), os.Remove(path))
 	}
 
 	return result, nil
 }
 
-func removeCleanupEntry(directory string, entry cleanupEntry) (uint64, error) {
+func encodeCleanupSummary(result CleanupResult) [cleanupSummarySize]byte {
+	var encoded [cleanupSummarySize]byte
+	copy(encoded[:4], cleanupSummaryMagic[:])
+	binary.LittleEndian.PutUint64(encoded[4:12], result.Files)
+	binary.LittleEndian.PutUint64(encoded[12:20], result.Bytes)
+	binary.LittleEndian.PutUint32(encoded[20:24], crc32.Checksum(encoded[:20], indexChecksumTab))
+
+	return encoded
+}
+
+func readCleanupSummary(path string) (CleanupResult, error) {
+	file, err := openPrivateRegularFile(path)
+	if err != nil {
+		return CleanupResult{}, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, cleanupSummarySize+1))
+	closeErr := file.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return CleanupResult{}, fmt.Errorf("read cleanup summary: %w", err)
+	}
+	if len(data) != cleanupSummarySize || !bytes.Equal(data[:4], cleanupSummaryMagic[:]) ||
+		binary.LittleEndian.Uint32(data[20:24]) != crc32.Checksum(data[:20], indexChecksumTab) {
+		return CleanupResult{}, fmt.Errorf("%w: invalid cleanup summary %q", ErrUnsafePath, path)
+	}
+
+	return CleanupResult{
+		Files: binary.LittleEndian.Uint64(data[4:12]),
+		Bytes: binary.LittleEndian.Uint64(data[12:20]),
+	}, nil
+}
+
+func removeCleanupEntry(directory string, entry cleanupEntry) error {
 	path := filepath.Join(directory, entry.name)
 	current, statErr := os.Lstat(path)
 	if statErr != nil {
-		return 0, fmt.Errorf("reinspect cleanup file %q: %w", path, statErr)
+		return fmt.Errorf("reinspect cleanup file %q: %w", path, statErr)
 	}
 	if !os.SameFile(entry.info, current) || !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 {
-		return 0, fmt.Errorf("%w: cleanup file %q changed before removal", ErrUnsafePath, path)
+		return fmt.Errorf("%w: cleanup file %q changed before removal", ErrUnsafePath, path)
 	}
 	if linkErr := validateSingleLink(path, current); linkErr != nil {
-		return 0, linkErr
-	}
-	size, conversionErr := nonnegativeInt64ToUint64(current.Size())
-	if conversionErr != nil {
-		return 0, conversionErr
+		return linkErr
 	}
 	if removeErr := os.Remove(path); removeErr != nil {
-		return 0, fmt.Errorf("remove run log file %q: %w", path, removeErr)
+		return fmt.Errorf("remove run log file %q: %w", path, removeErr)
 	}
 
-	return size, nil
+	return nil
 }
 
 func cleanupSource(runDirectory, tombstone string) (source string, alreadyMoved bool, err error) {
@@ -234,7 +356,7 @@ func cleanupSource(runDirectory, tombstone string) (source string, alreadyMoved 
 	return "", false, fmt.Errorf("inspect run log directory %q: %w", runDirectory, os.ErrNotExist)
 }
 
-func inspectCleanupDirectory(path string) (os.FileInfo, []cleanupEntry, error) {
+func inspectCleanupDirectory(path string, allowSummary bool) (os.FileInfo, []cleanupEntry, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("inspect cleanup directory %q: %w", path, err)
@@ -252,6 +374,9 @@ func inspectCleanupDirectory(path string) (os.FileInfo, []cleanupEntry, error) {
 	}
 	entries := make([]cleanupEntry, 0, len(directoryEntries))
 	for _, entry := range directoryEntries {
+		if entry.Name() == cleanupSummaryFilename && allowSummary {
+			continue
+		}
 		if !isRecognizedLogFilename(entry.Name()) {
 			return nil, nil, fmt.Errorf("%w: unrecognized run log entry %q", ErrUnsafePath, entry.Name())
 		}

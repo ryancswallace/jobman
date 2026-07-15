@@ -452,14 +452,14 @@ func TestCleanupClaimSafetyBranches(t *testing.T) {
 	if _, err := moveCleanupDirectory(runDirectory, tombstone, false); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("moveCleanupDirectory(existing tombstone) error = %v", err)
 	}
-	if _, _, err := inspectCleanupDirectory(filepath.Join(root, "missing")); err == nil {
+	if _, _, err := inspectCleanupDirectory(filepath.Join(root, "missing"), false); err == nil {
 		t.Fatal("inspectCleanupDirectory(missing) error = nil")
 	}
 	regular := filepath.Join(root, "regular")
 	if err := os.WriteFile(regular, nil, fileMode); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := inspectCleanupDirectory(regular); !errors.Is(err, ErrUnsafePath) {
+	if _, _, err := inspectCleanupDirectory(regular, false); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("inspectCleanupDirectory(file) error = %v", err)
 	}
 
@@ -477,7 +477,7 @@ func TestCleanupClaimSafetyBranches(t *testing.T) {
 	if err := os.Mkdir(entryPath, directoryMode); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := removeCleanupEntry(root, cleanupEntry{name: stdoutFilename, info: before}); !errors.Is(err, ErrUnsafePath) {
+	if err := removeCleanupEntry(root, cleanupEntry{name: stdoutFilename, info: before}); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("removeCleanupEntry(changed) error = %v", err)
 	}
 }

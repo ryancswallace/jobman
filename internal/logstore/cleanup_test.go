@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -59,11 +60,24 @@ func TestCleanupRunRemovesClosedRotatedRun(t *testing.T) {
 	if result.Files != 4 || result.Bytes == 0 {
 		t.Errorf("CleanupRun() result = %+v, want four nonempty files", result)
 	}
-	if _, err := os.Stat(paths.Directory); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cleaned run directory error = %v, want not exist", err)
+	if _, statErr := os.Stat(paths.Directory); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("cleaned run directory error = %v, want not exist", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(paths.Directory+".deleting", cleanupSummaryFilename)); statErr != nil {
+		t.Fatalf("durable cleanup summary: %v", statErr)
+	}
+	repeated, err := CleanupRun(t.Context(), stateDir, testJobID, 1, alwaysEligible)
+	if err != nil || repeated != result {
+		t.Fatalf("CleanupRun(resume before metadata commit) = %+v, %v, want %+v", repeated, err, result)
+	}
+	if err := FinalizeCleanupRun(stateDir, testJobID, 1); err != nil {
+		t.Fatalf("FinalizeCleanupRun() error = %v", err)
+	}
+	if err := FinalizeCleanupRun(stateDir, testJobID, 1); err != nil {
+		t.Fatalf("FinalizeCleanupRun(repeated) error = %v", err)
 	}
 	if _, err := os.Stat(paths.Directory + ".deleting"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cleanup tombstone error = %v, want not exist", err)
+		t.Fatalf("finalized cleanup tombstone error = %v, want not exist", err)
 	}
 }
 
@@ -111,6 +125,9 @@ func TestCleanupRunResumesClaimedTombstone(t *testing.T) {
 	if err := os.Rename(paths.Directory, tombstone); err != nil {
 		t.Fatalf("create cleanup tombstone: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(tombstone, cleanupSummaryFilename), []byte("partial"), fileMode); err != nil {
+		t.Fatalf("create interrupted cleanup summary: %v", err)
+	}
 	result, err := CleanupRun(t.Context(), stateDir, testJobID, 1, alwaysEligible)
 	if err != nil {
 		t.Fatalf("CleanupRun() error = %v", err)
@@ -118,9 +135,89 @@ func TestCleanupRunResumesClaimedTombstone(t *testing.T) {
 	if result.Files != 3 {
 		t.Errorf("CleanupRun() files = %d, want 3", result.Files)
 	}
-	if _, err := os.Stat(tombstone); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cleanup tombstone error = %v, want not exist", err)
+	if err := FinalizeCleanupRun(stateDir, testJobID, 1); err != nil {
+		t.Fatalf("FinalizeCleanupRun() error = %v", err)
 	}
+	if _, err := os.Stat(tombstone); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("finalized cleanup tombstone error = %v, want not exist", err)
+	}
+}
+
+func TestFinalizeCleanupRunRefusesIncompleteClaims(t *testing.T) {
+	t.Parallel()
+
+	t.Run("log files remain", func(t *testing.T) {
+		stateDir, paths := closedRunFixture(t)
+		if err := os.Rename(paths.Directory, paths.Directory+".deleting"); err != nil {
+			t.Fatal(err)
+		}
+		if err := FinalizeCleanupRun(stateDir, testJobID, 1); !errors.Is(err, ErrUnsafePath) {
+			t.Fatalf("FinalizeCleanupRun(nonempty) error = %v, want ErrUnsafePath", err)
+		}
+	})
+
+	t.Run("summary is corrupt", func(t *testing.T) {
+		stateDir, paths := closedRunFixture(t)
+		if _, err := CleanupRun(t.Context(), stateDir, testJobID, 1, alwaysEligible); err != nil {
+			t.Fatal(err)
+		}
+		summary := filepath.Join(paths.Directory+".deleting", cleanupSummaryFilename)
+		if err := os.WriteFile(summary, []byte("corrupt"), fileMode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CleanupRun(t.Context(), stateDir, testJobID, 1, alwaysEligible); !errors.Is(err, ErrUnsafePath) {
+			t.Fatalf("CleanupRun(corrupt summary) error = %v, want ErrUnsafePath", err)
+		}
+		if err := FinalizeCleanupRun(stateDir, testJobID, 1); !errors.Is(err, ErrUnsafePath) {
+			t.Fatalf("FinalizeCleanupRun(corrupt summary) error = %v, want ErrUnsafePath", err)
+		}
+	})
+}
+
+func TestFinalizeCleanupRunFailurePaths(t *testing.T) {
+	t.Parallel()
+
+	if err := FinalizeCleanupRun("", testJobID, 1); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("FinalizeCleanupRun(empty state) error = %v, want ErrUnsafePath", err)
+	}
+	if err := FinalizeCleanupRun(filepath.Join(t.TempDir(), "missing"), testJobID, 1); err == nil {
+		t.Fatal("FinalizeCleanupRun(missing state) error = nil")
+	}
+
+	t.Run("tombstone is not a directory", func(t *testing.T) {
+		stateDir, paths := closedRunFixture(t)
+		if err := os.RemoveAll(paths.Directory); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(paths.Directory+".deleting", []byte("unsafe"), fileMode); err != nil {
+			t.Fatal(err)
+		}
+		if err := FinalizeCleanupRun(stateDir, testJobID, 1); !errors.Is(err, ErrUnsafePath) {
+			t.Fatalf("FinalizeCleanupRun(file tombstone) error = %v, want ErrUnsafePath", err)
+		}
+	})
+
+	t.Run("summary removal fails", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not enforce POSIX directory write permissions")
+		}
+		stateDir, paths := closedRunFixture(t)
+		if _, err := CleanupRun(t.Context(), stateDir, testJobID, 1, alwaysEligible); err != nil {
+			t.Fatal(err)
+		}
+		tombstone := paths.Directory + ".deleting"
+		if err := os.Chmod(tombstone, 0o500); err != nil { // #nosec G302 -- directory traversal is required while write access is intentionally removed.
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chmod(tombstone, directoryMode); err != nil && !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("restore tombstone permissions: %v", err)
+			}
+		})
+		if err := FinalizeCleanupRun(stateDir, testJobID, 1); err == nil {
+			t.Fatal("FinalizeCleanupRun(read-only tombstone) error = nil")
+		}
+	})
 }
 
 func TestCleanupRunRefusesSymlink(t *testing.T) {
