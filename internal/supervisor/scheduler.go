@@ -329,6 +329,26 @@ func tryAdmission(
 		return schedulerResult{terminal: completeErr == nil, job: completed.Job}, true, false,
 			errors.Join(err, completeErr)
 	}
+	if job.Phase == model.JobPhaseStarting {
+		if _, moveErr := database.MoveJob(
+			operationCtx,
+			job.ID,
+			model.JobPhaseQueued,
+			now,
+			"admission_capacity",
+		); moveErr != nil {
+			latest, getErr := database.GetJob(operationCtx, job.ID)
+			if getErr == nil && isSchedulerInterruption(latest.Phase) {
+				result, waitErr := awaitRunnable(stopCtx, operationCtx, database, job.ID, jitter)
+
+				return result, true, false, waitErr
+			}
+
+			return schedulerResult{}, true, false, errors.Join(moveErr, getErr)
+		}
+
+		return schedulerResult{}, false, true, nil
+	}
 	reconciled, reconcileErr := reconcileExpiredOwnership(operationCtx, database, now)
 	if reconcileErr != nil {
 		return schedulerResult{}, true, false, reconcileErr

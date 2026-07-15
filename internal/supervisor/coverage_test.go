@@ -538,6 +538,9 @@ func TestSchedulerWaitAndDeadlineHelpers(t *testing.T) {
 	if err := waitForSchedulerTick(t.Context(), operationCtx, database, job.ID, time.Hour); !errors.Is(err, context.Canceled) {
 		t.Fatalf("waitForSchedulerTick(operation cancellation) error = %v", err)
 	}
+	if err := waitForSchedulerTick(t.Context(), operationCtx, database, job.ID, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitForSchedulerTick(default delay) error = %v", err)
+	}
 	if _, expired, err := completeSchedulingDeadline(t.Context(), database, job, time.Now().UTC()); err != nil || expired {
 		t.Fatalf("completeSchedulingDeadline(no deadline) = (%t, %v)", expired, err)
 	}
@@ -800,6 +803,30 @@ func TestInvalidAdmissionConfigurationIsDurablyAborted(t *testing.T) {
 func TestSchedulerAdmissionFinalizationEdges(t *testing.T) {
 	t.Parallel()
 
+	t.Run("capacity wait becomes queued", func(t *testing.T) {
+		fixture := submitSupervisorFixture(t, true)
+		installAdmissionBlocker(t, fixture.stateDir)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		job := claimCoverageFixture(t, database, fixture, time.Minute)
+		result, done, retry, err := tryAdmission(
+			t.Context(),
+			t.Context(),
+			database,
+			job,
+			job.Spec.ExecutionPolicy().Concurrency,
+			time.Now().UTC(),
+			fixedJitterSource(0),
+		)
+		if err != nil || done || !retry || result.terminal {
+			t.Fatalf("tryAdmission(capacity) = (%+v, done=%t, retry=%t, %v)", result, done, retry, err)
+		}
+		queued, err := database.GetJob(t.Context(), job.ID)
+		if err != nil || queued.Phase != model.JobPhaseQueued {
+			t.Fatalf("capacity-limited job = (%+v, %v), want queued", queued, err)
+		}
+	})
+
 	t.Run("queued becomes starting", func(t *testing.T) {
 		fixture := submitSupervisorFixture(t, true)
 		database := openSupervisorStore(t, fixture.stateDir)
@@ -833,6 +860,25 @@ func TestSchedulerAdmissionFinalizationEdges(t *testing.T) {
 		)
 		if err != nil || result.job.Phase != model.JobPhaseStarting {
 			t.Fatalf("finalizeAcquiredAdmission(starting) = (%+v, %v)", result, err)
+		}
+	})
+
+	t.Run("cancellation after acquisition releases admission", func(t *testing.T) {
+		fixture := submitSupervisorFixture(t, true)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		job := claimCoverageFixture(t, database, fixture, time.Minute)
+		if _, err := database.TryAcquireAdmission(t.Context(), job.ID, "", 1, time.Now().UTC(), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.RequestCancellation(t.Context(), job.ID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		result, err := finalizeAcquiredAdmission(
+			t.Context(), t.Context(), database, job.ID, time.Now().UTC(), fixedJitterSource(0),
+		)
+		if err != nil || !result.terminal || result.job.Outcome != model.JobOutcomeCancelled {
+			t.Fatalf("finalizeAcquiredAdmission(canceled) = (%+v, %v)", result, err)
 		}
 	})
 
@@ -1744,7 +1790,7 @@ func TestLiveInputSetupPath(t *testing.T) {
 func TestAwaitRunnablePausedAndDependencyFailure(t *testing.T) {
 	t.Parallel()
 
-	t.Run("paused operation cancellation", func(t *testing.T) {
+	t.Run("paused stop cancellation", func(t *testing.T) {
 		fixture := submitSupervisorFixture(t, true)
 		database := openSupervisorStore(t, fixture.stateDir)
 		defer closeSupervisorStore(t, database)
@@ -1757,12 +1803,13 @@ func TestAwaitRunnablePausedAndDependencyFailure(t *testing.T) {
 		if _, err := database.Pause(t.Context(), job.ID, time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
-		operationCtx, cancel := context.WithCancel(t.Context())
+		stopCtx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := awaitRunnable(
-			t.Context(), operationCtx, database, job.ID, fixedJitterSource(0),
-		); !errors.Is(err, context.Canceled) {
-			t.Fatalf("awaitRunnable(paused canceled operation) error = %v", err)
+		result, err := awaitRunnable(
+			stopCtx, t.Context(), database, job.ID, fixedJitterSource(0),
+		)
+		if err != nil || !result.terminal || result.job.Outcome != model.JobOutcomeCancelled {
+			t.Fatalf("awaitRunnable(paused canceled stop) = (%+v, %v)", result, err)
 		}
 	})
 
