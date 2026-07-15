@@ -48,7 +48,8 @@ Jobman process at these boundaries:
 - after an index fsync;
 - before and after run-completion commit;
 - after terminal job-completion commit; and
-- after cancellation-intent commit and after the cancellation side effect.
+- after cancellation-intent commit and after the cancellation side effect; and
+- after cleanup removes claimed log files but before pruning metadata commits.
 
 Every case must converge to a valid terminal state and pass `jobman doctor`.
 Raw bytes without an index record are treated as an unindexed tail, never as a

@@ -1,6 +1,6 @@
 # Persisted schema
 
-Status: implemented, pre-1.0 compatibility surface
+Status: implemented, frozen v1 release-candidate compatibility surface
 Database schema version: 7
 Job specification schema version: 2
 Log index versions: 1 (unsegmented) and 2 (segmented)
@@ -9,9 +9,9 @@ Decision: [ADR-0002](adr/0002-sqlite-metadata-and-filesystem-logs.md)
 
 This document records the current formats written by Jobman. It is an
 implementation reference, not permission to edit state by hand. The migration
-source and format encoders remain authoritative. Before a stable release, an
-incompatible change may still be made through a new migration or format
-version; an applied migration is never rewritten in place.
+source and format encoders remain authoritative. An incompatible change uses a
+new migration or format version; an applied migration is never rewritten in
+place.
 
 ## State layout
 
@@ -46,8 +46,10 @@ while Jobman processes are using the store.
 
 On Unix-like systems, Jobman creates directories with mode `0700` and database,
 marker, and log files with mode `0600`, and rejects unsafe ownership,
-permissions, symlinks, or hard links where checked. Windows ACL enforcement is
-not complete; see the [platform capability record](PLATFORM_CAPABILITIES.md).
+permissions, symlinks, or hard links where checked. On Windows, new paths use
+protected current-user/SYSTEM/administrators ACLs and existing state rejects
+broad principals or foreign ownership. See the
+[platform capability record](PLATFORM_CAPABILITIES.md).
 
 ## SQLite identity and migrations
 
@@ -66,8 +68,10 @@ five seconds by default. The bundled SQLite library must report version 3.51.3
 or newer.
 
 The store is supported only on a local filesystem with reliable SQLite locking
-and shared-memory behavior. Automatic rejection of every unsafe network or
-cloud-synchronized filesystem remains a pre-1.0 hardening gap.
+and shared-memory behavior. Platform adapters reject known remote,
+distributed, and user-space filesystem types before SQLite opens. This is a
+fail-fast guard, not a promise that every third-party synchronization driver is
+detectable; operators must still choose an ordinary local state volume.
 
 ### Migration 1: lifecycle snapshots and events
 
@@ -130,9 +134,12 @@ available. Log reads reject a pruned run instead of treating it as empty or
 recreating files.
 
 The filesystem removal and SQLite tombstone cannot form one atomic transaction.
-The directory rename makes an interruption during file removal resumable, but
-reconciliation of a crash after the final directory removal and before the
-tombstone commit remains a pre-1.0 fault-injection gap.
+Cleanup first renames the directory and syncs a checksummed summary of the
+entries and bytes it will remove. It retains that private claim after deleting
+the log files, commits the pruning row with the recorded counts, and only then
+removes the summary and empty directory. A retry can resume at every boundary,
+including after filesystem removal but before the metadata commit; finalization
+is idempotent.
 
 ### Migration 6: recoverable notification delivery queue
 
