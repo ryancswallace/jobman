@@ -102,7 +102,7 @@ func (service *Service) Doctor(ctx context.Context, request DoctorRequest) (Doct
 	if !request.Repair {
 		return report, nil
 	}
-	if _, err := service.List(ctx); err != nil {
+	if err := service.reconcileActiveJobs(ctx, store.ListJobsOptions{}); err != nil {
 		return report, fmt.Errorf("reconcile stale lifecycle state: %w", err)
 	}
 	report.StaleOwnershipReconciled = true
@@ -307,26 +307,9 @@ func (service *Service) List(ctx context.Context) ([]model.JobState, error) {
 	if err != nil {
 		return nil, translateStoreError("list jobs", err)
 	}
-	changed := false
-	for _, job := range jobs {
-		if reconciled, reconcileErr := service.reconcileExpiredSubmission(ctx, job); reconcileErr != nil {
-			return nil, reconcileErr
-		} else if reconciled {
-			changed = true
-			continue
-		}
-		if job.Phase == model.JobPhaseCompleted || !job.SupervisorID.Valid() {
-			continue
-		}
-		runs, runsErr := service.store.ListRuns(ctx, job.ID)
-		if runsErr != nil {
-			return nil, translateStoreError("load jobs for stale-owner reconciliation", runsErr)
-		}
-		if reconciled, reconcileErr := service.reconcileStaleOwnership(ctx, job, runs); reconcileErr != nil {
-			return nil, reconcileErr
-		} else if reconciled {
-			changed = true
-		}
+	changed, err := service.reconcileListedJobs(ctx, jobs)
+	if err != nil {
+		return nil, err
 	}
 	if changed {
 		jobs, err = service.store.ListJobs(ctx, store.ListJobsOptions{Limit: store.MaximumListLimit})
@@ -338,20 +321,91 @@ func (service *Service) List(ctx context.Context) ([]model.JobState, error) {
 	return jobs, nil
 }
 
+func (service *Service) reconcileActiveJobs(ctx context.Context, options store.ListJobsOptions) error {
+	return service.reconcileActiveJobsAcrossPages(ctx, options, store.MaximumListLimit)
+}
+
+func (service *Service) reconcileActiveJobsAcrossPages(
+	ctx context.Context,
+	options store.ListJobsOptions,
+	pageLimit int,
+) error {
+	options.Phase = ""
+	options.Outcome = ""
+	options.Active = true
+	options.Completed = false
+	options.Cursor = nil
+	options.Limit = pageLimit
+	for {
+		jobs, err := service.store.ListJobs(ctx, options)
+		if err != nil {
+			return translateStoreError("list active jobs for reconciliation", err)
+		}
+		if _, err := service.reconcileListedJobs(ctx, jobs); err != nil {
+			return err
+		}
+		if len(jobs) < options.Limit {
+			return nil
+		}
+		last := jobs[len(jobs)-1]
+		options.Cursor = &store.JobListCursor{SubmittedAt: last.SubmittedAt, ID: last.ID}
+	}
+}
+
+func (service *Service) listAllJobs(ctx context.Context, options store.ListJobsOptions) ([]model.JobState, error) {
+	return service.listJobsAcrossPages(ctx, options, store.MaximumListLimit)
+}
+
+func (service *Service) listJobsAcrossPages(
+	ctx context.Context,
+	options store.ListJobsOptions,
+	pageLimit int,
+) ([]model.JobState, error) {
+	options.Limit = pageLimit
+	jobs := make([]model.JobState, 0, pageLimit)
+	for {
+		page, err := service.store.ListJobs(ctx, options)
+		if err != nil {
+			return nil, translateStoreError("list jobs across pages", err)
+		}
+		jobs = append(jobs, page...)
+		if len(page) < options.Limit {
+			return jobs, nil
+		}
+		last := page[len(page)-1]
+		options.Cursor = &store.JobListCursor{SubmittedAt: last.SubmittedAt, ID: last.ID}
+	}
+}
+
 // ListJobs applies the v1 bounded list filters after lifecycle reconciliation.
 func (service *Service) ListJobs(ctx context.Context, request ListRequest) ([]ListedJob, error) {
 	if err := validateListRequest(request); err != nil {
 		return nil, err
 	}
-	jobs, err := service.List(ctx)
+	options := store.ListJobsOptions{
+		Phase: request.Phase, Outcome: request.Outcome, Name: request.Name, Group: request.Group,
+		SubmittedAfter: request.SubmittedAfter, SubmittedBefore: request.SubmittedBefore,
+		Active: request.Active, Completed: request.Completed, Limit: request.Limit,
+	}
+	if err := service.reconcileActiveJobs(ctx, options); err != nil {
+		return nil, err
+	}
+	jobs, err := service.store.ListJobs(ctx, options)
+	if err != nil {
+		return nil, translateStoreError("list jobs", err)
+	}
+	changed, err := service.reconcileListedJobs(ctx, jobs)
 	if err != nil {
 		return nil, err
 	}
+	if changed {
+		jobs, err = service.store.ListJobs(ctx, options)
+		if err != nil {
+			return nil, translateStoreError("reload reconciled jobs", err)
+		}
+	}
 	result := make([]ListedJob, 0, request.Limit)
 	for _, job := range jobs {
-		if !jobMatchesListRequest(job, request) {
-			continue
-		}
 		listed := ListedJob{Job: job}
 		if request.ShowRuns {
 			listed.Runs, err = service.store.ListRuns(ctx, job.ID)
@@ -366,6 +420,32 @@ func (service *Service) ListJobs(ctx context.Context, request ListRequest) ([]Li
 	}
 
 	return result, nil
+}
+
+func (service *Service) reconcileListedJobs(ctx context.Context, jobs []model.JobState) (bool, error) {
+	changed := false
+	for _, job := range jobs {
+		if reconciled, err := service.reconcileExpiredSubmission(ctx, job); err != nil {
+			return false, err
+		} else if reconciled {
+			changed = true
+			continue
+		}
+		if job.Phase == model.JobPhaseCompleted || !job.SupervisorID.Valid() {
+			continue
+		}
+		runs, err := service.store.ListRuns(ctx, job.ID)
+		if err != nil {
+			return false, translateStoreError("load jobs for stale-owner reconciliation", err)
+		}
+		if reconciled, err := service.reconcileStaleOwnership(ctx, job, runs); err != nil {
+			return false, err
+		} else if reconciled {
+			changed = true
+		}
+	}
+
+	return changed, nil
 }
 
 func validateListRequest(request ListRequest) error {
@@ -1156,7 +1236,7 @@ func (service *Service) FollowLogs(
 // retention policy. Job/run tombstone metadata remains available for history
 // and dependency evaluation.
 //
-//nolint:gocognit,cyclop,nestif // Cleanup intentionally keeps policy planning, state rechecks, deletion, and tombstoning together.
+//nolint:gocognit,cyclop,maintidx,nestif // Cleanup keeps policy planning, state rechecks, deletion, and tombstoning together.
 func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanResult, error) {
 	var jobs []model.JobState
 	if request.Selector != "" {
@@ -1167,9 +1247,9 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		jobs = []model.JobState{job}
 	} else {
 		var err error
-		jobs, err = service.store.ListJobs(ctx, store.ListJobsOptions{Limit: store.MaximumListLimit})
+		jobs, err = service.listAllJobs(ctx, store.ListJobsOptions{Phase: model.JobPhaseCompleted})
 		if err != nil {
-			return CleanResult{}, translateStoreError("list cleanup jobs", err)
+			return CleanResult{}, err
 		}
 	}
 	type retainedRun struct {
@@ -1184,6 +1264,20 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 			return CleanResult{}, translateStoreError("list cleanup runs", err)
 		}
 		for _, run := range runs {
+			if run.Phase == model.RunPhaseCompleted && !run.Logs.Available() {
+				if finalizeErr := logstore.FinalizeCleanupRun(
+					service.stateDir,
+					job.ID.String(),
+					run.Number,
+				); finalizeErr != nil {
+					return CleanResult{}, fmt.Errorf(
+						"finalize prior cleanup %s/%d: %w",
+						job.ID,
+						run.Number,
+						finalizeErr,
+					)
+				}
+			}
 			if run.Phase != model.RunPhaseCompleted || run.CompletedAt == nil ||
 				job.Phase != model.JobPhaseCompleted || !run.Logs.Available() {
 				continue
@@ -1264,6 +1358,7 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		if cleanErr != nil {
 			return result, fmt.Errorf("clean run %s/%d: %w", job.ID, run.Number, cleanErr)
 		}
+		faultinject.Hit("cleanup-files-removed-before-metadata")
 		if markErr := service.store.MarkRunLogsPruned(
 			ctx,
 			run.ID,
@@ -1272,6 +1367,9 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 			cleaned.Bytes,
 		); markErr != nil {
 			return result, fmt.Errorf("record cleaned run %s/%d: %w", job.ID, run.Number, markErr)
+		}
+		if finalizeErr := logstore.FinalizeCleanupRun(service.stateDir, job.ID.String(), run.Number); finalizeErr != nil {
+			return result, fmt.Errorf("finalize cleaned run %s/%d: %w", job.ID, run.Number, finalizeErr)
 		}
 		result.Runs++
 		result.Files += cleaned.Files

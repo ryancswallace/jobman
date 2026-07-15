@@ -213,6 +213,40 @@ func TestServiceCleanDoesNotRecordFailedFilesystemRemoval(t *testing.T) {
 	}
 }
 
+func TestServiceCleanResumesFilesystemRemovalBeforeMetadataCommit(t *testing.T) {
+	t.Parallel()
+
+	service, clock := newTestService(t)
+	job, run, paths := completeCapturedRun(t, service, clock)
+	removed, err := logstore.CleanupRun(
+		t.Context(),
+		service.stateDir,
+		job.ID.String(),
+		run.Number,
+		func(context.Context) (bool, error) { return true, nil },
+	)
+	if err != nil {
+		t.Fatalf("simulate cleanup crash boundary: %v", err)
+	}
+	result, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()})
+	if err != nil {
+		t.Fatalf("Clean(resume) error = %v", err)
+	}
+	if result.Runs != 1 || result.Files != removed.Files || result.Bytes != removed.Bytes {
+		t.Fatalf("Clean(resume) = %+v, want prior result %+v", result, removed)
+	}
+	persisted, err := service.store.GetRun(t.Context(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Logs.Available() || persisted.Logs.PrunedAt == nil {
+		t.Fatalf("resumed cleanup metadata = %+v", persisted.Logs)
+	}
+	if _, err := os.Stat(paths.Directory + ".deleting"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cleanup handoff directory error = %v, want not exist", err)
+	}
+}
+
 func TestServiceRejectsInvalidAdmissionBeforeJobBecomesVisible(t *testing.T) {
 	t.Parallel()
 

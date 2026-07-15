@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -50,8 +51,8 @@ func TestServiceListJobsFiltersAndIncludesRuns(test *testing.T) {
 		{name: "completed", request: ListRequest{Completed: true, Limit: 10}, want: completed.ID},
 		{name: "phase", request: ListRequest{Phase: active.Phase, Limit: 10}, want: active.ID},
 		{name: "outcome", request: ListRequest{Outcome: completed.Outcome, Limit: 10}, want: completed.ID},
-		{name: "name", request: ListRequest{Name: "active", Limit: 10}, want: active.ID},
-		{name: "group", request: ListRequest{Group: "workers", Limit: 10}, want: active.ID},
+		{name: "name before limit", request: ListRequest{Name: "active", Limit: 1}, want: active.ID},
+		{name: "group before limit", request: ListRequest{Group: "workers", Limit: 1}, want: active.ID},
 	}
 	for _, item := range tests {
 		test.Run(item.name, func(test *testing.T) {
@@ -63,6 +64,35 @@ func TestServiceListJobsFiltersAndIncludesRuns(test *testing.T) {
 				test.Fatalf("ListJobs(%s) = %+v, want %s", item.name, jobs, item.want)
 			}
 		})
+	}
+}
+
+func TestServiceListsAcrossKeysetPages(test *testing.T) {
+	test.Parallel()
+	service, _ := newTestService(test)
+	for _, name := range []string{"first", "second"} {
+		if _, err := service.Submit(test.Context(), SubmitRequest{
+			Name: name, Executable: "true", WorkingDirectory: test.TempDir(),
+		}); err != nil {
+			test.Fatal(err)
+		}
+	}
+	jobs, err := service.listJobsAcrossPages(test.Context(), store.ListJobsOptions{}, 1)
+	if err != nil || len(jobs) != 2 || jobs[0].ID == jobs[1].ID {
+		test.Fatalf("listJobsAcrossPages() = %+v, %v", jobs, err)
+	}
+	if err := service.reconcileActiveJobsAcrossPages(
+		test.Context(), store.ListJobsOptions{Phase: model.JobPhaseCompleted}, 1,
+	); err != nil {
+		test.Fatalf("reconcileActiveJobsAcrossPages() error = %v", err)
+	}
+	canceled, cancel := context.WithCancel(test.Context())
+	cancel()
+	if _, err := service.listJobsAcrossPages(canceled, store.ListJobsOptions{}, 1); err == nil {
+		test.Fatal("listJobsAcrossPages(canceled) error = nil")
+	}
+	if err := service.reconcileActiveJobsAcrossPages(canceled, store.ListJobsOptions{}, 1); err == nil {
+		test.Fatal("reconcileActiveJobsAcrossPages(canceled) error = nil")
 	}
 }
 

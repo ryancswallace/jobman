@@ -336,6 +336,12 @@ func TestServicePolicyCleanupPlanningAndLogRecovery(t *testing.T) {
 
 func TestServicePropagatesClosedStoreFailures(t *testing.T) {
 	service, _ := newTestService(t)
+	job, err := service.Submit(t.Context(), SubmitRequest{
+		Executable: "true", WorkingDirectory: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := service.store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -349,6 +355,9 @@ func TestServicePropagatesClosedStoreFailures(t *testing.T) {
 	}
 	if _, err := service.List(ctx); err == nil {
 		t.Fatal("List(closed store) error = nil")
+	}
+	if _, err := service.reconcileListedJobs(ctx, []model.JobState{job}); err == nil {
+		t.Fatal("reconcileListedJobs(closed store) error = nil")
 	}
 	if _, err := service.Inspect(ctx, "missing"); err == nil {
 		t.Fatal("Inspect(closed store) error = nil")
