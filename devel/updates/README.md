@@ -17,6 +17,11 @@ maintenance cannot publish its branch.
 - `go-vers.sh` synchronizes Go version declarations across tooling, containers,
   workflows, and documentation.
 
+Release-specific citation metadata is intentionally not written by
+`make update`: GoReleaser runs `devel/releasemetadata` with its resolved version
+and release timestamp and archives the generated `.release/CITATION.cff`. The
+tracked file records the latest published release for repository viewers.
+
 Container base images are pinned by both tag and digest. When changing a base
 image tag manually, update its digest in the same change; an old digest paired
 with a new tag intentionally fails closed. Dependabot covers the root and

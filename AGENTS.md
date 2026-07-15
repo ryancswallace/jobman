@@ -196,6 +196,7 @@ Useful test targets:
 make unittest
 make e2etest
 make perftest
+make soaktest SOAK_TIME=10m
 make test
 make coverage
 ```

@@ -43,11 +43,17 @@ Useful focused checks include:
 - `make lint` and `make format-check` for Go source quality;
 - `make workflow-check shellcheck` for automation changes;
 - `make vulncheck` for reachable Go vulnerabilities;
-- `make fuzz` to fuzz strict persisted-model parsing (override
-  `FUZZ_PACKAGE`, `FUZZ_TARGET`, or `FUZZ_TIME` as needed);
+- `make unittest`, `make e2etest`, and `make perftest` for the distinct unit,
+  assembled-binary, and performance tiers;
+- `make fuzz` to run one selected fuzz target (CI matrices all targets; override
+  `FUZZ_PACKAGE`, `FUZZ_TARGET`, `FUZZ_TIME`, or the resource-bounding
+  `FUZZ_PARALLEL` worker count locally);
+- `make soaktest SOAK_TIME=10m` for the opt-in race-enabled storage, logging,
+  cleanup, and admission soak;
 - `make release-build` to compile every supported release platform;
 - `make snapshot` for release or packaging changes;
 - `make docker-image` for runtime-image changes.
+- `make docker-smoke` for persistent-state and derived-image behavior.
 
 Generated man pages and completions are ignored in the working tree and are
 created during releases. Change their generators under `devel/`, then run
