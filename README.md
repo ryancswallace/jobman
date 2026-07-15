@@ -53,11 +53,11 @@ $ jobman cancel 01980f4c
 ```
 
 The implemented commands are `run`, `list`, `status`, `show`, `logs`, `cancel`,
-`pause`, `resume`, `wait`, `input`, `rerun`, `clean`, `doctor`, and `config`. Inspection
-commands support versioned JSON where documented by `--help`. Selectors accept
-a canonical ID, a unique ID prefix of at least eight characters, or an
-unambiguous exact name. Target arguments are passed directly to the operating
-system and are never joined into an implicit shell command.
+`pause`, `resume`, `wait`, `input`, `rerun`, `clean`, `doctor`, and `config`.
+Inspection commands support versioned JSON where documented by `--help`.
+Selectors accept a canonical ID, a unique ID prefix of at least eight
+characters, or an unambiguous exact name. Target arguments are passed directly
+to the operating system and are never joined into an implicit shell command.
 
 `run` can combine bounded or explicitly unlimited retry/repetition rules,
 constant/linear/exponential delay, per-run and whole-job timeouts, named or
@@ -88,10 +88,12 @@ Configuration is strict, versioned YAML. System and per-user files are loaded
 automatically, while a project `.jobman.yml` is loaded only from a root listed
 in `trusted_project_roots`; `--config PATH` explicitly selects a file. Run
 `jobman config paths`, `jobman config validate`, or `jobman config show` to
-inspect the result. Apply durable concurrency settings explicitly with
-`jobman config apply`. The [configuration reference] and packaged
-[sample configuration] document safe defaults and reusable job, wait, pool,
-secret-reference, notifier, and profile examples.
+inspect the result. `jobman run` and `jobman rerun` synchronize durable
+concurrency settings from their effective configuration before submission; use
+`jobman config apply` to apply the same settings without submitting a job. The
+[configuration reference] and packaged [sample configuration] document safe
+defaults and reusable job, wait, pool, secret-reference, notifier, and profile
+examples.
 
 Linux has assembled-binary lifecycle and crash-boundary coverage. Native
 macOS/Windows CI exercises detachment, process-tree cancellation, pause/resume,
@@ -104,8 +106,8 @@ stable release.
 ### Release archives and native packages
 
 Download a release from the [GitHub Releases page]. Portable archives use names
-such as `jobman_0.1.0_linux_amd64.tar.gz` and
-`jobman_0.1.0_windows_arm64.zip`. Linux packages use the same platform suffix
+such as `jobman_<version>_linux_amd64.tar.gz` and
+`jobman_<version>_windows_arm64.zip`. Linux packages use the same platform suffix
 with `.apk`, `.deb`, or `.rpm` extensions.
 
 Verify downloaded artifacts using the checksum and Sigstore instructions in

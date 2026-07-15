@@ -5,15 +5,17 @@ nav_order: 1
 
 # Jobman
 
-Jobman is a daemonless command-line job manager under active development. The
-current pre-1.0 implementation manages detached direct commands with retries,
+Jobman is a daemonless command-line job manager approaching v1. The current
+release-candidate implementation manages detached direct commands with retries,
 timeouts, prerequisites, local concurrency admission, durable logs, lifecycle
-controls, Unix private live input, and success or failure notifications without
-a resident service.
+controls, private local live input, and success or failure notifications
+without a resident service.
 
 {: .warning }
-The command surface and configuration format are not yet stable. Evaluate the
-current release before using it for important workloads.
+The planned v1 command and configuration contracts are frozen, but a build is
+not a stable v1 release until its exact commit passes native CI, release
+packaging, upgrade, and dogfood evidence. Keep independent backups and a direct
+recovery path when evaluating prerelease builds.
 
 ## Start here
 
@@ -31,13 +33,15 @@ current release before using it for important workloads.
 - store-wide and named-pool concurrency slots;
 - per-run and whole-job timeouts;
 - raw stream capture, rotation, follow, retention, and guarded cleanup;
-- pause/resume on supported Unix-like systems and Unix private live input;
+- best-effort pause/resume and private local live input on supported platforms;
 - strict layered YAML configuration with named job specs and profiles; and
 - bounded command, HTTPS webhook, and SMTP notifications.
 
-The command and configuration formats remain pre-1.0. Linux has native core
-lifecycle evidence; macOS and Windows builds are maintained, but documented
-platform and fault-injection acceptance work remains before stable support.
+Linux has the full assembled lifecycle and crash-boundary suite. Native macOS
+and Windows CI exercises detachment, process-tree control, private live input,
+permissions, and release-style builds. Stable support still requires those
+native jobs and the documented dogfood runbook to pass on the exact release
+commit.
 
 ## Install from source
 
@@ -49,8 +53,7 @@ cd jobman
 make install
 ```
 
-Release archives, native Linux packages, signed checksums, SBOMs, and signed
-container images are published through [GitHub Releases] as the release
-pipeline becomes available.
+Release archives, native Linux packages, signed checksums, SBOMs, provenance,
+and signed container images are published through [GitHub Releases].
 
 [GitHub Releases]: https://github.com/ryancswallace/jobman/releases
