@@ -21,7 +21,9 @@ DOCS_DIR := docs
 MANPAGE_DIR := $(DOCS_DIR)/manpage
 COMPLETIONS_DIR := $(DOCS_DIR)/completions
 COVERAGE_FILE := coverage.txt
+COVERAGE_RAW := coverage.raw
 COVERAGE_HTML := coverage.html
+COVERAGE_MIN ?= 90
 
 GEN_MANPAGE := ./devel/manpages/manpages.go
 GEN_COMPLETIONS := ./devel/autocomplete/autocomplete.go
@@ -194,7 +196,12 @@ vet: ## Run go vet independently of the aggregate linter.
 
 .PHONY: unittest unit
 unittest: ## Run unit tests with race detection and coverage.
-	$(GO) test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=$(COVERAGE_FILE) ./...
+	@set -eu; \
+	trap '$(RM) $(COVERAGE_RAW)' EXIT; \
+	$(GO) test $(GO_TEST_FLAGS) -covermode=atomic -coverpkg=./... \
+		-coverprofile=$(COVERAGE_RAW) ./...; \
+	awk -v minimum='$(COVERAGE_MIN)' -v output='$(COVERAGE_FILE)' \
+		-f devel/check-coverage.awk $(COVERAGE_RAW)
 unit: unittest
 
 .PHONY: e2etest e2e
@@ -357,7 +364,7 @@ clean-generated: ## Remove generated man pages and completion scripts.
 .PHONY: clean
 clean: clean-generated ## Remove build, release, and test artifacts.
 	$(RM) -r $(BIN_DIR) $(DIST_DIR)
-	$(RM) $(COVERAGE_FILE) $(COVERAGE_HTML)
+	$(RM) $(COVERAGE_FILE) $(COVERAGE_RAW) $(COVERAGE_HTML)
 
 .PHONY: clean-tools
 clean-tools: ## Remove tools installed into bin/ by this Makefile.
