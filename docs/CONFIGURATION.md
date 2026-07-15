@@ -99,14 +99,12 @@ The top-level registries are:
   executable `probe` prerequisites;
 - `secrets`: re-resolvable `env:NAME` or `file:/absolute/path` references;
 - `concurrency`: the store-wide slot limit and named pool capacities;
-- `retention`: completed-log selection limits and the reserved completed-metadata
-  age setting;
+- `retention`: completed-log and completed-metadata selection limits;
 - `notifiers`: bounded command, HTTP, or SMTP delivery definitions;
 - `profiles`: explicit ordered overrides, optionally based on a named job spec;
   and
-- `redaction`: extra sensitive field names and bounded RE2 patterns. This
-  policy is parsed and validated, but command diagnostics do not apply it yet;
-  treat it as reserved configuration rather than a complete secrecy boundary.
+- `redaction`: extra sensitive field names and bounded RE2 patterns applied to
+  Jobman diagnostics and structured output. Captured target logs remain raw.
 
 Select a job spec with `jobman run --job-spec NAME`. Repeat `--profile NAME` to
 apply profiles in command-line order. A direct command after `--` may replace
@@ -119,11 +117,10 @@ The packaged [sample configuration] contains commented examples for every
 registry and policy group.
 
 Retention limits are evaluated when `jobman clean` is invoked; there is no
-resident cleanup service. `clean` currently prunes only completed-run log files
-and writes durable pruning tombstones, while job and run metadata remains
-available for history and dependency evaluation. `completed_metadata_max_age`
-is parsed and validated for schema compatibility, but finite metadata deletion
-is not implemented yet.
+resident cleanup service. `clean` first prunes selected completed-run logs and
+writes durable pruning tombstones. A finite `completed_metadata_max_age` then
+removes eligible completed history only after every log is pruned and while no
+unresolved dependency, pending notification, or active admission needs it.
 
 ```console
 jobman clean                         # policy-based dry run
@@ -154,7 +151,8 @@ recorded for inspection; notification failure never changes the job outcome.
 Subscribed lifecycle events are queued in the same SQLite transaction as their
 state snapshot and event record, before external delivery. A later per-job
 supervisor can reclaim an expired delivery lease, but there is no resident
-notification daemon to wake solely for abandoned work.
+notification daemon to wake solely for abandoned work. `jobman doctor --repair`
+provides an explicit configuration-independent recovery wake-up.
 
 Notification attempts and their retry waits consume the remaining whole-job
 timeout budget. If the next retry would begin at or after that deadline, Jobman
@@ -171,9 +169,8 @@ job_submission_failed
 ```
 
 Schema migration 6 does not backfill notification deliveries for historical
-events. Immediate wake-up after a supervisor crash also remains a pre-1.0
-hardening gap: due or expired work is recovered opportunistically when another
-per-job supervisor starts.
+events. Due or expired work is recovered opportunistically when another
+per-job supervisor finishes or explicitly with `jobman doctor --repair`.
 
 ## Safety notes
 
@@ -184,7 +181,7 @@ per-job supervisor starts.
 - Use `jobman config validate PATH` before deploying a shared configuration.
 - Keep configuration and secret files user-private even though references,
   rather than resolved values, are persisted.
-- The schema is pre-1.0. Review `CHANGELOG.md` before upgrading and do not edit
-  the SQLite state database by hand.
+- Review `CHANGELOG.md` and [the upgrade guide](UPGRADING.md) before upgrading;
+  do not edit the SQLite state database by hand.
 
 [sample configuration]: ../etc/jobman/jobman.yml
