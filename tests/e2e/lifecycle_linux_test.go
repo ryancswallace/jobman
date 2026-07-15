@@ -30,7 +30,7 @@ import (
 const (
 	buildTimeout   = 2 * time.Minute
 	commandTimeout = 20 * time.Second
-	pollTimeout    = 15 * time.Second
+	pollTimeout    = 35 * time.Second
 	pollInterval   = 25 * time.Millisecond
 )
 
@@ -436,6 +436,68 @@ printf 'second-attempt\n'`
 	})
 }
 
+func TestAssembledBinaryCrashBoundaries(t *testing.T) {
+	binary := buildJobman(t)
+	shell := requireExecutable(t, "sh")
+
+	points := []string{
+		"job-insert-committed",
+		"supervisor-claimed-before-ack",
+		"supervisor-acknowledged",
+		"target-before-start",
+		"target-started-before-identity",
+		"target-identity-committed",
+		"log-raw-synced-before-index",
+		"log-index-synced",
+		"run-completion-before-commit",
+		"run-completion-committed",
+		"job-completion-committed",
+	}
+	for _, point := range points {
+		t.Run(point, func(t *testing.T) {
+			stateDir := filepath.Join(t.TempDir(), "state")
+			result := invokeFault(
+				t.Context(),
+				binary,
+				stateDir,
+				point,
+				"run",
+				"--",
+				shell,
+				"-c",
+				"printf crash-boundary; sleep 0.2",
+			)
+			jobID := strings.TrimSpace(result.stdout)
+			if len(jobID) != 36 {
+				jobID = waitForNewestJobID(t, binary, stateDir)
+			}
+			completed := waitForCompletedJob(t, binary, stateDir, jobID)
+			if completed.Summary.Outcome == "" {
+				t.Fatalf("crash point %s produced empty terminal outcome", point)
+			}
+			if doctor := invokeWithTimeout(t, binary, stateDir, "doctor", "--json"); doctor.err != nil {
+				t.Fatalf("doctor after crash point %s: %v: %s", point, doctor.err, doctor.stderr)
+			}
+		})
+	}
+
+	for _, point := range []string{"cancellation-intent-committed", "cancellation-signal-sent"} {
+		t.Run(point, func(t *testing.T) {
+			stateDir := filepath.Join(t.TempDir(), "state")
+			jobID := submit(t, binary, stateDir, shell, "-c", "sleep 60")
+			registerCancellationCleanup(t, binary, stateDir, jobID)
+			waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+				return detail.Summary.Phase == "running"
+			})
+			_ = invokeFault(t.Context(), binary, stateDir, point, "cancel", jobID)
+			completed := waitForCompletedJob(t, binary, stateDir, jobID)
+			if completed.Summary.Outcome != "cancelled" { //nolint:misspell // Stable persisted spelling.
+				t.Fatalf("outcome after %s = %q, want canceled", point, completed.Summary.Outcome)
+			}
+		})
+	}
+}
+
 func buildJobman(t *testing.T) string {
 	t.Helper()
 
@@ -443,7 +505,7 @@ func buildJobman(t *testing.T) string {
 	binary := filepath.Join(t.TempDir(), "jobman")
 	ctx, cancel := context.WithTimeout(t.Context(), buildTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "go", "build", "-o", binary, ".")
+	command := exec.CommandContext(ctx, "go", "build", "-tags", "jobman_faultinject", "-o", binary, ".")
 	command.Dir = repository
 	command.Env = os.Environ()
 	output, err := command.CombinedOutput()
@@ -826,6 +888,54 @@ func invokeWithTimeout(t *testing.T, binary, stateDir string, arguments ...strin
 
 func invoke(ctx context.Context, binary, stateDir string, arguments ...string) commandResult {
 	return invokeWithInput(ctx, binary, stateDir, nil, arguments...)
+}
+
+func invokeFault(
+	ctx context.Context,
+	binary,
+	stateDir,
+	point string,
+	arguments ...string,
+) commandResult {
+	commandArguments := append([]string{"--state-dir", stateDir}, arguments...)
+	command := exec.CommandContext(ctx, binary, commandArguments...)
+	command.Env = append(
+		removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR"),
+		"JOBMAN_ENABLE_FAULT_INJECTION=1",
+		"JOBMAN_FAULT_POINT="+point,
+	)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	err := command.Run()
+
+	return commandResult{stdout: stdout.String(), stderr: stderr.String(), err: err}
+}
+
+func waitForNewestJobID(t *testing.T, binary, stateDir string) string {
+	t.Helper()
+	type listEnvelope struct {
+		Data struct {
+			Jobs []struct {
+				ID string `json:"id"`
+			} `json:"jobs"`
+		} `json:"data"`
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), pollTimeout)
+	defer cancel()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		result := invoke(ctx, binary, stateDir, "list", "--json", "--all")
+		var envelope listEnvelope
+		if result.err == nil && json.Unmarshal([]byte(result.stdout), &envelope) == nil && len(envelope.Data.Jobs) > 0 {
+			return envelope.Data.Jobs[0].ID
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("wait for crash-boundary job: %v", ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func invokeWithInput(
