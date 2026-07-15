@@ -10,11 +10,12 @@ Implementation is guided by the
 [initial vertical-slice plan](IMPLEMENTATION_PLAN.md) and the indexed
 [architecture decision records](adr/README.md).
 
-The implemented slice's storage formats and measured portability are recorded
+The implementation's storage formats and measured portability are recorded
 separately in the [persisted-schema reference](PERSISTED_SCHEMA.md) and
-[platform capability record](PLATFORM_CAPABILITIES.md). Those records describe
-current evidence and gaps; they do not imply that deferred specification
-features are implemented.
+[platform capability record](PLATFORM_CAPABILITIES.md). The initial vertical
+slice and the subsequent v1 policy expansion are tracked in the
+[implementation plan](IMPLEMENTATION_PLAN.md). Those records describe current
+evidence and gaps; they do not imply stable cross-platform support.
 
 User-facing behavior should graduate into command help, tests, and published
 documentation as it becomes stable.
@@ -39,7 +40,7 @@ invoke Jobman through an existing channel such as SSH.
 
 | Command | Purpose |
 | --- | --- |
-| `jobman run COMMAND [ARG...]` | Submit and execute a managed command. |
+| `jobman run [OPTIONS] -- COMMAND [ARG...]` | Submit and execute a managed command. |
 | `jobman list` | List jobs and their current state. |
 | `jobman status JOB` | Show a concise current status. |
 | `jobman show JOB` | Show a job and its run history. |
@@ -48,8 +49,10 @@ invoke Jobman through an existing channel such as SSH.
 | `jobman pause JOB` | Pause policy progress and best-effort suspend an active process tree. |
 | `jobman resume JOB` | Resume a paused job. |
 | `jobman input JOB` | Stream local standard input to an active run. |
-| `jobman clean` | Remove eligible completed jobs and logs. |
-| `jobman config` | Inspect the effective configuration. |
+| `jobman wait JOB` | Wait for a terminal job outcome. |
+| `jobman rerun JOB` | Submit a new job from an existing effective specification. |
+| `jobman clean` | Safely prune eligible completed-run logs while retaining tombstone metadata. |
+| `jobman config` | Show paths, validate YAML, or inspect effective configuration and origins. |
 
 Stable commands must support machine-readable output and meaningful exit codes.
 Identifiers accepted by destructive commands must be unambiguous; names that
@@ -64,12 +67,12 @@ A job specification may combine:
   terminal result;
 - store-wide and named-pool integer concurrency limits;
 - an abort deadline for waiting or retrying;
-- accepted success and failure exit codes;
+- accepted success and retryable-failure exit codes;
 - maximum run, success, or failure counts;
-- constant or exponential retry delay with bounded jitter;
+- constant, linear, or exponential retry delay with bounded jitter;
 - run-level and job-level timeouts;
 - success, retry, and failure notification callbacks;
-- log retention limits by age, size, job count, or run count.
+- completed-log cleanup limits by age, size, job count, or run count.
 
 Concurrency admission is local and transactional. Every active run consumes a
 configurable number of slots from the store-wide limit and, when selected, one
@@ -115,8 +118,9 @@ output must not expose secret values.
   explicit policy.
 - Pause/resume operates on a verified process tree where the platform exposes a
   safe suspension mechanism; unsupported platforms report that limitation.
-- Opted-in detached jobs may accept bounded binary input through a private
-  local supervisor channel near the end of v1 implementation.
+- Opted-in detached jobs accept bounded binary input through a private local
+  supervisor channel on supported Unix-like systems; Windows reports the
+  current platform limitation explicitly.
 - Jobman forwards container and operating-system termination signals.
 - State transitions remain valid if either Jobman or the managed command exits
   unexpectedly.
@@ -138,6 +142,10 @@ underlying job result.
 
 ## Configuration
 
+The implemented schema, source discovery, environment bindings, defaults, and
+security notes are documented in the
+[configuration reference](../CONFIGURATION.md).
+
 Precedence is explicit and testable:
 
 1. command-line flags;
@@ -148,7 +156,7 @@ Precedence is explicit and testable:
 6. the system configuration file; and
 7. built-in defaults.
 
-Unknown keys and invalid values should produce actionable errors. Configuration
+Unknown keys and invalid values produce actionable errors. Configuration
 paths follow platform conventions, with `XDG_CONFIG_HOME` honored on Unix-like
 systems. A schema change that cannot be interpreted compatibly requires release
 notes and a migration path.

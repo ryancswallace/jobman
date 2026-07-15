@@ -1,14 +1,16 @@
-# Initial vertical-slice implementation plan
+# Initial vertical slice and v1 policy implementation plan
 
-Status: initial Linux slice implemented; portability and hardening in progress
-Scope: first end-to-end Jobman implementation slice
+Status: initial Linux slice and deferred v1 policy surface implemented; native
+portability, recovery, and hardening remain in progress
+Scope: first end-to-end Jobman slice plus the subsequent local-policy expansion
 Specification: [Jobman design specification](SPEC.md)
 Decisions: [ADR-0001](adr/0001-per-job-supervisor.md),
 [ADR-0002](adr/0002-sqlite-metadata-and-filesystem-logs.md)
 
 ## 1. Purpose
 
-This plan delivers the smallest production-shaped path through Jobman's core:
+This plan originally delivered the smallest production-shaped path through
+Jobman's core:
 submit one direct command, transfer responsibility to a detached per-job
 supervisor, persist state, capture output, inspect the job, and cancel it. The
 slice intentionally exercises the difficult architectural boundaries before
@@ -16,7 +18,9 @@ adding the broad policy surface described by the specification.
 
 The slice is not a throwaway prototype. Its schemas, state invariants, package
 boundaries, failure handling, and tests are expected to form the foundation of
-later milestones. Its feature set is deliberately narrow.
+later milestones. The narrow slice is now followed by the v1 policy expansion
+recorded in Sections 2 and 2.2. This document keeps the original phase history
+while distinguishing implemented behavior from remaining stable-release gates.
 
 ### 1.1 Review focus
 
@@ -42,23 +46,24 @@ history.
 This checkpoint records evidence as of 2026-07-14. The
 [persisted-schema reference](PERSISTED_SCHEMA.md) and
 [platform capability record](PLATFORM_CAPABILITIES.md) contain the detailed
-handoff. "Implemented" below means present for the narrow scope in Section 2;
-it does not include any deferred specification feature.
+handoff. "Implemented" means present in the current source and focused tests;
+it is not a claim that every cross-platform or fault-injection gate has passed.
 
 | Workstream | Current evidence | Remaining gate |
 | --- | --- | --- |
-| CLI construction | The six scoped commands use an isolated, dependency-injected Cobra tree. Unit tests cover help, argument boundaries, environment parsing, JSON envelopes, binary log output, cancellation dispatch, and exit-code mapping. | Regenerate and review published command documentation as the pre-1.0 CLI contract evolves. |
-| Model and SQLite store | UUIDv7 IDs, canonical immutable specifications, transition rules, migration 1, snapshot/event transactions, compare-and-swap updates, selectors, bounded busy handling, and Unix privacy checks are implemented and unit tested. | Add process-level abrupt-writer and broader fault/property tests; retain migration upgrade tests as later schemas are added. |
-| Raw logs and executor | Separate raw streams and the checksummed version 1 index are implemented. Tests cover binary bytes, observed ordering, concurrent appends, a torn tail, corruption, an unindexed raw tail, and malformed-index fuzz input. Direct execution preserves arguments. | Add supervisor-crash injection at log-write boundaries and sustained high-volume backpressure and recovery tests. |
-| Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, one-run orchestration, signal-driven target shutdown, start-failure handling, and terminal finalization are implemented. A killed-supervisor end-to-end case is reconciled to `lost`. | Add lost-ack and additional crash-boundary process tests plus a real terminal or SSH-disconnection test. |
-| Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, shell-and-child process-group cancellation, concurrent reader/canceller, and stale killed-supervisor scenarios. Process identity uses start time and boot ID. | Add grandchild-tree, forced-escalation, actual PID-reuse, and full session-hangup scenarios. |
+| CLI construction | The lifecycle, policy, log, cleanup, and configuration commands use an isolated, dependency-injected Cobra tree. Unit tests cover help, argument, environment, JSON, binary-log, cancellation, exit-code, policy-flag, lifecycle, input, and rerun contracts. Generated man pages and completions pass the documentation gate. | Complete exhaustive CLI matrices for every new flag interaction before declaring the pre-1.0 surface stable. |
+| Model and SQLite store | UUIDv7 IDs, version 2 immutable specifications, lifecycle and policy transitions, ordered migrations, snapshot/event transactions, scheduler runtime, dependencies, wait diagnostics, admissions, notification attempts, tags, selectors, bounded busy handling, and Unix privacy checks are implemented and unit tested. | Add process-level abrupt-writer and broader fault/property tests; retain migration upgrade tests for every released schema. |
+| Raw logs and executor | Separate raw streams and checksummed index versions 1 and 2, configurable stream capture, bounded rotation, following, retention planning, and guarded cleanup are implemented. Tests cover binary bytes, observed ordering, concurrent appends, rotation, following, retention, a torn tail, corruption, an unindexed raw tail, and malformed-index fuzz input. Direct execution preserves arguments. | Add supervisor-crash injection at log-write boundaries and sustained high-volume backpressure and recovery tests. |
+| Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, prerequisite evaluation, transactional admission, repeated runs, delay, run/job timeouts, live-input ownership, notification delivery, signal-driven target shutdown, start-failure handling, and terminal finalization are implemented. A killed-supervisor end-to-end case is reconciled to `lost`. | Add lost-ack and additional crash-boundary process tests plus a real terminal or SSH-disconnection test. Automatic supervisor adoption remains an explicit non-goal. |
+| Configuration and policies | Strict YAML merging, secure project-file trust, named job specs/profiles/waits/notifiers, secret references, dependencies, concurrency limits with bounded-bypass fairness, retry/repetition policy, timeout accounting, rerun, pause/resume, cleanup, and recoverable notification delivery leases are implemented. Notification rows are committed with the subscribed lifecycle event. | Complete the policy end-to-end matrix, notification wake-up and historical-backfill policy, and configuration compatibility review before declaring v1 stability. |
+| Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, retry, dependency, pause/resume, live-input/EOF, rerun, shell-and-child process-group cancellation, concurrent reader/canceller, and stale killed-supervisor scenarios. Process identity uses start time and boot ID. | Add the remaining admission/timeout/rotation/notification matrix plus grandchild-tree, forced-escalation, actual PID-reuse, and full session-hangup scenarios. |
 | macOS portability | Platform adapters compile and select native session, process-group, identity, and signal APIs. | Run the full suite natively and close every gap in the platform capability record before claiming support. |
 | Windows portability | Platform adapters compile and select detached-process and creation-time APIs. | Implement Job Object tree ownership, graceful escalation, restart-scoped identity, and user-only ACL enforcement, then run native tests. |
-| Repository handoff | The aggregate `make check` passes, including race-enabled unit/end-to-end tests, vulnerability analysis, generated docs, spelling, the production-equivalent site build, and all release build targets. Model/log-index fuzzing, a complete non-publishing release snapshot, and the runtime container build also pass. | The complete fault matrix and native macOS/Windows validation remain stable-release gates. |
+| Repository handoff | The policy expansion passes `make check` with the pinned Go 1.26.5 toolchain, including reachable-vulnerability analysis, race-enabled tests, assembled-binary tests, generated documentation, spelling, the production Pages build, and all GoReleaser compile targets. A complete non-publishing snapshot produces archives, native packages, SBOMs, checksums, and release images; the ordinary runtime image also builds and passes a version smoke test. | Retain these gates while adding the fault matrix, sustained fuzzing, and native macOS/Windows validation. |
 
 ## 2. User-visible scope
 
-The slice implements:
+The initial slice implemented:
 
 ```text
 jobman run [--name NAME] [--cwd PATH] [--env NAME=VALUE] -- COMMAND [ARG...]
@@ -87,29 +92,42 @@ direct: arguments are preserved exactly and never joined into a shell command.
 - Selectors accept exact ID, unique ID prefix, or unambiguous exact name.
 - Human diagnostics use stderr; JSON and other command data use stdout.
 
-### 2.2 Explicitly deferred behavior
+### 2.2 Subsequent v1 policy expansion
 
-The slice does not implement:
+The features deferred by the initial slice are now implemented in the current
+tree:
 
-- retries, repeated successful runs, or backoff;
-- wait conditions or probes;
-- run-level or job-level timeouts;
-- job dependencies and dependency predicates;
-- store-wide or named-pool concurrency admission;
-- pause and resume;
-- live input to a detached run;
-- log rotation, following, retention cleanup, or `clean`;
-- notifications;
-- project configuration or named job specifications;
-- rerun;
-- secret references;
-- foreground execution or inherited stdin;
-- supervisor adoption after failure;
-- a shared recovery daemon or remote-control listener; or
-- state migration from any pre-specification prototype.
+- repeated runs, retry classification, success/failure/run limits, backoff,
+  bounded jitter, and retry abort times;
+- named and direct time, delay, file, and executable-probe waits;
+- per-run and whole-job timeouts with paused time excluded;
+- immutable job dependencies with success, failure, finish, or explicit
+  outcome predicates;
+- transactional store-wide and named-pool slot admission with durable
+  bounded-bypass fairness;
+- best-effort pause/resume on Unix-like systems;
+- private local live input for detached jobs, including binary streaming,
+  request-to-run binding, admission-ordered clients, and durable per-run EOF
+  intent that a surviving supervisor applies after client loss;
+- stream-selective capture, rotation, following, per-job retention, and guarded
+  cleanup;
+- bounded command, HTTPS webhook, and SMTP notification attempts whose results
+  are inspectable without changing the job outcome;
+- strict layered YAML configuration, trusted project files, named job specs,
+  profiles, secret references, and configuration inspection commands;
+- rerun from a prior effective specification; and
+- foreground attachment implemented through the same supervisor-owned private
+  input and durable output paths used by detached jobs.
 
-Deferred fields MAY appear in versioned model types when needed to avoid a
-known incompatible schema, but they MUST NOT expose nonfunctional CLI flags.
+The following remain deliberately unimplemented: automatic supervisor
+adoption after failure, a shared recovery daemon, a remote-control network
+listener, and migration from the unconstrained pre-specification prototype.
+Rerun is available both as `jobman rerun JOB` and the canonical
+`jobman run --rerun JOB` source. The latter copies the exact effective
+specification and permits only `--name` and `--wait`; policy overrides are
+rejected so the operation cannot silently become a partial clone. Windows live
+input and active-process pause/resume return an explicit unsupported error; see
+the [platform capability record](PLATFORM_CAPABILITIES.md).
 
 ## 3. Success criteria
 
@@ -243,8 +261,8 @@ and crash result for each row.
 
 ## 7. Persistence design for the slice
 
-ADR-0002 controls the storage decision. The implementation starts with these
-logical tables; column details are reviewed in the first migration:
+ADR-0002 controls the storage decision. The initial implementation started
+with these logical tables:
 
 ```text
 schema_migrations
@@ -253,6 +271,14 @@ runs
 supervisors
 state_events
 ```
+
+Ordered migrations 2 through 7 now add scheduler runtime, dependency and wait
+observations, concurrency limits and admissions, notification attempts, tags,
+durable admission fairness, log-pruning tombstones, and a recoverable
+notification delivery queue. Migration 7 repairs counters for populated schema
+1 upgrades and makes admission tie-breaking deterministic. The
+[persisted-schema reference](PERSISTED_SCHEMA.md) records their exact current
+purpose and compatibility rules.
 
 - `jobs` and `runs` hold current query-optimized snapshots with a revision.
 - `state_events` is an append-only diagnostic transition history written in the
@@ -272,23 +298,26 @@ treated as success.
 
 ```text
 <state-dir>/logs/<job-id>/<run-number>/
+  .active
   stdout.log
+  stdout.000002.log
   stderr.log
+  stderr.000002.log
   chunks.idx
 ```
 
-The stdout and stderr files retain raw bytes. `chunks.idx` contains a versioned,
-checksummed sequence of fixed or length-delimited records with sequence number,
-stream, stream offset, length, wall timestamp, and integrity information.
+The stdout and stderr segments retain raw bytes. Additional numbered files are
+created only when rotation is selected. `chunks.idx` contains a versioned,
+checksummed sequence of fixed 52-byte records with sequence number, stream,
+segment, stream offset, length, wall timestamp, and integrity information.
 Capture serializes index assignment but never combines target bytes into line
 records.
 
 Writing a chunk follows this order:
 
-1. append and flush bytes to the appropriate stream file according to the
-   durability policy;
+1. append and sync bytes to the appropriate stream segment;
 2. append the index record; and
-3. periodically flush the index.
+3. sync the index.
 
 After a crash, raw bytes not covered by a valid index record remain available
 in their individual stream. Recovery may mark their combined order unknown but
@@ -501,7 +530,7 @@ never valid unless the target result was durably observed.
 | Review migration 1 and the persisted log-index format. | Implemented and documented for pre-1.0 use. Compatibility review remains required before declaring either format stable. |
 | Review private supervisor mode and platform launch code. | Linux implementation exists; native macOS and Windows review is open. |
 | Declare selector, JSON, or exit-code behavior stable. | Open. The implemented contracts remain pre-1.0 and are not declared stable by this plan. |
-| Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Open by design. None of these deferred features is part of the implemented slice. |
+| Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Complete for pre-1.0 implementation. The feature surface is present; cross-platform, crash-boundary, and compatibility acceptance remains open. |
 
 Schema and supervisor reviews include a failure-sequence walkthrough, not only
 an API or happy-path review.
@@ -518,7 +547,7 @@ an API or happy-path review.
 | Driver or bundled SQLite regression | Pin exact versions, verify bundled SQLite version, Dependabot, race/crash/concurrency tests. |
 | Torn or lagging log index | Raw streams are authoritative; checksummed index tail is repairable. |
 | Existing prototype shapes new internals | Replace it by package boundary; preserve only accepted specification behavior. |
-| Scope expands into policy features | Do not add a flag until its end-to-end behavior belongs to an accepted slice. |
+| Policy combinations create invalid or unbounded behavior | Validate the effective immutable policy before submission, require explicit `unlimited` values, and exercise scheduler decisions independently from process execution. |
 | Later concurrency limits imply a daemon | Reserve schema seams for transactional admissions; correctness must not depend on a coordinator process. |
 | Later live input leaks data or creates remote control | Use private local IPC, bounded delivery, and no persisted input or network listener. |
 
@@ -529,10 +558,13 @@ which deliverables have evidence and which remain release gates:
 
 - accepted ADR-0001 and ADR-0002 with spike findings;
 - production package boundaries described above;
-- SQLite migration 1 and schema documentation;
-- version 1 job/run JSON and log-index schemas;
-- the six scoped commands and generated documentation;
+- SQLite migrations 1 through 7 and schema documentation;
+- version 2 immutable job specifications plus version 1 compatibility, and log
+  index versions 1 and 2;
+- the scoped commands, subsequent policy/configuration commands, and generated
+  documentation;
 - cross-platform platform-capability notes;
 - state-machine, integration, fault, race, and fuzz tests; and
-- a follow-on plan for dependencies, concurrency admission, retries, waits,
-  timeouts, rotation, pause/resume, notifications, and late-v1 live input.
+- the implemented policy expansion for dependencies, concurrency admission,
+  retries, waits, timeouts, rotation, pause/resume, notifications, and live
+  input, with remaining acceptance gaps recorded explicitly.
