@@ -120,6 +120,7 @@
         "gotestexplorer",
         "gotests",
         "GOTOOLCHAIN",
+        "GOVERSION",
         "govet",
         "govulncheck",
         "gruntfuggly",

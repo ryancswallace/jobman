@@ -14,7 +14,10 @@ public issue.
 
 The project uses the Go version recorded in `go.version`. The included
 devcontainer is the supported reproducible contributor environment; local Go
-installations are equally welcome when they use the same version.
+installations are equally welcome when they use the same version. `make setup`,
+`make quick-check`, and `make check` fail early when the active patch version
+does not match. The failure reports the exact `GOTOOLCHAIN` invocation that can
+select the version recorded in `go.version`.
 The full documentation and container checks also require a running Docker
 daemon. ShellCheck is required when Docker is unavailable for script checks.
 

@@ -76,7 +76,17 @@ all: check ## Run the complete local verification workflow.
 
 .PHONY: setup bootstrap
 setup: bootstrap ## Install tools and download Go modules.
-bootstrap: tools download
+bootstrap: go-version-check tools download
+
+.PHONY: go-version-check
+go-version-check: ## Verify the active Go toolchain matches go.version exactly.
+	@actual="$$( $(GO) env GOVERSION 2>/dev/null || true )"; \
+	expected='go$(GO_VERSION)'; \
+	if [[ "$$actual" != "$$expected" ]]; then \
+		echo "Go toolchain $$expected is required; active toolchain is $${actual:-unavailable}." >&2; \
+		echo "Install the pinned version or run: GOTOOLCHAIN=$$expected make <target>" >&2; \
+		exit 2; \
+	fi
 
 .PHONY: tools
 tools: tool-golangci-lint tool-goreleaser tool-actionlint tool-govulncheck tool-syft ## Install pinned development tools into bin/ when absent.
@@ -368,8 +378,8 @@ snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without pu
 			--skip=sign,homebrew
 
 .PHONY: check quick-check ci
-check: mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check release-build ## Run all presubmission checks.
-quick-check: mod-check format-check lint unittest build ## Run the fast presubmission checks.
+check: go-version-check mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check release-build ## Run all presubmission checks.
+quick-check: go-version-check mod-check format-check lint unittest build ## Run the fast presubmission checks.
 ci: check ## Alias for the complete CI verification workflow.
 
 .PHONY: update
