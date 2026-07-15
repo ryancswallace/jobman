@@ -66,6 +66,10 @@ ghcr.io/ryancswallace/jobman:latest
 
 The `latest` image is published only for stable versions. Images run as an
 unprivileged `jobman` user and include Bash, CA certificates, and timezone data.
+They are CLI runtimes, not persistent daemon containers: use `run --wait` or
+`run --foreground`, mount `/home/jobman/.local/state/jobman`, and derive a
+workload image containing target commands as described in
+[docs/CONTAINERS.md](docs/CONTAINERS.md).
 
 The Homebrew Cask is generated into `Casks/jobman.rb` in this repository. Since
 `main` requires pull requests and status checks, GoReleaser writes each update
@@ -133,6 +137,11 @@ The Homebrew publisher and keyless checksum and container signing are skipped
 locally because they need GitHub credentials and an Actions OIDC identity.
 Docker Buildx may create local platform-suffixed images during snapshot
 validation.
+
+The GoReleaser pre-hook renders `.release/CITATION.cff` from the tracked
+template using the resolved release version and timestamp. Confirm the copy
+inside at least one archive has the release's version and date; the generated
+file is ignored and must not be committed.
 
 Before merging a release-triggering change, also confirm that generated assets
 are non-empty and current:
@@ -225,3 +234,6 @@ Before relying on the first automated release:
   request, and merge that pull request after its checks pass;
 - review the generated GitHub release notes and all artifacts after publication;
 - install at least one archive or native package and run the versioned container.
+- review the v1 release-commit checklist in [SUPPORT.md](SUPPORT.md), including
+  README warnings, security support, platform evidence, upgrades, changelog,
+  every fuzz target, performance/soak results, and `make docker-smoke`.
