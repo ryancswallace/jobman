@@ -173,16 +173,24 @@ func withConfiguredBackend(
 	operation func(app.Backend, config.Loaded) error,
 ) (returned error) {
 	return withLoadedBackend(command, dependencies, options, func(backend app.Backend, loaded config.Loaded) error {
-		configurable, ok := backend.(app.ConfigurableBackend)
-		if !ok {
-			return errors.New("application backend does not support durable configuration")
-		}
-		if err := configurable.ApplyConfig(command.Context(), loaded.Config); err != nil {
-			return fmt.Errorf("apply configuration: %w", err)
+		if err := applyBackendConfiguration(command.Context(), backend, loaded.Config); err != nil {
+			return err
 		}
 
 		return operation(backend, loaded)
 	})
+}
+
+func applyBackendConfiguration(ctx context.Context, backend app.Backend, configuration config.Config) error {
+	configurable, ok := backend.(app.ConfigurableBackend)
+	if !ok {
+		return errors.New("application backend does not support durable configuration")
+	}
+	if err := configurable.ApplyConfig(ctx, configuration); err != nil {
+		return fmt.Errorf("apply configuration: %w", err)
+	}
+
+	return nil
 }
 
 func withLoadedBackend(

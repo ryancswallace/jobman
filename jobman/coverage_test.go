@@ -320,6 +320,10 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 	if backend.cleanRequest == nil || backend.cleanRequest.OlderThan != time.Hour || backend.cleanRequest.UsePolicy {
 		t.Fatalf("Clean request = %+v", backend.cleanRequest)
 	}
+	if backend.appliedConfig != 1 || backend.configured != 1 {
+		t.Fatalf("cleanup configuration calls = applied %d configured %d, want policy cleanup only",
+			backend.appliedConfig, backend.configured)
+	}
 	for _, arguments := range [][]string{
 		{"logs", testJobID, "--stream", "invalid"},
 		{"logs", testJobID, "--follow", "--all"},
@@ -446,6 +450,7 @@ func TestCommandOutputFailures(t *testing.T) {
 		{"logs", testJobID},
 		{"clean", testJobID, "--dry-run"},
 		{"run", "--", "true"},
+		{"run", "--rerun", testJobID},
 		{"config", "show"},
 		{"config", "paths"},
 		{"config", "validate"},
@@ -787,6 +792,7 @@ func TestCommandsPropagateBackendFailures(t *testing.T) {
 		{"logs", testJobID, "--follow"},
 		{"clean", testJobID, "--dry-run"},
 		{"run", "--", "true"},
+		{"run", "--rerun", testJobID},
 	} {
 		t.Run(strings.Join(arguments, "_"), func(t *testing.T) {
 			backend := newFakeBackend(t)
@@ -811,6 +817,7 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 		{"clean", testJobID, "--dry-run"},
 		{"logs", testJobID, "--follow"},
 		{"run", "--foreground", "--", "true"},
+		{"run", "--rerun", testJobID},
 	} {
 		if _, err := executeCommand(t, runtimeDependencies, arguments); err == nil {
 			t.Errorf("%v error = nil", arguments)
@@ -833,6 +840,10 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 type basicBackend struct{ base *fakeBackend }
 
 func (backend *basicBackend) Close() error { return backend.base.Close() }
+
+func (backend *basicBackend) ApplyConfig(ctx context.Context, configuration config.Config) error {
+	return backend.base.ApplyConfig(ctx, configuration)
+}
 
 func (backend *basicBackend) Submit(ctx context.Context, request app.SubmitRequest) (model.JobState, error) {
 	return backend.base.Submit(ctx, request)

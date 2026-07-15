@@ -315,6 +315,7 @@ func TestEmergencyAndInspectionCommandsIgnoreMalformedConfiguration(t *testing.T
 		{"cancel", testJobID},
 		{"pause", testJobID},
 		{"resume", testJobID},
+		{"clean", "--older-than", "1h", "--dry-run"},
 	}
 	for _, arguments := range commands {
 		backend := newFakeBackend(t)
@@ -392,6 +393,9 @@ func TestRunPreservesArgumentsAndEnvironment(t *testing.T) {
 	if backend.submitRequest == nil {
 		t.Fatal("Submit() was not called")
 	}
+	if backend.appliedConfig != 1 || backend.configured != 1 {
+		t.Fatalf("configuration calls = applied %d configured %d, want one each", backend.appliedConfig, backend.configured)
+	}
 	if backend.submitRequest.Executable != "printf" {
 		t.Fatalf("executable = %q, want printf", backend.submitRequest.Executable)
 	}
@@ -452,6 +456,12 @@ func TestRunRequiresArgumentBoundary(t *testing.T) {
 	}
 	if backend.submitRequest != nil {
 		t.Fatal("invalid run opened the backend")
+	}
+
+	backend = newFakeBackend(t)
+	_, err = executeCommand(t, dependenciesFor(backend), []string{"run", "--stdin", "invalid", "--", "true"})
+	if !errors.Is(err, ErrUsage) || backend.appliedConfig != 0 || backend.submitRequest != nil {
+		t.Fatalf("invalid run policy = error %v applied %d request %+v", err, backend.appliedConfig, backend.submitRequest)
 	}
 }
 
@@ -521,6 +531,18 @@ func TestRunRerunSourceIsCanonicalAndRejectsPolicyOverrides(t *testing.T) {
 	})
 	if !errors.Is(err, ErrUsage) || backend.rerunRequest != nil {
 		t.Fatalf("run --rerun with override error/request = %v/%+v, want usage/no rerun", err, backend.rerunRequest)
+	}
+	if backend.appliedConfig != 1 {
+		t.Fatalf("invalid rerun changed configuration application count to %d", backend.appliedConfig)
+	}
+
+	standalone := newFakeBackend(t)
+	if _, err := executeCommand(t, dependenciesFor(standalone), []string{"rerun", testJobID}); err != nil {
+		t.Fatalf("standalone rerun error = %v", err)
+	}
+	if standalone.appliedConfig != 1 || standalone.configured != 1 {
+		t.Fatalf("standalone rerun configuration calls = applied %d configured %d, want one each",
+			standalone.appliedConfig, standalone.configured)
 	}
 }
 

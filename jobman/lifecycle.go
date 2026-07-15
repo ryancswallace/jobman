@@ -114,7 +114,7 @@ func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 		Short: "Submit a new job from an existing specification",
 		Args:  usageArgs(cobra.ExactArgs(1)),
 		RunE: func(command *cobra.Command, arguments []string) error {
-			return withBackend(command, dependencies, root, func(backend app.Backend) error {
+			return withConfiguredBackend(command, dependencies, root, func(backend app.Backend, _ config.Loaded) error {
 				extended, ok := backend.(app.LifecycleBackend)
 				if !ok {
 					return errors.New("application backend does not support rerun")
@@ -149,14 +149,15 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 			if len(arguments) == 1 {
 				selector = arguments[0]
 			}
-			return withLoadedBackend(command, dependencies, root, func(backend app.Backend, _ config.Loaded) error {
+			usePolicy := !command.Flags().Changed("older-than")
+			clean := func(backend app.Backend) error {
 				cleaner, ok := backend.(app.CleanupBackend)
 				if !ok {
 					return errors.New("application backend does not support cleanup")
 				}
 				result, err := cleaner.Clean(command.Context(), app.CleanRequest{
 					Selector: selector, OlderThan: olderThan, DryRun: dryRun,
-					UsePolicy: !command.Flags().Changed("older-than"),
+					UsePolicy: usePolicy,
 				})
 				if err != nil {
 					return err
@@ -175,7 +176,14 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 					result.Jobs,
 				)
 				return err
-			})
+			}
+			if usePolicy {
+				return withConfiguredBackend(command, dependencies, root, func(backend app.Backend, _ config.Loaded) error {
+					return clean(backend)
+				})
+			}
+
+			return withBackend(command, dependencies, root, clean)
 		},
 	}
 	command.Flags().DurationVar(&olderThan, "older-than", 0, "select logs completed at least this long ago")

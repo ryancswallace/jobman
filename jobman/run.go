@@ -143,7 +143,6 @@ func newRunCommand(dependencies dependencies, root *rootOptions) *cobra.Command 
 	return command
 }
 
-//nolint:gocognit,nestif // Source selection keeps rerun and configured submission behavior in one command transaction.
 func run(
 	command *cobra.Command,
 	dependencies dependencies,
@@ -151,61 +150,89 @@ func run(
 	options *runOptions,
 	arguments []string,
 ) error {
+	if options.rerun != "" {
+		if err := validateRerunOptions(command, options); err != nil {
+			return usageError(err)
+		}
+	}
 	return withLoadedBackend(command, dependencies, root, func(backend app.Backend, loaded config.Loaded) error {
 		if options.rerun != "" {
-			if err := validateRerunOptions(command, options); err != nil {
-				return usageError(err)
-			}
-			lifecycle, ok := backend.(app.LifecycleBackend)
-			if !ok {
-				return errors.New("application backend does not support rerunning jobs")
-			}
-			job, err := lifecycle.Rerun(command.Context(), options.rerun, app.RerunRequest{Name: options.name})
-			if err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(command.OutOrStdout(), job.ID); err != nil {
-				return fmt.Errorf("write rerun job ID: %w", err)
-			}
-			if options.waitForCompletion {
-				return waitForSubmittedJob(command.Context(), backend, job.ID.String())
-			}
-
-			return nil
-		}
-		var configured config.JobSpec
-		var err error
-		if len(arguments) > 0 {
-			configured, err = loaded.Config.ResolveJobSpecWithCommand(options.jobSpec, arguments, options.profiles...)
-		} else {
-			configured, err = loaded.Config.ResolveJobSpec(options.jobSpec, options.profiles...)
-		}
-		if err != nil {
-			return usageError(err)
-		}
-		request, err := submitRequestFromConfig(loaded.Config, configured)
-		if err != nil {
-			return usageError(err)
-		}
-		if applyErr := applyRunOptions(command, options, arguments, loaded.Config, &request); applyErr != nil {
-			return usageError(applyErr)
-		}
-		job, err := backend.Submit(command.Context(), request)
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(command.OutOrStdout(), job.ID); err != nil {
-			return fmt.Errorf("write submitted job ID: %w", err)
-		}
-		if options.foreground {
-			return attachForeground(command, backend, job)
-		}
-		if options.waitForCompletion {
-			return waitForSubmittedJob(command.Context(), backend, job.ID.String())
+			return submitRerun(command, backend, loaded.Config, options)
 		}
 
-		return nil
+		return submitConfiguredJob(command, backend, loaded.Config, options, arguments)
 	})
+}
+
+func submitRerun(
+	command *cobra.Command,
+	backend app.Backend,
+	configuration config.Config,
+	options *runOptions,
+) error {
+	if err := applyBackendConfiguration(command.Context(), backend, configuration); err != nil {
+		return err
+	}
+	lifecycle, ok := backend.(app.LifecycleBackend)
+	if !ok {
+		return errors.New("application backend does not support rerunning jobs")
+	}
+	job, err := lifecycle.Rerun(command.Context(), options.rerun, app.RerunRequest{Name: options.name})
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(command.OutOrStdout(), job.ID); err != nil {
+		return fmt.Errorf("write rerun job ID: %w", err)
+	}
+	if options.waitForCompletion {
+		return waitForSubmittedJob(command.Context(), backend, job.ID.String())
+	}
+
+	return nil
+}
+
+func submitConfiguredJob(
+	command *cobra.Command,
+	backend app.Backend,
+	configuration config.Config,
+	options *runOptions,
+	arguments []string,
+) error {
+	var configured config.JobSpec
+	var err error
+	if len(arguments) > 0 {
+		configured, err = configuration.ResolveJobSpecWithCommand(options.jobSpec, arguments, options.profiles...)
+	} else {
+		configured, err = configuration.ResolveJobSpec(options.jobSpec, options.profiles...)
+	}
+	if err != nil {
+		return usageError(err)
+	}
+	request, err := submitRequestFromConfig(configuration, configured)
+	if err != nil {
+		return usageError(err)
+	}
+	if applyErr := applyRunOptions(command, options, arguments, configuration, &request); applyErr != nil {
+		return usageError(applyErr)
+	}
+	if configurationErr := applyBackendConfiguration(command.Context(), backend, configuration); configurationErr != nil {
+		return configurationErr
+	}
+	job, err := backend.Submit(command.Context(), request)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(command.OutOrStdout(), job.ID); err != nil {
+		return fmt.Errorf("write submitted job ID: %w", err)
+	}
+	if options.foreground {
+		return attachForeground(command, backend, job)
+	}
+	if options.waitForCompletion {
+		return waitForSubmittedJob(command.Context(), backend, job.ID.String())
+	}
+
+	return nil
 }
 
 //nolint:gocognit,cyclop,funlen,maintidx // Each independent flag overlays one immutable policy field explicitly.
