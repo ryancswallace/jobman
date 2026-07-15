@@ -350,6 +350,9 @@ Pausing an active process tree is a platform-dependent, best-effort feature.
 Jobman MUST probe the capability and return a clear unsupported or partial
 error rather than record a false paused state. Pausing a job that is waiting,
 queued, or in backoff is portable because no target needs to be suspended.
+During the narrow process-creation `starting` window, Jobman returns a
+retryable state conflict rather than accept a pause that could race process
+publication.
 
 ### 4.11 `jobman input`
 
