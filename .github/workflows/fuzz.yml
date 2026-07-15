@@ -25,9 +25,21 @@ concurrency:
 
 jobs:
   fuzz:
-    name: Fuzz persisted model parsing
+    name: Fuzz ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: ./internal/model
+            target: FuzzParseJobSpecJSON
+          - package: ./internal/config
+            target: FuzzParseConfiguration
+          - package: ./internal/logstore
+            target: FuzzScanIndexSafety
+          - package: ./internal/logstore
+            target: FuzzReaderIndexSafety
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -42,4 +54,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Fuzz
-        run: make fuzz FUZZ_TIME=30s
+        run: >-
+          make fuzz
+          FUZZ_PACKAGE=${{ matrix.package }}
+          FUZZ_TARGET=${{ matrix.target }}
+          FUZZ_TIME=30s
