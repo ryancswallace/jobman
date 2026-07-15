@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -45,9 +46,10 @@ type showEnvelope struct {
 }
 
 type jobDetail struct {
-	Summary jobSummary  `json:"summary"`
-	Runs    []runDetail `json:"runs"`
-	Runtime jobRuntime  `json:"runtime"`
+	Summary                jobSummary                   `json:"summary"`
+	Runs                   []runDetail                  `json:"runs"`
+	Runtime                jobRuntime                   `json:"runtime"`
+	NotificationDeliveries []notificationDeliveryDetail `json:"notification_deliveries"`
 }
 
 type jobRuntime struct {
@@ -62,8 +64,23 @@ type jobSummary struct {
 type runDetail struct {
 	Process *processIdentity `json:"process"`
 	Exit    *exitInfo        `json:"exit"`
+	Logs    logDetail        `json:"logs"`
 	Outcome string           `json:"outcome"`
 	Phase   string           `json:"phase"`
+}
+
+type logDetail struct {
+	Available    bool    `json:"available"`
+	IndexVersion int     `json:"index_version"`
+	StdoutSize   int64   `json:"stdout_size"`
+	PrunedAt     *string `json:"pruned_at"`
+}
+
+type notificationDeliveryDetail struct {
+	Notifier     string `json:"notifier"`
+	EventType    string `json:"event_type"`
+	Status       string `json:"status"`
+	AttemptCount int    `json:"attempt_count"`
 }
 
 type processIdentity struct {
@@ -346,6 +363,206 @@ printf 'second-attempt\n'`
 		assertLogs(t, binary, stateDir, dependent, "stdout", "dependency-ran")
 	})
 
+	t.Run("global admission queues a later job", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		gate := filepath.Join(t.TempDir(), "release")
+		configuration := writeConfiguration(t, `---
+schema_version: 1
+concurrency:
+  max_active_slots: 1
+`)
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		blocker := submitConfiguredRun(
+			t, binary, stateDir, configuration,
+			"--", shell, "-c", `while [ ! -e "$1" ]; do :; done`, "jobman-e2e", gate,
+		)
+		registerCancellationCleanup(t, binary, stateDir, blocker)
+		waitForJob(t, binary, stateDir, blocker, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		queued := submitConfiguredRun(t, binary, stateDir, configuration, "--", printf, "admitted")
+		registerCancellationCleanup(t, binary, stateDir, queued)
+		waiting := waitForJob(t, binary, stateDir, queued, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "queued"
+		})
+		if len(waiting.Runs) != 0 {
+			t.Fatalf("queued job started %d run(s) before admission", len(waiting.Runs))
+		}
+		if err := os.WriteFile(gate, []byte("release"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, blocker), "success")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, queued), "success")
+		assertLogs(t, binary, stateDir, queued, "stdout", "admitted")
+	})
+
+	t.Run("run timeout records a timed out outcome", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		sleep := requireExecutable(t, "sleep")
+		jobID := submitRun(
+			t, binary, stateDir,
+			"--run-timeout", "150ms", "--stop-grace", "50ms", "--", sleep, "60",
+		)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		if completed.Summary.Outcome != "failure" || len(completed.Runs) != 1 ||
+			completed.Runs[0].Outcome != "timed_out" {
+			t.Fatalf("timed-out run = %+v, want timed_out run and terminal job failure", completed)
+		}
+	})
+
+	t.Run("rotated logs remain lossless and versioned", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		printf := requireExecutable(t, "printf")
+		jobID := submitRun(
+			t, binary, stateDir,
+			"--log-segment-bytes", "4", "--log-segments", "4", "--", printf, "abcdefghijkl",
+		)
+		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		assertJobAndRunOutcome(t, completed, "success")
+		if completed.Runs[0].Logs.IndexVersion != 2 || completed.Runs[0].Logs.StdoutSize != 12 {
+			t.Fatalf("rotated log metadata = %+v, want index v2 and 12 stdout bytes", completed.Runs[0].Logs)
+		}
+		assertLogs(t, binary, stateDir, jobID, "stdout", "abcdefghijkl")
+		for _, name := range []string{"stdout.log", "stdout.000002.log", "stdout.000003.log"} {
+			if _, err := os.Stat(filepath.Join(stateDir, "logs", jobID, "1", name)); err != nil {
+				t.Fatalf("rotated segment %s: %v", name, err)
+			}
+		}
+	})
+
+	t.Run("command notification receives a versioned terminal event", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		eventPath := filepath.Join(t.TempDir(), "event.json")
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		configuration := writeConfiguration(t, fmt.Sprintf(`---
+schema_version: 1
+notifiers:
+  audit:
+    type: command
+    events: [job_succeeded]
+    timeout: 5s
+    retry:
+      max_attempts: 1
+      delay: 1ms
+      max_delay: 1ms
+    command:
+      command: [%s, -c, %s, jobman-notifier, %s]
+      output_limit: 4KiB
+`, yamlQuote(shell), yamlQuote(`IFS= read -r line; printf '%s\n' "$line" > "$1"`), yamlQuote(eventPath)))
+		jobID := submitConfiguredRun(
+			t, binary, stateDir, configuration, "--notify", "audit", "--", printf, "notified",
+		)
+		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		assertJobAndRunOutcome(t, completed, "success")
+		if len(completed.NotificationDeliveries) != 1 {
+			t.Fatalf("notification deliveries = %+v, want one", completed.NotificationDeliveries)
+		}
+		delivery := completed.NotificationDeliveries[0]
+		if delivery.Notifier != "audit" || delivery.EventType != "job_succeeded" ||
+			delivery.Status != "succeeded" || delivery.AttemptCount != 1 {
+			t.Fatalf("notification delivery = %+v", delivery)
+		}
+		payload, err := os.ReadFile(eventPath) // #nosec G304 -- Test-controlled path.
+		if err != nil {
+			t.Fatal(err)
+		}
+		var event struct {
+			SchemaVersion int    `json:"schema_version"`
+			ID            string `json:"id"`
+			Type          string `json:"type"`
+			JobID         string `json:"job_id"`
+		}
+		if err := json.Unmarshal(payload, &event); err != nil {
+			t.Fatalf("decode notification event: %v: %s", err, payload)
+		}
+		if event.SchemaVersion != 1 || event.ID == "" || event.Type != "job_succeeded" || event.JobID != jobID {
+			t.Fatalf("notification event = %+v", event)
+		}
+	})
+
+	t.Run("cancel terminates a grandchild process tree", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		shell := requireExecutable(t, "sh")
+		sleep := requireExecutable(t, "sleep")
+		script := `printf '%s\n' "$$"
+"$1" -c '"$1" 60 & grandchild=$!; printf "%s %s\n" "$$" "$grandchild"; wait "$grandchild"' jobman-child "$2" &
+wait "$!"`
+		jobID := submit(t, binary, stateDir, shell, "-c", script, "jobman-e2e", shell, sleep)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		pids := waitForLoggedPIDs(t, binary, stateDir, jobID, 3)
+		registerProcessGroupCleanup(t, pids[0])
+		if result := invokeWithTimeout(t, binary, stateDir, "cancel", jobID); result.err != nil {
+			t.Fatalf("cancel grandchild tree: %v: %s", result.err, result.stderr)
+		}
+		assertJobAndRunOutcome( //nolint:misspell // Stable persisted spelling.
+			t, waitForCompletedJob(t, binary, stateDir, jobID), "cancelled",
+		)
+		waitForProcessesGone(t, pids...)
+	})
+
+	t.Run("cancel force terminates a target that ignores graceful stop", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		shell := requireExecutable(t, "sh")
+		sleep := requireExecutable(t, "sleep")
+		script := `trap '' TERM
+printf '%s\n' "$$"
+while :; do "$1" 1; done`
+		jobID := submitRun(
+			t, binary, stateDir,
+			"--stop-grace", "100ms", "--force-after-grace=true", "--",
+			shell, "-c", script, "jobman-e2e", sleep,
+		)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		pid := waitForLoggedPIDs(t, binary, stateDir, jobID, 1)[0]
+		registerProcessGroupCleanup(t, pid)
+		if result := invokeWithTimeout(t, binary, stateDir, "cancel", jobID); result.err != nil {
+			t.Fatalf("force cancel: %v: %s", result.err, result.stderr)
+		}
+		assertJobAndRunOutcome( //nolint:misspell // Stable persisted spelling.
+			t, waitForCompletedJob(t, binary, stateDir, jobID), "cancelled",
+		)
+		waitForProcessesGone(t, pid)
+	})
+
+	t.Run("job survives controlling terminal closure", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		gate := filepath.Join(t.TempDir(), "release")
+		scriptCommand := requireExecutable(t, "script")
+		shell := requireExecutable(t, "sh")
+		targetScript := `while [ ! -e "$1" ]; do :; done; printf terminal-closed`
+		commandLine := strings.Join([]string{
+			shellQuote(binary), "--state-dir", shellQuote(stateDir), "run", "--",
+			shellQuote(shell), "-c", shellQuote(targetScript), "jobman-e2e", shellQuote(gate),
+		}, " ")
+		ctx, cancel := context.WithTimeout(t.Context(), commandTimeout)
+		defer cancel()
+		command := exec.CommandContext(ctx, scriptCommand, "-q", "-e", "-c", commandLine, "/dev/null")
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("submit through controlling terminal: %v: %s", err, output)
+		}
+		match := regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`).Find(output)
+		if len(match) == 0 {
+			t.Fatalf("terminal submission output has no job ID: %q", output)
+		}
+		jobID := string(match)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		if err := os.WriteFile(gate, []byte("release"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		assertLogs(t, binary, stateDir, jobID, "stdout", "terminal-closed")
+	})
+
 	t.Run("pause and resume preserve active process ownership", func(t *testing.T) {
 		stateDir := filepath.Join(t.TempDir(), "state")
 		sleep := requireExecutable(t, "sleep")
@@ -496,6 +713,34 @@ func TestAssembledBinaryCrashBoundaries(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("cleanup-files-removed-before-metadata", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		jobID := submit(t, binary, stateDir, shell, "-c", "printf cleanup-boundary")
+		waitForCompletedJob(t, binary, stateDir, jobID)
+		point := "cleanup-files-removed-before-metadata"
+		crashed := invokeFault(
+			t.Context(), binary, stateDir, point,
+			"clean", jobID, "--older-than", "0s", "--dry-run=false", "--force",
+		)
+		if crashed.err == nil {
+			t.Fatalf("cleanup fault point %s did not terminate the client", point)
+		}
+		resumed := invokeWithTimeout(
+			t, binary, stateDir,
+			"clean", jobID, "--older-than", "0s", "--dry-run=false", "--force",
+		)
+		if resumed.err != nil {
+			t.Fatalf("resume cleanup after crash: %v: %s", resumed.err, resumed.stderr)
+		}
+		detail := showJob(t, binary, stateDir, jobID)
+		if len(detail.Runs) != 1 || detail.Runs[0].Logs.Available || detail.Runs[0].Logs.PrunedAt == nil {
+			t.Fatalf("resumed cleanup logs = %+v, want durable pruning metadata", detail.Runs)
+		}
+		if doctor := invokeWithTimeout(t, binary, stateDir, "doctor", "--json"); doctor.err != nil {
+			t.Fatalf("doctor after cleanup crash: %v: %s", doctor.err, doctor.stderr)
+		}
+	})
 }
 
 func buildJobman(t *testing.T) string {
@@ -598,6 +843,49 @@ func submitRun(t *testing.T, binary, stateDir string, arguments ...string) strin
 	}
 
 	return jobID
+}
+
+func submitConfiguredRun(
+	t *testing.T,
+	binary,
+	stateDir,
+	configuration string,
+	arguments ...string,
+) string {
+	t.Helper()
+
+	commandArguments := make([]string, 0, 3+len(arguments))
+	commandArguments = append(commandArguments, "--config", configuration, "run")
+	commandArguments = append(commandArguments, arguments...)
+	result := invokeWithTimeout(t, binary, stateDir, commandArguments...)
+	if result.err != nil {
+		t.Fatalf("configured jobman run error = %v\nstdout: %s\nstderr: %s", result.err, result.stdout, result.stderr)
+	}
+	jobID := strings.TrimSpace(result.stdout)
+	if len(jobID) != 36 || strings.Count(jobID, "-") != 4 {
+		t.Fatalf("configured jobman run output = %q, want one canonical job ID", result.stdout)
+	}
+
+	return jobID
+}
+
+func writeConfiguration(t *testing.T, contents string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "jobman.yml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write Jobman configuration: %v", err)
+	}
+
+	return path
+}
+
+func yamlQuote(value string) string {
+	return strconv.Quote(value)
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func assertLogs(t *testing.T, binary, stateDir, jobID, stream, want string) {
