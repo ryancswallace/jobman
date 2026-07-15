@@ -13,6 +13,8 @@ import (
 	"syscall"
 )
 
+func attachStartedTarget(pid int) (string, error) { return strconv.Itoa(pid), nil }
+
 const (
 	linuxProcRoot   = "/proc"
 	linuxBootIDPath = linuxProcRoot + "/sys/kernel/random/boot_id"

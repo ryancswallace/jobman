@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
+
+func attachStartedTarget(pid int) (string, error) { return strconv.Itoa(pid), nil }
 
 func supportsPauseResume() bool { return true }
 

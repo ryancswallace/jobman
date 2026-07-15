@@ -20,6 +20,7 @@ type ProcessIdentity struct {
 	PID      int    `json:"pid"`
 	Creation string `json:"creation"`
 	Boot     string `json:"boot"`
+	Tree     string `json:"tree,omitempty"`
 }
 
 // PauseResumeSupported reports whether this platform has a safe managed-tree
@@ -36,6 +37,16 @@ func ConfigureSupervisor(cmd *exec.Cmd) {
 // ConfigureTarget creates a separately addressable target process tree.
 func ConfigureTarget(cmd *exec.Cmd) {
 	applyTargetConfiguration(cmd)
+}
+
+// FinalizeTargetStart attaches a newly started target to the platform's
+// process-tree primitive before it is allowed to execute user code.
+func FinalizeTargetStart(pid int) (string, error) {
+	if pid <= 0 {
+		return "", fmt.Errorf("finalize target start: invalid pid %d", pid)
+	}
+
+	return attachStartedTarget(pid)
 }
 
 // Inspect returns the current identity for pid.

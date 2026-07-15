@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
+	"time"
 )
 
 const processHelperEnvironment = "JOBMAN_PLATFORM_PROCESS_HELPER"
@@ -30,6 +32,13 @@ func TestInspectCurrentProcess(t *testing.T) {
 	}
 	if !alive {
 		t.Fatal("Alive() = false for current process")
+	}
+}
+
+func TestFinalizeTargetStartRejectsInvalidPID(t *testing.T) {
+	t.Parallel()
+	if _, err := FinalizeTargetStart(0); err == nil {
+		t.Fatal("FinalizeTargetStart(0) error = nil")
 	}
 }
 
@@ -95,6 +104,10 @@ func TestProcessOperationsAndConfiguration(t *testing.T) {
 		if err := command.Start(); err != nil {
 			t.Fatalf("start process helper: %v", err)
 		}
+		treeID, err := FinalizeTargetStart(command.Process.Pid)
+		if err != nil {
+			t.Fatalf("FinalizeTargetStart() error = %v", err)
+		}
 		waited := false
 		t.Cleanup(func() {
 			if waited {
@@ -115,6 +128,7 @@ func TestProcessOperationsAndConfiguration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Inspect(helper) error = %v", err)
 		}
+		identity.Tree = treeID
 		if err := Pause(identity); err != nil {
 			t.Fatalf("Pause() error = %v", err)
 		}
@@ -124,8 +138,21 @@ func TestProcessOperationsAndConfiguration(t *testing.T) {
 		if err := Terminate(identity, force); err != nil {
 			t.Fatalf("Terminate(force=%t) error = %v", force, err)
 		}
+		var forcedTermination <-chan error
+		if runtime.GOOS == "windows" && !force {
+			result := make(chan error, 1)
+			forcedTermination = result
+			time.AfterFunc(100*time.Millisecond, func() {
+				result <- Terminate(identity, true)
+			})
+		}
 		if err := command.Wait(); err == nil {
 			t.Fatalf("terminated helper Wait(force=%t) error = nil", force)
+		}
+		if forcedTermination != nil {
+			if err := <-forcedTermination; err != nil {
+				t.Fatalf("forced Windows termination error = %v", err)
+			}
 		}
 		_ = stdin.Close()
 		waited = true
