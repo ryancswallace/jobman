@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ryancswallace/jobman/internal/liveinput"
 	"github.com/ryancswallace/jobman/internal/model"
 	"github.com/ryancswallace/jobman/internal/platform"
 	"github.com/ryancswallace/jobman/internal/store"
@@ -46,6 +47,11 @@ type showEnvelope struct {
 type jobDetail struct {
 	Summary jobSummary  `json:"summary"`
 	Runs    []runDetail `json:"runs"`
+	Runtime jobRuntime  `json:"runtime"`
+}
+
+type jobRuntime struct {
+	InputEndpoint string `json:"input_endpoint"`
 }
 
 type jobSummary struct {
@@ -273,6 +279,137 @@ wait "$child"`
 		assertJobAndRunOutcome(t, completed, "cancelled") //nolint:misspell // The specification defines this persisted spelling.
 	})
 
+	t.Run("retry policy starts another run and preserves both logs", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		counter := filepath.Join(t.TempDir(), "attempted")
+		shell := requireExecutable(t, "sh")
+		script := `if [ ! -e "$1" ]; then
+    : > "$1"
+    printf 'first-attempt\n'
+    exit 17
+fi
+printf 'second-attempt\n'`
+		jobID := submitRun(
+			t,
+			binary,
+			stateDir,
+			"--retries", "1", "--retry-delay", "1ms", "--",
+			shell, "-c", script, "jobman-e2e", counter,
+		)
+
+		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		if completed.Summary.Outcome != "success" || len(completed.Runs) != 2 ||
+			completed.Runs[0].Outcome != "failure" || completed.Runs[1].Outcome != "success" {
+			t.Fatalf("retry job = %+v, want failed run followed by successful run", completed)
+		}
+		result := invokeWithTimeout(t, binary, stateDir, "logs", "--all", "--raw", "--stream", "stdout", jobID)
+		if result.err != nil {
+			t.Fatalf("jobman logs --all error = %v\nstderr: %s", result.err, result.stderr)
+		}
+		if result.stdout != "first-attempt\nsecond-attempt\n" {
+			t.Fatalf("all-run logs = %q", result.stdout)
+		}
+	})
+
+	t.Run("dependency waits for successful predecessor", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		gate := filepath.Join(t.TempDir(), "release")
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		predecessor := submit(
+			t,
+			binary,
+			stateDir,
+			shell,
+			"-c", `while [ ! -e "$1" ]; do :; done`, "jobman-e2e", gate,
+		)
+		registerCancellationCleanup(t, binary, stateDir, predecessor)
+		dependent := submitRun(
+			t,
+			binary,
+			stateDir,
+			"--after-success", predecessor, "--", printf, "dependency-ran",
+		)
+		registerCancellationCleanup(t, binary, stateDir, dependent)
+
+		waiting := waitForJob(t, binary, stateDir, dependent, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "waiting"
+		})
+		if len(waiting.Runs) != 0 {
+			t.Fatalf("dependent started %d run(s) before predecessor completed", len(waiting.Runs))
+		}
+		if writeErr := os.WriteFile(gate, []byte("release"), 0o600); writeErr != nil {
+			t.Fatalf("release predecessor: %v", writeErr)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, predecessor), "success")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, dependent), "success")
+		assertLogs(t, binary, stateDir, dependent, "stdout", "dependency-ran")
+	})
+
+	t.Run("pause and resume preserve active process ownership", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		sleep := requireExecutable(t, "sleep")
+		jobID := submit(t, binary, stateDir, sleep, "60")
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		running := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running" && len(detail.Runs) == 1 && detail.Runs[0].Process != nil
+		})
+		registerProcessGroupCleanup(t, running.Runs[0].Process.PID)
+
+		if result := invokeWithTimeout(t, binary, stateDir, "pause", jobID); result.err != nil {
+			t.Fatalf("jobman pause error = %v\nstderr: %s", result.err, result.stderr)
+		}
+		waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "paused"
+		})
+		if result := invokeWithTimeout(t, binary, stateDir, "resume", jobID); result.err != nil {
+			t.Fatalf("jobman resume error = %v\nstderr: %s", result.err, result.stderr)
+		}
+		waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		if result := invokeWithTimeout(t, binary, stateDir, "cancel", jobID); result.err != nil {
+			t.Fatalf("jobman cancel after resume error = %v\nstderr: %s", result.err, result.stderr)
+		}
+		assertJobAndRunOutcome( //nolint:misspell // The specification defines this persisted spelling.
+			t, waitForCompletedJob(t, binary, stateDir, jobID), "cancelled",
+		)
+	})
+
+	t.Run("live input delivers binary bytes and durable EOF", func(t *testing.T) {
+		stateDir := shortStateDir(t)
+		requireLiveInputSockets(t, stateDir)
+		cat := requireExecutable(t, "cat")
+		jobID := submitRun(t, binary, stateDir, "--stdin", "live", "--", cat)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running" && detail.Runtime.InputEndpoint != ""
+		})
+		payload := []byte{'b', 'i', 'n', 'a', 'r', 'y', 0, 0xff, '\n'}
+		result := invokeWithInput(t.Context(), binary, stateDir, payload, "input", "--eof", jobID)
+		if result.err != nil {
+			t.Fatalf("jobman input error = %v\nstderr: %s", result.err, result.stderr)
+		}
+		if strings.TrimSpace(result.stdout) != strconv.Itoa(len(payload)) {
+			t.Fatalf("jobman input output = %q, want delivered byte count", result.stdout)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		logs := invokeWithTimeout(t, binary, stateDir, "logs", "--stream", "stdout", jobID)
+		if logs.err != nil || !bytes.Equal([]byte(logs.stdout), payload) {
+			t.Fatalf("live-input logs = %v/%q, want %v", logs.err, logs.stdout, payload)
+		}
+	})
+
+	t.Run("rerun clones the effective specification", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		printf := requireExecutable(t, "printf")
+		source := submit(t, binary, stateDir, printf, "rerun-output")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, source), "success")
+		rerun := submitRun(t, binary, stateDir, "--rerun", source)
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, rerun), "success")
+		assertLogs(t, binary, stateDir, rerun, "stdout", "rerun-output")
+	})
+
 	t.Run("stale killed supervisor reconciles to lost", func(t *testing.T) {
 		stateDir := filepath.Join(t.TempDir(), "state")
 		sleep := requireExecutable(t, "sleep")
@@ -328,6 +465,40 @@ func repositoryRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
 }
 
+func shortStateDir(t *testing.T) string {
+	t.Helper()
+
+	// Native Unix socket addresses have a small fixed path limit. Go's
+	// test-name-based TempDir paths can exceed it even though ordinary Jobman
+	// state roots do not, so keep this assembled live-input fixture short.
+	stateDir, err := os.MkdirTemp("", "jm-e2e-") //nolint:usetesting // t.TempDir paths exceed Unix socket limits here.
+	if err != nil {
+		t.Fatalf("create short live-input state directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if removeErr := os.RemoveAll(stateDir); removeErr != nil {
+			t.Errorf("remove short live-input state directory: %v", removeErr)
+		}
+	})
+
+	return stateDir
+}
+
+func requireLiveInputSockets(t *testing.T, stateDir string) {
+	t.Helper()
+
+	probe, err := liveinput.Listen(filepath.Join(stateDir, "socket-probe"))
+	if err != nil {
+		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+			t.Skipf("local sockets are blocked by the test environment: %v", err)
+		}
+		t.Fatalf("probe live-input socket support: %v", err)
+	}
+	if closeErr := probe.Close(); closeErr != nil {
+		t.Fatalf("close live-input socket probe: %v", closeErr)
+	}
+}
+
 func requireExecutable(t *testing.T, name string) string {
 	t.Helper()
 
@@ -342,8 +513,18 @@ func requireExecutable(t *testing.T, name string) string {
 func submit(t *testing.T, binary, stateDir, executable string, arguments ...string) string {
 	t.Helper()
 
-	commandArguments := make([]string, 0, 3+len(arguments))
-	commandArguments = append(commandArguments, "run", "--", executable)
+	commandArguments := make([]string, 0, 2+len(arguments))
+	commandArguments = append(commandArguments, "--", executable)
+	commandArguments = append(commandArguments, arguments...)
+
+	return submitRun(t, binary, stateDir, commandArguments...)
+}
+
+func submitRun(t *testing.T, binary, stateDir string, arguments ...string) string {
+	t.Helper()
+
+	commandArguments := make([]string, 0, 1+len(arguments))
+	commandArguments = append(commandArguments, "run")
 	commandArguments = append(commandArguments, arguments...)
 	result := invokeWithTimeout(t, binary, stateDir, commandArguments...)
 	if result.err != nil {
@@ -644,11 +825,22 @@ func invokeWithTimeout(t *testing.T, binary, stateDir string, arguments ...strin
 }
 
 func invoke(ctx context.Context, binary, stateDir string, arguments ...string) commandResult {
+	return invokeWithInput(ctx, binary, stateDir, nil, arguments...)
+}
+
+func invokeWithInput(
+	ctx context.Context,
+	binary string,
+	stateDir string,
+	input []byte,
+	arguments ...string,
+) commandResult {
 	commandArguments := make([]string, 0, 2+len(arguments))
 	commandArguments = append(commandArguments, "--state-dir", stateDir)
 	commandArguments = append(commandArguments, arguments...)
 	command := exec.CommandContext(ctx, binary, commandArguments...)
 	command.Env = removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR")
+	command.Stdin = bytes.NewReader(input)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout
