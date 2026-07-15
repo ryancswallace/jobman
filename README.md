@@ -35,11 +35,13 @@ completions are included in release archives.
 
 ## Available today
 
-The first production-shaped slice supports one detached direct command per
-job, durable inspection, lossless stdout/stderr capture, and cancellation:
+The current pre-1.0 implementation supports detached direct commands, durable
+inspection, repeated-run policies, prerequisites, local concurrency limits,
+timeouts, retained logs, lifecycle control, and notifications:
 
 ```console
-$ jobman run --name example -- sh -c 'printf "hello\\n"; sleep 30'
+$ jobman run --name example --retries 2 --run-timeout 1m -- \
+    sh -c 'printf "hello\\n"; sleep 30'
 01980f4c-7b2a-7a6f-8c10-0123456789ab
 $ jobman status 01980f4c
 01980f4c-7b2a-7a6f-8c10-0123456789ab  example  running
@@ -49,22 +51,52 @@ $ jobman cancel 01980f4c
 01980f4c-7b2a-7a6f-8c10-0123456789ab  stopping
 ```
 
-The implemented commands are `run`, `list`, `status`, `show`, `logs`, and
-`cancel`. Inspection commands support versioned JSON where documented by
-`--help`. Selectors accept a canonical ID, a unique ID prefix of at least eight
-characters, or an unambiguous exact name. Target arguments are passed directly
-to the operating system and are never joined into an implicit shell command.
+The implemented commands are `run`, `list`, `status`, `show`, `logs`, `cancel`,
+`pause`, `resume`, `wait`, `input`, `rerun`, `clean`, and `config`. Inspection
+commands support versioned JSON where documented by `--help`. Selectors accept
+a canonical ID, a unique ID prefix of at least eight characters, or an
+unambiguous exact name. Target arguments are passed directly to the operating
+system and are never joined into an implicit shell command.
+
+`run` can combine bounded or explicitly unlimited retry/repetition rules,
+constant/linear/exponential delay, per-run and whole-job timeouts, named or
+direct wait conditions, immutable outcome dependencies, a store-wide slot
+limit and one named pool, log capture/rotation/retention, and named notification
+subscriptions. For example:
+
+```console
+$ prepare=$(jobman run --name prepare -- ./prepare-data)
+$ jobman run --name analyze --after-success "$prepare" \
+    --slots 2 --retry-backoff exponential \
+    --retry-delay 5s --retries 3 -- ./analyze
+```
+
+Use `--wait` to block for a terminal outcome or `--foreground` to attach local
+input and both output streams while the per-job supervisor remains the process
+owner. A detached job submitted with `--stdin live` accepts binary standard
+input from `jobman input JOB`; input bytes are not persisted or replayed. Copy
+an existing effective specification with `jobman run --rerun JOB` (or the
+standalone `jobman rerun JOB` command).
 
 By default, metadata and logs live in the platform's private per-user state
 directory. Use `--state-dir PATH` or `JOBMAN_STATE_DIR` to select another local
 directory. SQLite metadata and raw log files are implementation compatibility
 surfaces described in the [persisted-schema reference].
 
-Linux has assembled-binary lifecycle coverage. macOS and Windows builds are
-kept compiling, but their pre-v1 process-management gaps are listed in the
-[platform-capability record]. Retries, waits, dependencies, concurrency pools,
-timeouts, rotation, pause/resume, notifications, and live input remain planned
-features rather than hidden or partially functional flags.
+Configuration is strict, versioned YAML. System and per-user files are loaded
+automatically, while a project `.jobman.yml` is loaded only from a root listed
+in `trusted_project_roots`; `--config PATH` explicitly selects a file. Run
+`jobman config paths`, `jobman config validate`, or `jobman config show` to
+inspect the result. The [configuration reference] and packaged
+[sample configuration] document safe defaults and reusable job, wait, pool,
+secret-reference, notifier, and profile examples.
+
+Linux has assembled-binary core lifecycle coverage. macOS and Windows builds
+are kept compiling, but their pre-v1 process-management gaps are listed in the
+[platform-capability record]. Pause/resume of an active process tree is
+best-effort and currently supported by the Unix adapters. Private live input is
+currently Unix-only. The complete policy and fault-injection matrix remains a
+stable-release gate.
 
 ## Installation
 
@@ -149,6 +181,7 @@ conventions.
 ## Documentation and support
 
 - [Documentation site](https://ryancswallace.github.io/jobman/)
+- [Configuration reference](docs/CONFIGURATION.md)
 - [Design documentation](docs/design/README.md)
 - [Release and artifact verification guide](RELEASE.md)
 - [Security policy](SECURITY.md)
@@ -164,3 +197,5 @@ Jobman is available under the [MIT License](LICENSE).
 [GitHub Releases page]: https://github.com/ryancswallace/jobman/releases
 [persisted-schema reference]: docs/design/PERSISTED_SCHEMA.md
 [platform-capability record]: docs/design/PLATFORM_CAPABILITIES.md
+[configuration reference]: docs/CONFIGURATION.md
+[sample configuration]: etc/jobman/jobman.yml
