@@ -65,7 +65,11 @@ func writeCompletion(item completion) error {
 }
 
 func main() {
-	if err := genAutocomplete("."); err != nil {
-		log.Fatal(err)
+	runGenerator(genAutocomplete, log.Fatal)
+}
+
+func runGenerator(generate func(string) error, fatal func(...any)) {
+	if err := generate("."); err != nil {
+		fatal(err)
 	}
 }

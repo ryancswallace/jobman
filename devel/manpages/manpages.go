@@ -58,7 +58,11 @@ func removeGeneratedManpages(manPath string) error {
 }
 
 func main() {
-	if err := genManpages("."); err != nil {
-		log.Fatal(err)
+	runGenerator(genManpages, log.Fatal)
+}
+
+func runGenerator(generate func(string) error, fatal func(...any)) {
+	if err := generate("."); err != nil {
+		fatal(err)
 	}
 }
