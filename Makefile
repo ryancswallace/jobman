@@ -62,6 +62,10 @@ GO_TEST_FLAGS ?= -race -shuffle=on
 FUZZ_PACKAGE ?= ./internal/model
 FUZZ_TARGET ?= FuzzParseJobSpecJSON
 FUZZ_TIME ?= 30s
+FUZZ_PARALLEL ?= 4
+PERF_TIME ?= 1s
+SOAK_TIME ?= 10m
+SOAK_TIMEOUT ?= 15m
 
 .PHONY: help
 help: ## Show available targets.
@@ -198,8 +202,10 @@ vet: ## Run go vet independently of the aggregate linter.
 unittest: ## Run unit tests with race detection and coverage.
 	@set -eu; \
 	trap '$(RM) $(COVERAGE_RAW)' EXIT; \
+	packages="$$( $(GO) list ./... \
+		| grep -Ev '/tests/(e2e|perf)($$|/)' )"; \
 	$(GO) test $(GO_TEST_FLAGS) -covermode=atomic -coverpkg=./... \
-		-coverprofile=$(COVERAGE_RAW) ./...; \
+		-coverprofile=$(COVERAGE_RAW) $$packages; \
 	awk -v minimum='$(COVERAGE_MIN)' -v output='$(COVERAGE_FILE)' \
 		-f devel/check-coverage.awk $(COVERAGE_RAW)
 unit: unittest
@@ -216,15 +222,24 @@ e2e: e2etest
 .PHONY: perftest bench
 perftest: ## Run benchmarks when the performance suite contains Go tests.
 	@if find tests/perf -type f -name '*_test.go' -print -quit | grep -q .; then \
-		$(GO) test -run '^$$' -bench . -benchmem ./tests/perf/...; \
+		$(GO) test -run '^TestPerformanceContract' ./tests/perf/...; \
+		$(GO) test -run '^$$' -bench '^Benchmark' -benchtime='$(PERF_TIME)' \
+			-benchmem ./tests/perf/...; \
 	else \
 		echo 'No performance tests are implemented yet; skipping.'; \
 	fi
 bench: perftest
 
+.PHONY: soaktest soak
+soaktest: ## Run opt-in concurrent storage/log/admission soak tests.
+	JOBMAN_SOAK=1 JOBMAN_SOAK_DURATION='$(SOAK_TIME)' \
+		$(GO) test -race -count=1 -timeout='$(SOAK_TIMEOUT)' \
+			-run '^TestSoak' ./tests/perf/...
+soak: soaktest
+
 .PHONY: fuzz
-fuzz: ## Fuzz a selected Go target (FUZZ_PACKAGE, FUZZ_TARGET, FUZZ_TIME).
-	$(GO) test -run '^$$' -fuzz '^$(FUZZ_TARGET)$$' \
+fuzz: ## Fuzz a selected Go target (FUZZ_PACKAGE, FUZZ_TARGET, FUZZ_TIME, FUZZ_PARALLEL).
+	$(GO) test -parallel=$(FUZZ_PARALLEL) -run '^$$' -fuzz '^$(FUZZ_TARGET)$$' \
 		-fuzztime=$(FUZZ_TIME) $(FUZZ_PACKAGE)
 
 .PHONY: test
@@ -315,6 +330,21 @@ docker-image: ## Build the local container image.
 		--build-arg BUILD_DATE='$(BUILD_DATE)' \
 		--tag $(IMAGE) \
 		.
+
+.PHONY: docker-smoke
+docker-smoke: docker-image ## Verify foreground/wait, persistent state, and derived-image container contracts.
+	@set -eu; \
+	volume="jobman-smoke-$$$$"; \
+	derived='$(PROJECT)-derived-smoke:local'; \
+	trap '$(DOCKER) volume rm -f "$$volume" >/dev/null 2>&1 || true; \
+		$(DOCKER) image rm -f "$$derived" >/dev/null 2>&1 || true' EXIT; \
+	$(DOCKER) volume create "$$volume" >/dev/null; \
+	$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
+		--build-arg BASE_IMAGE='$(IMAGE)' --tag "$$derived" tests/container; \
+	$(DOCKER) run --rm --volume "$$volume:/home/jobman/.local/state/jobman" \
+		"$$derived" run --wait -- /opt/jobman/bin/container-target; \
+	$(DOCKER) run --rm --volume "$$volume:/home/jobman/.local/state/jobman" \
+		"$$derived" list --completed --limit 1
 
 .PHONY: docker-run
 docker-run: docker-image ## Run the local image; pass jobman arguments with ARGS='...'.
