@@ -13,7 +13,7 @@ import (
 )
 
 // JobSpecSchemaVersion is the current persisted immutable-specification schema.
-const JobSpecSchemaVersion = 1
+const JobSpecSchemaVersion = 2
 
 // EnvironmentInheritancePolicy identifies how the run obtains its base
 // environment.
@@ -27,7 +27,12 @@ const EnvironmentInheritSubmission EnvironmentInheritancePolicy = "submission"
 type StdinPolicy string
 
 // StdinNull connects the detached target to the platform null device.
-const StdinNull StdinPolicy = "null"
+const (
+	StdinNull    StdinPolicy = "null"
+	StdinLive    StdinPolicy = "live"
+	StdinFile    StdinPolicy = "file"
+	StdinInherit StdinPolicy = "inherit"
+)
 
 // StopPolicy describes graceful and forced target-tree termination.
 type StopPolicy struct {
@@ -47,6 +52,7 @@ type JobSpecInput struct {
 	Name                   string
 	StopPolicy             StopPolicy
 	StdinPolicy            StdinPolicy
+	ExecutionPolicy        ExecutionPolicy
 }
 
 // JobSpec is the immutable, canonically serializable execution specification.
@@ -60,17 +66,19 @@ type JobSpec struct {
 	name                   string
 	stopPolicy             StopPolicy
 	stdinPolicy            StdinPolicy
+	executionPolicy        ExecutionPolicy
 }
 
 type jobSpecWire struct {
-	SchemaVersion    int             `json:"schema_version"`
-	Executable       string          `json:"executable"`
-	Arguments        []string        `json:"arguments"`
-	WorkingDirectory string          `json:"working_directory"`
-	Environment      environmentWire `json:"environment"`
-	Name             string          `json:"name,omitempty"`
-	StopPolicy       stopPolicyWire  `json:"stop_policy"`
-	StdinPolicy      StdinPolicy     `json:"stdin_policy"`
+	SchemaVersion    int                  `json:"schema_version"`
+	Executable       string               `json:"executable"`
+	Arguments        []string             `json:"arguments"`
+	WorkingDirectory string               `json:"working_directory"`
+	Environment      environmentWire      `json:"environment"`
+	Name             string               `json:"name,omitempty"`
+	StopPolicy       stopPolicyWire       `json:"stop_policy"`
+	StdinPolicy      StdinPolicy          `json:"stdin_policy"`
+	ExecutionPolicy  *executionPolicyWire `json:"execution_policy,omitempty"`
 }
 
 type environmentWire struct {
@@ -92,6 +100,7 @@ func NewJobSpec(input JobSpecInput) (JobSpec, error) {
 	if input.StdinPolicy == "" {
 		input.StdinPolicy = StdinNull
 	}
+	input.ExecutionPolicy = withExecutionDefaults(input.ExecutionPolicy)
 
 	specification := JobSpec{
 		executable:             input.Executable,
@@ -103,6 +112,7 @@ func NewJobSpec(input JobSpecInput) (JobSpec, error) {
 		name:                   input.Name,
 		stopPolicy:             input.StopPolicy,
 		stdinPolicy:            input.StdinPolicy,
+		executionPolicy:        cloneExecutionPolicy(input.ExecutionPolicy),
 	}
 
 	if specification.arguments == nil {
@@ -138,10 +148,10 @@ func ParseJobSpecJSON(data []byte) (JobSpec, error) {
 	if err := requireJSONEnd(decoder); err != nil {
 		return JobSpec{}, fmt.Errorf("decode job specification: %w", err)
 	}
-	if wire.SchemaVersion != JobSpecSchemaVersion {
+	if wire.SchemaVersion != 1 && wire.SchemaVersion != JobSpecSchemaVersion {
 		return JobSpec{}, invalid(
 			"job specification schema version",
-			fmt.Sprintf("must be %d", JobSpecSchemaVersion),
+			fmt.Sprintf("must be 1 or %d", JobSpecSchemaVersion),
 		)
 	}
 	if err := validatePersistedSpecShape(wire); err != nil {
@@ -151,6 +161,17 @@ func ParseJobSpecJSON(data []byte) (JobSpec, error) {
 	gracePeriod, err := time.ParseDuration(wire.StopPolicy.GracePeriod)
 	if err != nil {
 		return JobSpec{}, invalid("stop policy grace period", "must be a Go duration")
+	}
+
+	executionPolicy := DefaultExecutionPolicy()
+	if wire.SchemaVersion == JobSpecSchemaVersion {
+		if wire.ExecutionPolicy == nil {
+			return JobSpec{}, invalid("job specification execution policy", "must be present")
+		}
+		executionPolicy, err = executionPolicyFromWire(*wire.ExecutionPolicy)
+		if err != nil {
+			return JobSpec{}, err
+		}
 	}
 
 	return NewJobSpec(JobSpecInput{
@@ -165,7 +186,8 @@ func ParseJobSpecJSON(data []byte) (JobSpec, error) {
 			GracePeriod:     gracePeriod,
 			ForceAfterGrace: wire.StopPolicy.ForceAfterGrace,
 		},
-		StdinPolicy: wire.StdinPolicy,
+		StdinPolicy:     wire.StdinPolicy,
+		ExecutionPolicy: executionPolicy,
 	})
 }
 
@@ -178,6 +200,9 @@ func validatePersistedSpecShape(wire jobSpecWire) error {
 	}
 	if wire.StdinPolicy == "" {
 		return invalid("job specification stdin policy", "must be present")
+	}
+	if wire.SchemaVersion == JobSpecSchemaVersion && wire.ExecutionPolicy == nil {
+		return invalid("job specification execution policy", "must be present")
 	}
 
 	return nil
@@ -200,8 +225,12 @@ func (specification JobSpec) Validate() error {
 	if specification.stopPolicy.GracePeriod < 0 {
 		return invalid("stop policy grace period", "must not be negative")
 	}
-	if specification.stdinPolicy != StdinNull {
-		return invalid("stdin policy", "only null is supported in the initial slice")
+	if specification.stdinPolicy != StdinNull && specification.stdinPolicy != StdinLive &&
+		specification.stdinPolicy != StdinFile && specification.stdinPolicy != StdinInherit {
+		return invalid("stdin policy", "is unknown")
+	}
+	if err := specification.executionPolicy.Validate(specification.stdinPolicy); err != nil {
+		return err
 	}
 
 	return nil
@@ -335,6 +364,12 @@ func (specification JobSpec) StopPolicy() StopPolicy { return specification.stop
 // StdinPolicy returns the target stdin policy.
 func (specification JobSpec) StdinPolicy() StdinPolicy { return specification.stdinPolicy }
 
+// ExecutionPolicy returns a defensive copy of retry, timeout, waiting,
+// admission, interaction, and notification policy.
+func (specification JobSpec) ExecutionPolicy() ExecutionPolicy {
+	return cloneExecutionPolicy(specification.executionPolicy)
+}
+
 func (specification JobSpec) wire() jobSpecWire {
 	return jobSpecWire{
 		SchemaVersion:    JobSpecSchemaVersion,
@@ -352,6 +387,10 @@ func (specification JobSpec) wire() jobSpecWire {
 			ForceAfterGrace: specification.stopPolicy.ForceAfterGrace,
 		},
 		StdinPolicy: specification.stdinPolicy,
+		ExecutionPolicy: func() *executionPolicyWire {
+			wire := executionPolicyToWire(specification.executionPolicy)
+			return &wire
+		}(),
 	}
 }
 

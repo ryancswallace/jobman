@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ryancswallace/jobman/internal/policy"
 )
 
 func TestNewJobSpecCanonicalizesAndCopiesInput(t *testing.T) {
@@ -91,12 +93,13 @@ func TestJobSpecCanonicalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CanonicalJSON() error = %v", err)
 	}
-	want := `{"schema_version":1,"executable":"echo","arguments":["hello",""],` +
+	wantPrefix := `{"schema_version":2,"executable":"echo","arguments":["hello",""],` +
 		`"working_directory":` + strconv.Quote(workingDirectory) + `,"environment":{"inheritance":"submission",` +
 		`"set":{"A":"1","B":"2"},"unset":["C"]},"name":"test",` +
-		`"stop_policy":{"grace_period":"5s","force_after_grace":true},"stdin_policy":"null"}`
-	if string(encoded) != want {
-		t.Fatalf("CanonicalJSON() = %s\nwant = %s", encoded, want)
+		`"stop_policy":{"grace_period":"5s","force_after_grace":true},"stdin_policy":"null",` +
+		`"execution_policy":`
+	if !strings.HasPrefix(string(encoded), wantPrefix) {
+		t.Fatalf("CanonicalJSON() = %s\nwant prefix = %s", encoded, wantPrefix)
 	}
 
 	parsed, err := ParseJobSpecJSON(encoded)
@@ -107,8 +110,8 @@ func TestJobSpecCanonicalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
-	if string(reencoded) != want {
-		t.Fatalf("round trip = %s\nwant = %s", reencoded, want)
+	if !bytes.Equal(reencoded, encoded) {
+		t.Fatalf("round trip = %s\nwant = %s", reencoded, encoded)
 	}
 	if parsed.SchemaVersion() != JobSpecSchemaVersion || parsed.Executable() != "echo" || parsed.Name() != "test" {
 		t.Fatalf("parsed getters returned unexpected values: %#v", parsed)
@@ -136,6 +139,47 @@ func TestJobSpecCanonicalJSONPreservesEmptyCollections(t *testing.T) {
 	}
 	if _, err := ParseJobSpecJSON(encoded); err != nil {
 		t.Fatalf("ParseJobSpecJSON(CanonicalJSON()) error = %v", err)
+	}
+}
+
+func TestJobSpecCanonicalJSONPreservesRetryableExitCodeDefault(t *testing.T) {
+	t.Parallel()
+
+	base := JobSpecInput{Executable: "true", WorkingDirectory: filepath.Join(string(filepath.Separator), "tmp")}
+	defaultSpec, err := NewJobSpec(base)
+	if err != nil {
+		t.Fatalf("NewJobSpec(default) error = %v", err)
+	}
+	encoded, err := defaultSpec.CanonicalJSON()
+	if err != nil {
+		t.Fatalf("CanonicalJSON(default) error = %v", err)
+	}
+	parsed, err := ParseJobSpecJSON(encoded)
+	if err != nil {
+		t.Fatalf("ParseJobSpecJSON(default) error = %v", err)
+	}
+	if parsed.ExecutionPolicy().Classification.RetryableExitCodes != nil {
+		t.Fatalf("default retryable exit codes = %#v, want nil default", parsed.ExecutionPolicy().Classification.RetryableExitCodes)
+	}
+
+	explicitPolicy := DefaultExecutionPolicy()
+	explicitPolicy.Classification.RetryableExitCodes = []policy.ExitCodeRange{}
+	base.ExecutionPolicy = explicitPolicy
+	explicitSpec, err := NewJobSpec(base)
+	if err != nil {
+		t.Fatalf("NewJobSpec(explicit empty) error = %v", err)
+	}
+	encoded, err = explicitSpec.CanonicalJSON()
+	if err != nil {
+		t.Fatalf("CanonicalJSON(explicit empty) error = %v", err)
+	}
+	parsed, err = ParseJobSpecJSON(encoded)
+	if err != nil {
+		t.Fatalf("ParseJobSpecJSON(explicit empty) error = %v", err)
+	}
+	if parsed.ExecutionPolicy().Classification.RetryableExitCodes == nil ||
+		len(parsed.ExecutionPolicy().Classification.RetryableExitCodes) != 0 {
+		t.Fatalf("explicit retryable exit codes = %#v, want non-nil empty slice", parsed.ExecutionPolicy().Classification.RetryableExitCodes)
 	}
 }
 
@@ -174,7 +218,7 @@ func TestNewJobSpecValidation(t *testing.T) {
 		"environment inheritance": func(input *JobSpecInput) {
 			input.EnvironmentInheritance = "unknown"
 		},
-		"stdin policy": func(input *JobSpecInput) { input.StdinPolicy = "live" },
+		"stdin policy": func(input *JobSpecInput) { input.StdinPolicy = "unknown" },
 	}
 
 	for name, mutate := range tests {
@@ -206,17 +250,17 @@ func TestParseJobSpecJSONStrictness(t *testing.T) {
 	tests := map[string]string{
 		"unknown field": strings.Replace(
 			string(valid),
-			`"schema_version":1`,
-			`"schema_version":1,"unknown":true`,
+			`"schema_version":2`,
+			`"schema_version":2,"unknown":true`,
 			1,
 		),
 		"duplicate field": strings.Replace(
 			string(valid),
-			`"schema_version":1`,
-			`"schema_version":1,"schema_version":1`,
+			`"schema_version":2`,
+			`"schema_version":2,"schema_version":2`,
 			1,
 		),
-		"wrong version":     strings.Replace(string(valid), `"schema_version":1`, `"schema_version":2`, 1),
+		"wrong version":     strings.Replace(string(valid), `"schema_version":2`, `"schema_version":99`, 1),
 		"missing arguments": strings.Replace(string(valid), `"arguments":["first","second value"],`, "", 1),
 		"null environment set": strings.Replace(
 			string(valid),
