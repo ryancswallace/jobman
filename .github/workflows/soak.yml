@@ -1,0 +1,43 @@
+---
+name: Soak
+
+on:
+  schedule:
+    - cron: "17 3 * * 6"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Go duration to run each soak scenario
+        required: false
+        default: 5m
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    name: Storage, logs, cleanup, and fairness
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Run race-enabled soak suite
+        env:
+          SOAK_TIME: ${{ inputs.duration || '5m' }}
+        run: make soaktest SOAK_TIME="${SOAK_TIME}" SOAK_TIMEOUT=25m
