@@ -16,10 +16,11 @@ and monitor commands with retries, timeouts, durable logs, delayed execution,
 and success or failure notifications without requiring a resident service.
 
 > [!WARNING]
-> Jobman is under active development. The command surface and configuration
-> format are not yet stable, and the current implementation does not provide
-> every capability described in the design documentation. Evaluate it before
-> using it for important workloads.
+> Jobman remains a prerelease project. Its planned v1 public surface is frozen,
+> but the release candidate is not stable until all native race, architecture,
+> fuzz, performance, container, upgrade, and dogfood gates pass on the exact
+> release commit. Do not use prerelease builds as the sole manager for critical
+> workloads; retain independent backups and a direct recovery path.
 
 ## Design goals
 
@@ -52,7 +53,7 @@ $ jobman cancel 01980f4c
 ```
 
 The implemented commands are `run`, `list`, `status`, `show`, `logs`, `cancel`,
-`pause`, `resume`, `wait`, `input`, `rerun`, `clean`, and `config`. Inspection
+`pause`, `resume`, `wait`, `input`, `rerun`, `clean`, `doctor`, and `config`. Inspection
 commands support versioned JSON where documented by `--help`. Selectors accept
 a canonical ID, a unique ID prefix of at least eight characters, or an
 unambiguous exact name. Target arguments are passed directly to the operating
@@ -87,16 +88,16 @@ Configuration is strict, versioned YAML. System and per-user files are loaded
 automatically, while a project `.jobman.yml` is loaded only from a root listed
 in `trusted_project_roots`; `--config PATH` explicitly selects a file. Run
 `jobman config paths`, `jobman config validate`, or `jobman config show` to
-inspect the result. The [configuration reference] and packaged
+inspect the result. Apply durable concurrency settings explicitly with
+`jobman config apply`. The [configuration reference] and packaged
 [sample configuration] document safe defaults and reusable job, wait, pool,
 secret-reference, notifier, and profile examples.
 
-Linux has assembled-binary core lifecycle coverage. macOS and Windows builds
-are kept compiling, but their pre-v1 process-management gaps are listed in the
-[platform-capability record]. Pause/resume of an active process tree is
-best-effort and currently supported by the Unix adapters. Private live input is
-currently Unix-only. The complete policy and fault-injection matrix remains a
-stable-release gate.
+Linux has assembled-binary lifecycle and crash-boundary coverage. Native
+macOS/Windows CI exercises detachment, process-tree cancellation, pause/resume,
+and private live input. The [platform-capability record] describes the native
+primitives and deliberate differences. Complete the [dogfood runbook] before a
+stable release.
 
 ## Installation
 
@@ -129,15 +130,23 @@ docker pull ghcr.io/ryancswallace/jobman:vX.Y.Z
 docker run --rm ghcr.io/ryancswallace/jobman:vX.Y.Z --help
 ```
 
-The image runs as an unprivileged user, uses `/work` as its working directory,
-and includes Bash, CA roots, timezone data, and Tini. Mount a working directory
-when a managed command needs access to host files:
+A detached submission cannot outlive a short-lived container: when the Jobman
+PID 1 client exits, the container runtime stops its remaining supervisor and
+target processes. Use `run --wait` or `run --foreground` for a one-container
+job, and persist metadata and logs with a named volume:
 
 ```console
 docker run --rm \
+	--volume jobman-state:/home/jobman/.local/state/jobman \
   --volume "$PWD:/work" \
-  ghcr.io/ryancswallace/jobman:vX.Y.Z --help
+  ghcr.io/ryancswallace/jobman:vX.Y.Z \
+  run --wait -- /work/bin/batch-job
 ```
+
+The base image deliberately contains only Jobman and basic runtime utilities;
+derive an image to add the actual commands your jobs execute. The full
+[container contract] documents foreground use, a long-lived management
+container, state ownership, derived images, and shutdown limitations.
 
 Pin a release tag in automation. The `latest` tag is updated only for stable
 releases and is intended for interactive evaluation.
@@ -182,9 +191,14 @@ conventions.
 
 - [Documentation site](https://ryancswallace.github.io/jobman/)
 - [Configuration reference](docs/CONFIGURATION.md)
+- [v1 compatibility contract](docs/COMPATIBILITY.md)
+- [Upgrade and restore guide](docs/UPGRADING.md)
+- [Container contract](docs/CONTAINERS.md)
+- [Dogfood and release-candidate runbook](docs/DOGFOOD.md)
 - [Design documentation](docs/design/README.md)
 - [Release and artifact verification guide](RELEASE.md)
 - [Security policy](SECURITY.md)
+- [Maintenance and support policy](SUPPORT.md)
 - [Issue tracker](https://github.com/ryancswallace/jobman/issues)
 
 Please use the issue templates for reproducible bugs and feature proposals.
@@ -199,3 +213,6 @@ Jobman is available under the [MIT License](LICENSE).
 [platform-capability record]: docs/design/PLATFORM_CAPABILITIES.md
 [configuration reference]: docs/CONFIGURATION.md
 [sample configuration]: etc/jobman/jobman.yml
+[compatibility contract]: docs/COMPATIBILITY.md
+[dogfood runbook]: docs/DOGFOOD.md
+[container contract]: docs/CONTAINERS.md
