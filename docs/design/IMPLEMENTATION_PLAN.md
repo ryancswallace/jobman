@@ -36,9 +36,8 @@ The accepted plan establishes these slice-level choices:
 - permit Linux-first end-to-end implementation while macOS and Windows remain
   compiling, explicitly gated platform work during pre-1.0 development.
 
-These choices are now implemented as pre-1.0 compatibility surfaces. Any
-challenge should be resolved before the first release; after a format ships,
-changes require a new migration or format version rather than rewriting
+These choices are now frozen v1 release-candidate compatibility surfaces.
+Changes require a new migration or format version rather than rewriting
 history.
 
 ### 1.2 Implementation checkpoint
@@ -52,11 +51,11 @@ it is not a claim that every cross-platform or fault-injection gate has passed.
 | Workstream | Current evidence | Remaining gate |
 | --- | --- | --- |
 | CLI construction | The lifecycle, policy, log, cleanup, doctor, and configuration commands use an isolated Cobra tree. List filters, show/cancel job/run forms, configuration authority, redaction, and JSON v1 golden fixtures are covered. | Preserve the frozen compatibility contract and add fixtures for any new machine output. |
-| Model and SQLite store | UUIDv7 IDs, version 2 immutable specifications, lifecycle and policy transitions, ordered migrations, snapshot/event transactions, scheduler runtime, dependencies, wait diagnostics, admissions, notification attempts, tags, selectors, bounded busy handling, and Unix privacy checks are implemented and unit tested. | Add process-level abrupt-writer and broader fault/property tests; retain migration upgrade tests for every released schema. |
+| Model and SQLite store | UUIDv7 IDs, version 2 immutable specifications, lifecycle and policy transitions, ordered migrations, snapshot/event transactions, scheduler runtime, dependencies, wait diagnostics, admissions, notification attempts, tags, selectors, bounded busy handling, and platform privacy checks are implemented and tested. | Retain process-boundary, invariant, and migration-upgrade coverage for every released schema. |
 | Raw logs and executor | Separate raw streams and checksummed index versions 1 and 2, configurable stream capture, bounded rotation, following, retention planning, guarded cleanup, and raw/index crash injection are implemented. | Complete sustained high-volume backpressure during the manual soak. |
 | Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, scheduling, live-input ownership, notification delivery, shutdown, and finalization are implemented. The assembled suite covers every listed commit/side-effect crash boundary. | Complete real terminal and SSH-disconnection dogfood; automatic adoption remains a non-goal. |
-| Configuration and policies | Strict merging, explicit durable `config apply`, emergency-command independence, output redaction, log and metadata retention, and explicit notification recovery are implemented. | Historical notification events remain intentionally unbackfilled; complete dogfood policy and notifier matrices. |
-| Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, retry, dependency, pause/resume, live-input/EOF, rerun, shell-and-child process-group cancellation, concurrent reader/canceller, and stale killed-supervisor scenarios. Process identity uses start time and boot ID. | Add the remaining admission/timeout/rotation/notification matrix plus grandchild-tree, forced-escalation, actual PID-reuse, and full session-hangup scenarios. |
+| Configuration and policies | Strict merging, durable authority through `config apply`, `run`, and policy cleanup, emergency-command independence, output redaction, log and metadata retention, and explicit notification recovery are implemented. | Historical notification events remain intentionally unbackfilled; complete dogfood policy and notifier matrices. |
+| Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, retry, dependency, admission, timeout, rotation, notification, pause/resume, live-input/EOF, rerun, child/grandchild process-tree cancellation, forced escalation, concurrent reader/canceller, controlling-terminal closure, and stale killed-supervisor scenarios. Process identity uses start time and boot ID, with automated mismatch refusal. | Complete real SSH-disconnection and actual PID-reuse dogfood on the release host. |
 | macOS portability | Native CI runs assembled detachment, process-tree cancellation, pause/resume, live input, and package tests. | Require the hosted native job on the release commit and complete dogfood. |
 | Windows portability | Job Object ownership, suspended launch, tree termination/pause/resume, restart-scoped identity, private named pipes, ACL enforcement, and remote-drive rejection are implemented; native CI runs assembled scenarios. | Require the hosted native job on the release commit and complete dogfood. |
 | Repository handoff | Unit, assembled-binary, performance, and opt-in soak tiers are distinct. CI runs every fuzz target, native macOS/Windows race suites, every release architecture build, and release/container validation. GoReleaser generates release-specific citation metadata and the container contract has an executable derived-image smoke test. | Retain these gates, review the scheduled soak, and complete the release-commit dogfood and packaging evidence. |
@@ -400,9 +399,10 @@ normalized through injected dependencies.
 ### Phase 0: validate architectural assumptions
 
 The original plan required these disposable spikes before production packages
-depended on their results. Linux assumptions now have production and native
-test evidence, but native macOS and Windows spikes and the full crash matrix
-remain open. That known deviation prevents a portable-support claim.
+depended on their results. Their findings are now represented by production
+adapters plus Linux and hosted native tests. Portable support for a particular
+release still depends on all native jobs and the dogfood matrix passing on that
+exact release commit.
 
 1. **Supervisor detach spike:** demonstrate launch, pipe acknowledgement,
    process-handle release, terminal closure survival, and no inherited terminal
@@ -517,7 +517,8 @@ Inject termination immediately before and after:
 - target `Start` and identity commit;
 - cancellation intent commit and signal;
 - raw log append and index append; and
-- run completion and job completion commits.
+- run completion and job completion commits; and
+- claimed log removal before the pruning-metadata commit.
 
 Each fault point has a documented set of valid recovered states. Success is
 never valid unless the target result was durably observed.
@@ -527,10 +528,10 @@ never valid unless the target result was durably observed.
 | Checkpoint | Status |
 | --- | --- |
 | Accept ADR-0001 and ADR-0002 before production code. | Complete: both ADRs are accepted. |
-| Review migration 1 and the persisted log-index format. | Implemented and documented for pre-1.0 use. Compatibility review remains required before declaring either format stable. |
+| Review migration 1 and the persisted log-index format. | Complete: forward migrations, immutable checksums, log-index versioning, compatibility documentation, and upgrade tests are present. |
 | Review private supervisor mode and platform launch code. | Complete in implementation; the exact release commit still requires all three native CI jobs. |
 | Declare selector, JSON, or exit-code behavior stable. | Complete: frozen in `docs/COMPATIBILITY.md` with JSON v1 fixtures. |
-| Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Complete for pre-1.0 implementation. The feature surface is present; cross-platform, crash-boundary, and compatibility acceptance remains open. |
+| Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Complete: the feature surface and compatibility contract are implemented; exact-release native and dogfood evidence remains an operational gate. |
 
 Schema and supervisor reviews include a failure-sequence walkthrough, not only
 an API or happy-path review.
@@ -567,4 +568,5 @@ which deliverables have evidence and which remain release gates:
 - state-machine, integration, fault, race, and fuzz tests; and
 - the implemented policy expansion for dependencies, concurrency admission,
   retries, waits, timeouts, rotation, pause/resume, notifications, and live
-  input, with remaining acceptance gaps recorded explicitly.
+  input, with exact-release operational evidence tracked in the dogfood
+  runbook.

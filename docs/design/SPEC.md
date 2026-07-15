@@ -1,8 +1,8 @@
 # Jobman design specification
 
-Status: preliminary design draft
-Target: pre-1.0 implementation
-Last updated: 2026-07-14
+Status: frozen v1 release-candidate design contract
+Target: v1.0
+Last updated: 2026-07-15
 
 This document defines the intended behavior and architecture of Jobman. It is a
 design contract, not a description of the current implementation. Requirements
@@ -243,6 +243,8 @@ COMMAND [ARG...]
 
 Rerunning copies the prior effective specification into a new job with a new
 ID. It does not mutate or append runs to the historical job.
+`jobman rerun JOB` is the convenience spelling of `jobman run --rerun JOB` and
+has the same validation and configuration-authority behavior.
 
 Provisional convenience options include:
 
@@ -392,9 +394,12 @@ jobman config apply
 `show` prints effective configuration and source information. Secret values are
 redacted in every format. `paths` reports searched paths without requiring them
 to exist. `validate` performs strict schema and semantic validation without
-starting a job. `apply` is the explicit administrative operation that writes
-store-wide concurrency limits. Read/inspection and emergency commands do not
-use configuration as a store authority and remain usable when it is malformed.
+starting a job. `apply` explicitly writes store-wide concurrency limits without
+submitting a job. `run`, `rerun`, and policy-based `clean` are also
+configuration-authority operations. Read/inspection, emergency commands,
+`doctor`, and explicit
+age-based cleanup do not use configuration as a store authority and remain
+usable when it is malformed.
 
 ### 4.14 `jobman doctor`
 
@@ -758,9 +763,13 @@ The built-in store-wide limit is `unlimited`. A named pool must be defined
 before submission; selecting an unknown pool is a validation error. This makes
 concurrency control opt-in without imposing an arbitrary machine-wide default.
 
-Capacities are configured administratively with explicit `config apply`, not
-by read-only commands or job submission. Submission fails if a finite capacity can never
-satisfy the requested slots. Reducing a capacity below current use does not
+Capacities are synchronized by `config apply`, `run`, `rerun`, and policy-based
+`clean`, not by read-only or emergency commands. `config apply` is the
+administrative form that changes no other state; `run` synchronizes the
+effective limits before accepting a job so submission cannot accidentally use
+stale authority.
+Submission fails if a finite capacity can never satisfy the requested slots.
+Reducing a capacity below current use does not
 stop admitted work; it prevents further admissions until usage falls within
 the new limit.
 
@@ -1069,13 +1078,12 @@ build-tagged files.
 
 A feature unavailable with safe equivalent semantics on a platform either
 fails clearly or is documented as unsupported. It MUST NOT silently behave as
-though its guarantee were met. During pre-1.0 development, features MAY land on
-one platform before the others when the gap is explicit and isolated. The
-stable v1 release requires core run, inspect, logging, timeout, and cancellation
-behavior, dependency evaluation, local concurrency admission, and live input on
-Linux, macOS, and Windows. Pause/resume remains an explicitly best-effort
-capability and may be unsupported on a platform when safe process-tree
-suspension is unavailable; best-effort feature parity remains the goal.
+though its guarantee were met. The stable v1 release requires core run,
+inspect, logging, timeout, and cancellation behavior, dependency evaluation,
+local concurrency admission, and live input on Linux, macOS, and Windows.
+Pause/resume remains an explicitly best-effort capability and may be
+unsupported on a platform when safe process-tree suspension is unavailable;
+best-effort feature parity remains the goal.
 
 Survival of terminal closure and SSH disconnection is required and tested on
 every supported platform. Survival after the entire OS user session ends is not
@@ -1213,9 +1221,8 @@ normative sections above:
 
 1. Jobman guarantees survival of terminal closure and SSH disconnection, not
    termination of the entire operating-system user session.
-2. Linux, macOS, and Windows remain build targets throughout development.
-   Explicit temporary platform gaps are acceptable before v1, with best-effort
-   parity and portable core behavior required for v1.
+2. Linux, macOS, and Windows are v1 build targets, with best-effort parity and
+   portable core behavior required for every stable release.
 3. `cancel` is the sole canonical command; there is no `kill` alias.
 4. The product supports a broad matrix of bounded or unbounded repeated-run,
    success-target, failure-limit, retry, deadline, and timeout semantics using
