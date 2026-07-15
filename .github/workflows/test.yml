@@ -85,7 +85,7 @@ jobs:
           fail_ci_if_error: true
 
   platform:
-    name: Test (${{ matrix.os }})
+    name: Native race (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -107,12 +107,60 @@ jobs:
           check-latest: true
           cache-dependency-path: go.sum
 
-      - name: Run tests
-        run: go test -shuffle=on ./...
+      - name: Run race-enabled native platform tests
+        run: >-
+          go test -race -shuffle=on
+          ./internal/...
+          ./jobman
+          ./tests/e2e
 
       - name: Test release-style build
         env:
           CGO_ENABLED: "0"
+        run: go build -trimpath ./...
+
+  architecture:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: "386"
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: windows
+            goarch: "386"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Compile release architecture
+        env:
+          CGO_ENABLED: "0"
+          GOARCH: ${{ matrix.goarch }}
+          GOOS: ${{ matrix.goos }}
         run: go build -trimpath ./...
 
   repository:
