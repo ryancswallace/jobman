@@ -35,6 +35,14 @@ semantic-release.
   change the managed job's outcome.
 - Added inspection of wait evaluations, policy counters, dependency results,
   admission history, and pending or completed notification work.
+- Added large-store, concurrent-submission, rotated-log throughput, cleanup,
+  and admission-fairness performance benchmarks plus a race-enabled scheduled
+  soak suite.
+- Added native race jobs, explicit release-architecture smoke builds, a full
+  fuzz-target matrix, and a derived-container smoke test with persistent state.
+- Added a v1 container contract, maintenance/support policy, compatibility and
+  upgrade runbooks, release health checks, migration backups, conservative
+  recovery, and automatic release-specific citation metadata.
 
 ### Changed
 
@@ -57,6 +65,8 @@ semantic-release.
   notification retries, and atomic admission release on ownership loss.
 - Added schema migration 7 to repair historical runtime counters and provide
   deterministic admission tie-breaking without altering prior migrations.
+- Separated unit coverage from assembled-binary and performance packages so
+  each validation tier runs once with an explicit contract.
 
 ## [0.1.0] - 2026-07-12
 
