@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 dist/
+.release/
 _site/
 site/_site/
 

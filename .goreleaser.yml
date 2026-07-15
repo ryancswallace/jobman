@@ -9,6 +9,11 @@ before:
     - go mod download
     - go mod verify
     - make gen-manpage gen-completions
+    - >-
+      go run ./devel/releasemetadata
+      -version={{ .Version }}
+      -date={{ .Date }}
+      -output=.release/CITATION.cff
 
 builds:
   - id: jobman
@@ -53,6 +58,8 @@ archives:
       - LICENSE
       - README.md
       - CHANGELOG.md
+      - src: .release/CITATION.cff
+        dst: CITATION.cff
       - src: etc/jobman/jobman.yml
         dst: etc/jobman/jobman.yml
       - src: docs/manpage/jobman*.1
