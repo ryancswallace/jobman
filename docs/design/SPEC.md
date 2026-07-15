@@ -386,14 +386,25 @@ Initial subcommands are:
 jobman config show
 jobman config paths
 jobman config validate [PATH]
+jobman config apply
 ```
 
 `show` prints effective configuration and source information. Secret values are
 redacted in every format. `paths` reports searched paths without requiring them
 to exist. `validate` performs strict schema and semantic validation without
-starting a job.
+starting a job. `apply` is the explicit administrative operation that writes
+store-wide concurrency limits. Read/inspection and emergency commands do not
+use configuration as a store authority and remain usable when it is malformed.
 
-### 4.14 Exit status
+### 4.14 `jobman doctor`
+
+`doctor` checks state paths, local-filesystem support, database integrity,
+foreign keys, schema version, and WAL health without requiring configuration.
+`--backup PATH` writes a new consistent SQLite snapshot. `--repair` explicitly
+authorizes a WAL checkpoint, stale lifecycle reconciliation, and recovery of
+due notification work; it does not rewrite corrupt rows or adopt a target.
+
+### 4.15 Exit status
 
 The stable CLI uses these categories:
 
@@ -747,8 +758,8 @@ The built-in store-wide limit is `unlimited`. A named pool must be defined
 before submission; selecting an unknown pool is a validation error. This makes
 concurrency control opt-in without imposing an arbitrary machine-wide default.
 
-Capacities are configured administratively through configuration, not mutated
-implicitly by job submission. Submission fails if a finite capacity can never
+Capacities are configured administratively with explicit `config apply`, not
+by read-only commands or job submission. Submission fails if a finite capacity can never
 satisfy the requested slots. Reducing a capacity below current use does not
 stop admitted work; it prevents further admissions until usage falls within
 the new limit.
@@ -987,7 +998,7 @@ selection.
 
 Configuration and JSON output have independent integer schema versions. State
 database migrations are ordered, transactional where SQLite permits, and
-backed up before destructive conversion. A newer unsupported state schema is a
+backed up before every supported forward conversion. A newer unsupported state schema is a
 hard error. Downgrades that would write incompatible state are rejected.
 
 ## 15. Security and privacy
@@ -1019,7 +1030,7 @@ against a compromised account is not a v1 goal.
 Every ordinary client performs bounded reconciliation of stale leases. If the
 supervisor is gone:
 
-- no active target and a recorded exit result permits normal finalization;
+- a terminal completion commit remains authoritative;
 - a verified live target without a supervisor is marked `lost` and is not
   automatically adopted in v1;
 - an unverifiable or reused PID is never signaled; and
@@ -1076,7 +1087,7 @@ Jobman's own diagnostic log is separate from target output and includes event
 time, severity, component, job/run IDs, stable event name, and redacted fields.
 Default logging is concise. Debug logging is opt-in and still redacted.
 
-`jobman doctor` is a proposed diagnostic command that checks paths,
+`jobman doctor` is the diagnostic command that checks paths,
 permissions, database integrity, locking, platform capabilities, stale leases,
 and notifier prerequisites without modifying jobs unless `--repair` is
 explicitly supplied.
@@ -1132,8 +1143,8 @@ sleeps, but every test has a hard upper deadline.
 
 ## 20. Compatibility policy
 
-Before v1.0, CLI and schema changes are permitted but MUST be recorded in the
-changelog when users could observe them. Once declared stable:
+The planned v1 CLI and machine contracts are frozen in
+[`docs/COMPATIBILITY.md`](../COMPATIBILITY.md). Once v1.0 is published:
 
 - documented CLI flags and JSON fields follow semantic-versioning compatibility;
 - new JSON fields may be added in minor versions;

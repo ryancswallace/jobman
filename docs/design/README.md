@@ -51,8 +51,9 @@ invoke Jobman through an existing channel such as SSH.
 | `jobman input JOB` | Stream local standard input to an active run. |
 | `jobman wait JOB` | Wait for a terminal job outcome. |
 | `jobman rerun JOB` | Submit a new job from an existing effective specification. |
-| `jobman clean` | Safely prune eligible completed-run logs while retaining tombstone metadata. |
-| `jobman config` | Show paths, validate YAML, or inspect effective configuration and origins. |
+| `jobman clean` | Safely prune eligible completed logs and metadata. |
+| `jobman doctor` | Verify state, create a backup, and perform explicit conservative recovery. |
+| `jobman config` | Inspect configuration or explicitly apply durable settings. |
 
 Stable commands must support machine-readable output and meaningful exit codes.
 Identifiers accepted by destructive commands must be unambiguous; names that
@@ -119,8 +120,8 @@ output must not expose secret values.
 - Pause/resume operates on a verified process tree where the platform exposes a
   safe suspension mechanism; unsupported platforms report that limitation.
 - Opted-in detached jobs accept bounded binary input through a private local
-  supervisor channel on supported Unix-like systems; Windows reports the
-  current platform limitation explicitly.
+  supervisor channel: Unix-domain sockets on Unix-like systems and protected
+  named pipes on Windows.
 - Jobman forwards container and operating-system termination signals.
 - State transitions remain valid if either Jobman or the managed command exits
   unexpectedly.

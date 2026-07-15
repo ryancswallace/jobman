@@ -1,7 +1,7 @@
 # Initial vertical slice and v1 policy implementation plan
 
-Status: initial Linux slice and deferred v1 policy surface implemented; native
-portability, recovery, and hardening remain in progress
+Status: v1 implementation and contract hardening complete; native CI and the
+manual dogfood runbook remain release-candidate evidence gates
 Scope: first end-to-end Jobman slice plus the subsequent local-policy expansion
 Specification: [Jobman design specification](SPEC.md)
 Decisions: [ADR-0001](adr/0001-per-job-supervisor.md),
@@ -43,7 +43,7 @@ history.
 
 ### 1.2 Implementation checkpoint
 
-This checkpoint records evidence as of 2026-07-14. The
+This checkpoint records evidence as of 2026-07-15. The
 [persisted-schema reference](PERSISTED_SCHEMA.md) and
 [platform capability record](PLATFORM_CAPABILITIES.md) contain the detailed
 handoff. "Implemented" means present in the current source and focused tests;
@@ -51,15 +51,15 @@ it is not a claim that every cross-platform or fault-injection gate has passed.
 
 | Workstream | Current evidence | Remaining gate |
 | --- | --- | --- |
-| CLI construction | The lifecycle, policy, log, cleanup, and configuration commands use an isolated, dependency-injected Cobra tree. Unit tests cover help, argument, environment, JSON, binary-log, cancellation, exit-code, policy-flag, lifecycle, input, and rerun contracts. Generated man pages and completions pass the documentation gate. | Complete exhaustive CLI matrices for every new flag interaction before declaring the pre-1.0 surface stable. |
+| CLI construction | The lifecycle, policy, log, cleanup, doctor, and configuration commands use an isolated Cobra tree. List filters, show/cancel job/run forms, configuration authority, redaction, and JSON v1 golden fixtures are covered. | Preserve the frozen compatibility contract and add fixtures for any new machine output. |
 | Model and SQLite store | UUIDv7 IDs, version 2 immutable specifications, lifecycle and policy transitions, ordered migrations, snapshot/event transactions, scheduler runtime, dependencies, wait diagnostics, admissions, notification attempts, tags, selectors, bounded busy handling, and Unix privacy checks are implemented and unit tested. | Add process-level abrupt-writer and broader fault/property tests; retain migration upgrade tests for every released schema. |
-| Raw logs and executor | Separate raw streams and checksummed index versions 1 and 2, configurable stream capture, bounded rotation, following, retention planning, and guarded cleanup are implemented. Tests cover binary bytes, observed ordering, concurrent appends, rotation, following, retention, a torn tail, corruption, an unindexed raw tail, and malformed-index fuzz input. Direct execution preserves arguments. | Add supervisor-crash injection at log-write boundaries and sustained high-volume backpressure and recovery tests. |
-| Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, prerequisite evaluation, transactional admission, repeated runs, delay, run/job timeouts, live-input ownership, notification delivery, signal-driven target shutdown, start-failure handling, and terminal finalization are implemented. A killed-supervisor end-to-end case is reconciled to `lost`. | Add lost-ack and additional crash-boundary process tests plus a real terminal or SSH-disconnection test. Automatic supervisor adoption remains an explicit non-goal. |
-| Configuration and policies | Strict YAML merging, secure project-file trust, named job specs/profiles/waits/notifiers, secret references, dependencies, concurrency limits with bounded-bypass fairness, retry/repetition policy, timeout accounting, rerun, pause/resume, cleanup, and recoverable notification delivery leases are implemented. Notification rows are committed with the subscribed lifecycle event. | Complete the policy end-to-end matrix, notification wake-up and historical-backfill policy, and configuration compatibility review before declaring v1 stability. |
+| Raw logs and executor | Separate raw streams and checksummed index versions 1 and 2, configurable stream capture, bounded rotation, following, retention planning, guarded cleanup, and raw/index crash injection are implemented. | Complete sustained high-volume backpressure during the manual soak. |
+| Per-job supervisor | Credential claim, bounded acknowledgement, lease renewal, scheduling, live-input ownership, notification delivery, shutdown, and finalization are implemented. The assembled suite covers every listed commit/side-effect crash boundary. | Complete real terminal and SSH-disconnection dogfood; automatic adoption remains a non-goal. |
+| Configuration and policies | Strict merging, explicit durable `config apply`, emergency-command independence, output redaction, log and metadata retention, and explicit notification recovery are implemented. | Historical notification events remain intentionally unbackfilled; complete dogfood policy and notifier matrices. |
 | Linux lifecycle | The assembled binary passes detached success, failed exit, exact argument, active-log, separate-stream, retry, dependency, pause/resume, live-input/EOF, rerun, shell-and-child process-group cancellation, concurrent reader/canceller, and stale killed-supervisor scenarios. Process identity uses start time and boot ID. | Add the remaining admission/timeout/rotation/notification matrix plus grandchild-tree, forced-escalation, actual PID-reuse, and full session-hangup scenarios. |
-| macOS portability | Platform adapters compile and select native session, process-group, identity, and signal APIs. | Run the full suite natively and close every gap in the platform capability record before claiming support. |
-| Windows portability | Platform adapters compile and select detached-process and creation-time APIs. | Implement Job Object tree ownership, graceful escalation, restart-scoped identity, and user-only ACL enforcement, then run native tests. |
-| Repository handoff | The policy expansion passes `make check` with the pinned Go 1.26.5 toolchain, including reachable-vulnerability analysis, race-enabled tests, assembled-binary tests, generated documentation, spelling, the production Pages build, and all GoReleaser compile targets. A complete non-publishing snapshot produces archives, native packages, SBOMs, checksums, and release images; the ordinary runtime image also builds and passes a version smoke test. | Retain these gates while adding the fault matrix, sustained fuzzing, and native macOS/Windows validation. |
+| macOS portability | Native CI runs assembled detachment, process-tree cancellation, pause/resume, live input, and package tests. | Require the hosted native job on the release commit and complete dogfood. |
+| Windows portability | Job Object ownership, suspended launch, tree termination/pause/resume, restart-scoped identity, private named pipes, ACL enforcement, and remote-drive rejection are implemented; native CI runs assembled scenarios. | Require the hosted native job on the release commit and complete dogfood. |
+| Repository handoff | Unit, assembled-binary, performance, and opt-in soak tiers are distinct. CI runs every fuzz target, native macOS/Windows race suites, every release architecture build, and release/container validation. GoReleaser generates release-specific citation metadata and the container contract has an executable derived-image smoke test. | Retain these gates, review the scheduled soak, and complete the release-commit dogfood and packaging evidence. |
 
 ## 2. User-visible scope
 
@@ -125,8 +125,8 @@ listener, and migration from the unconstrained pre-specification prototype.
 Rerun is available both as `jobman rerun JOB` and the canonical
 `jobman run --rerun JOB` source. The latter copies the exact effective
 specification and permits only `--name` and `--wait`; policy overrides are
-rejected so the operation cannot silently become a partial clone. Windows live
-input and active-process pause/resume return an explicit unsupported error; see
+rejected so the operation cannot silently become a partial clone. Windows uses
+Job Objects for active-tree control and private named pipes for live input; see
 the [platform capability record](PLATFORM_CAPABILITIES.md).
 
 ## 3. Success criteria
@@ -195,9 +195,9 @@ The existing package-global commands and `init` registration are replaced.
 `jobman.NewCommand(dependencies)` constructs an isolated command tree, enabling
 parallel CLI tests without resetting global Cobra or Viper state.
 
-The `jobman` package is not yet promised as a stable general-purpose Go API.
-Only documented CLI behavior and persisted schema commitments are reviewed for
-compatibility during pre-1.0 development.
+The `jobman` package exposes only the small integration surface documented in
+the [v1 compatibility contract](../COMPATIBILITY.md). Backend injection remains
+private; Jobman does not claim a general-purpose Go SDK in v1.
 
 ## 6. Core model
 
@@ -528,8 +528,8 @@ never valid unless the target result was durably observed.
 | --- | --- |
 | Accept ADR-0001 and ADR-0002 before production code. | Complete: both ADRs are accepted. |
 | Review migration 1 and the persisted log-index format. | Implemented and documented for pre-1.0 use. Compatibility review remains required before declaring either format stable. |
-| Review private supervisor mode and platform launch code. | Linux implementation exists; native macOS and Windows review is open. |
-| Declare selector, JSON, or exit-code behavior stable. | Open. The implemented contracts remain pre-1.0 and are not declared stable by this plan. |
+| Review private supervisor mode and platform launch code. | Complete in implementation; the exact release commit still requires all three native CI jobs. |
+| Declare selector, JSON, or exit-code behavior stable. | Complete: frozen in `docs/COMPATIBILITY.md` with JSON v1 fixtures. |
 | Approve expansion into dependencies, concurrency admission, retries, waits, timeouts, pause/resume, live input, or notifications. | Complete for pre-1.0 implementation. The feature surface is present; cross-platform, crash-boundary, and compatibility acceptance remains open. |
 
 Schema and supervisor reviews include a failure-sequence walkthrough, not only
