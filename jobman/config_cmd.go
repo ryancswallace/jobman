@@ -7,18 +7,44 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ryancswallace/jobman/internal/app"
 	"github.com/ryancswallace/jobman/internal/config"
 )
 
-func newConfigCommand(root *rootOptions) *cobra.Command {
+func newConfigCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Inspect and validate effective configuration",
 		Args:  usageArgs(cobra.NoArgs),
 	}
-	command.AddCommand(newConfigShowCommand(root), newConfigPathsCommand(root), newConfigValidateCommand(root))
+	command.AddCommand(
+		newConfigShowCommand(root),
+		newConfigPathsCommand(root),
+		newConfigValidateCommand(root),
+		newConfigApplyCommand(dependencies, root),
+	)
 
 	return command
+}
+
+func newConfigApplyCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "apply",
+		Short: "Apply store-wide settings from effective configuration",
+		Long: "Apply durable store-wide settings, including global and named-pool concurrency limits, " +
+			"from the effective configuration. Ordinary inspection and emergency commands never apply configuration.",
+		Args: usageArgs(cobra.NoArgs),
+		RunE: func(command *cobra.Command, _ []string) error {
+			return withConfiguredBackend(command, dependencies, root, func(_ app.Backend, loaded config.Loaded) error {
+				_, err := fmt.Fprintf(command.OutOrStdout(), "applied\t%d sources\n", len(loaded.Sources))
+				if err != nil {
+					return fmt.Errorf("write configuration application result: %w", err)
+				}
+
+				return nil
+			})
+		},
+	}
 }
 
 func newConfigShowCommand(root *rootOptions) *cobra.Command {

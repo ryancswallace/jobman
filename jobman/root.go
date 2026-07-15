@@ -17,17 +17,13 @@ import (
 	"github.com/ryancswallace/jobman/internal/config"
 )
 
-// OpenBackend opens one application backend for a command invocation.
-type OpenBackend func(context.Context, string) (app.Backend, error)
+type openBackendFunc func(context.Context, string) (app.Backend, error)
 
-// Supervise runs the hidden per-job supervisor entry point.
-type Supervise func(context.Context, string, string, io.Reader, io.Writer) error
+type superviseFunc func(context.Context, string, string, io.Reader, io.Writer) error
 
-// Dependencies are the runtime seams used to construct an isolated command
-// tree. Zero-value dependencies are sufficient for help generation.
-type Dependencies struct {
-	OpenBackend OpenBackend
-	Supervise   Supervise
+type dependencies struct {
+	OpenBackend openBackendFunc
+	Supervise   superviseFunc
 }
 
 type rootOptions struct {
@@ -35,8 +31,12 @@ type rootOptions struct {
 	configPath string
 }
 
-// NewCommand constructs an independent Jobman command tree.
-func NewCommand(dependencies Dependencies) *cobra.Command {
+// NewCommand constructs an independent production Jobman command tree. The
+// returned command has no process-global Cobra state and is suitable for help,
+// completion, and embedding in another command runner.
+func NewCommand() *cobra.Command { return newRootCommand(defaultDependencies()) }
+
+func newRootCommand(dependencies dependencies) *cobra.Command {
 	options := &rootOptions{}
 	command := &cobra.Command{
 		Use:           "jobman",
@@ -80,7 +80,8 @@ func NewCommand(dependencies Dependencies) *cobra.Command {
 		newInputCommand(dependencies, options),
 		newRerunCommand(dependencies, options),
 		newCleanCommand(dependencies, options),
-		newConfigCommand(options),
+		newDoctorCommand(dependencies, options),
+		newConfigCommand(dependencies, options),
 		newSupervisorCommand(dependencies, options),
 	)
 
@@ -92,7 +93,7 @@ func Execute() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	command := NewCommand(defaultDependencies())
+	command := newRootCommand(defaultDependencies())
 	command.SetArgs(os.Args[1:])
 	command.SetIn(os.Stdin)
 	command.SetOut(os.Stdout)
@@ -123,7 +124,7 @@ func ExitCode(err error) int {
 
 func openBackend(
 	ctx context.Context,
-	dependencies Dependencies,
+	dependencies dependencies,
 	options *rootOptions,
 ) (app.Backend, error) {
 	if dependencies.OpenBackend == nil {
@@ -144,39 +145,75 @@ func openBackend(
 
 func withBackend(
 	command *cobra.Command,
-	dependencies Dependencies,
+	dependencies dependencies,
 	options *rootOptions,
 	operation func(app.Backend) error,
 ) (returned error) {
-	return withConfiguredBackend(command, dependencies, options, func(backend app.Backend, _ config.Loaded) error {
-		return operation(backend)
-	})
+	configureBestEffortRedactor(command, options)
+	backend, err := openBackend(command.Context(), dependencies, options)
+	if err != nil {
+		return redactCommandError(command, err)
+	}
+	defer func() {
+		if closeErr := backend.Close(); closeErr != nil {
+			returned = redactCommandError(
+				command,
+				errors.Join(returned, fmt.Errorf("close job manager: %w", closeErr)),
+			)
+		}
+	}()
+
+	return redactCommandError(command, operation(backend))
 }
 
 func withConfiguredBackend(
 	command *cobra.Command,
-	dependencies Dependencies,
+	dependencies dependencies,
 	options *rootOptions,
 	operation func(app.Backend, config.Loaded) error,
 ) (returned error) {
+	return withLoadedBackend(command, dependencies, options, func(backend app.Backend, loaded config.Loaded) error {
+		configurable, ok := backend.(app.ConfigurableBackend)
+		if !ok {
+			return errors.New("application backend does not support durable configuration")
+		}
+		if err := configurable.ApplyConfig(command.Context(), loaded.Config); err != nil {
+			return fmt.Errorf("apply configuration: %w", err)
+		}
+
+		return operation(backend, loaded)
+	})
+}
+
+func withLoadedBackend(
+	command *cobra.Command,
+	dependencies dependencies,
+	options *rootOptions,
+	operation func(app.Backend, config.Loaded) error,
+) (returned error) {
+	configureBestEffortRedactor(command, options)
 	backend, err := openBackend(command.Context(), dependencies, options)
 	if err != nil {
-		return err
+		return redactCommandError(command, err)
 	}
 	defer func() {
 		if closeErr := backend.Close(); closeErr != nil {
-			returned = errors.Join(returned, fmt.Errorf("close job manager: %w", closeErr))
+			returned = redactCommandError(
+				command,
+				errors.Join(returned, fmt.Errorf("close job manager: %w", closeErr)),
+			)
 		}
 	}()
 	loaded, err := loadConfiguration(options)
 	if err != nil {
-		return err
+		return redactCommandError(command, err)
 	}
-	if configurable, ok := backend.(app.ConfigurableBackend); ok {
-		if err := configurable.ApplyConfig(command.Context(), loaded.Config); err != nil {
-			return fmt.Errorf("apply configuration: %w", err)
-		}
+	if err := configureRedactor(command, loaded.Config); err != nil {
+		return redactCommandError(command, err)
+	}
+	if configurable, ok := backend.(app.ConfigurationBackend); ok {
+		configurable.ConfigureInvocation(loaded.Config)
 	}
 
-	return operation(backend, loaded)
+	return redactCommandError(command, operation(backend, loaded))
 }

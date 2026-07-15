@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,8 +16,10 @@ import (
 	"time"
 
 	"github.com/ryancswallace/jobman/internal/app"
+	"github.com/ryancswallace/jobman/internal/config"
 	"github.com/ryancswallace/jobman/internal/liveinput"
 	"github.com/ryancswallace/jobman/internal/model"
+	"github.com/ryancswallace/jobman/internal/store"
 )
 
 const testJobID = "01980f4c-7b2a-7a6f-8c10-0123456789ab"
@@ -39,6 +42,18 @@ type fakeBackend struct {
 	cleanRequest    *app.CleanRequest
 	closed          bool
 	operationErr    error
+	appliedConfig   int
+	configured      int
+	listRequest     *app.ListRequest
+	doctorRequest   *app.DoctorRequest
+}
+
+func (backend *fakeBackend) ConfigureInvocation(config.Config) { backend.configured++ }
+
+func (backend *fakeBackend) ApplyConfig(context.Context, config.Config) error {
+	backend.appliedConfig++
+
+	return backend.operationErr
 }
 
 func (backend *fakeBackend) Close() error {
@@ -64,6 +79,35 @@ func (backend *fakeBackend) List(context.Context) ([]model.JobState, error) {
 		return nil, backend.operationErr
 	}
 	return append([]model.JobState(nil), backend.jobs...), nil
+}
+
+func (backend *fakeBackend) ListJobs(_ context.Context, request app.ListRequest) ([]app.ListedJob, error) {
+	if backend.operationErr != nil {
+		return nil, backend.operationErr
+	}
+	backend.listRequest = &request
+	limit := min(request.Limit, len(backend.jobs))
+	listed := make([]app.ListedJob, 0, limit)
+	for index := range limit {
+		item := app.ListedJob{Job: backend.jobs[index]}
+		if request.ShowRuns {
+			item.Runs = append([]model.RunState(nil), backend.details.Runs...)
+		}
+		listed = append(listed, item)
+	}
+
+	return listed, nil
+}
+
+func (backend *fakeBackend) Doctor(_ context.Context, request app.DoctorRequest) (app.DoctorReport, error) {
+	if backend.operationErr != nil {
+		return app.DoctorReport{}, backend.operationErr
+	}
+	backend.doctorRequest = &request
+
+	return app.DoctorReport{Store: store.HealthReport{
+		Healthy: true, SchemaVersion: 7, SupportedSchema: 7, SQLiteVersion: "3.51.3",
+	}}, nil
 }
 
 func (backend *fakeBackend) Inspect(context.Context, string) (app.JobDetails, error) {
@@ -191,7 +235,7 @@ func (backend *fakeBackend) Clean(_ context.Context, request app.CleanRequest) (
 func TestRootShowsHelpWithoutOpeningStore(t *testing.T) {
 	t.Parallel()
 
-	stdout, err := executeCommand(t, Dependencies{}, nil)
+	stdout, err := executeCommand(t, dependencies{}, nil)
 	if err != nil {
 		t.Fatalf("ExecuteContext() error = %v", err)
 	}
@@ -203,15 +247,129 @@ func TestRootShowsHelpWithoutOpeningStore(t *testing.T) {
 	}
 }
 
+func TestNewCommandReturnsIndependentProductionTrees(t *testing.T) {
+	first := NewCommand()
+	second := NewCommand()
+
+	if first == second {
+		t.Fatal("NewCommand returned the same command tree twice")
+	}
+	if first.Name() != "jobman" || second.Name() != "jobman" {
+		t.Fatalf("NewCommand names = %q, %q; want jobman", first.Name(), second.Name())
+	}
+}
+
 func TestRootReportsBuildVersion(t *testing.T) {
 	t.Parallel()
 
-	stdout, err := executeCommand(t, Dependencies{}, []string{"--version"})
+	stdout, err := executeCommand(t, dependencies{}, []string{"--version"})
 	if err != nil {
 		t.Fatalf("--version error = %v", err)
 	}
 	if !strings.HasPrefix(stdout, "jobman ") || !strings.HasSuffix(stdout, "\n") {
 		t.Fatalf("--version output = %q", stdout)
+	}
+}
+
+func TestVersionOneJSONContractFixtures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		arguments []string
+		fixture   string
+	}{
+		{name: "list", arguments: []string{"list", "--json"}, fixture: "list-v1.json"},
+		{name: "status", arguments: []string{"status", "--json", testJobID}, fixture: "status-v1.json"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			output, err := executeCommand(t, dependenciesFor(newFakeBackend(t)), test.arguments)
+			if err != nil {
+				t.Fatalf("command error = %v", err)
+			}
+			want, err := os.ReadFile(filepath.Join("testdata", test.fixture))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if output != string(want) {
+				t.Fatalf("JSON contract output:\n%s\nwant:\n%s", output, want)
+			}
+		})
+	}
+}
+
+func TestEmergencyAndInspectionCommandsIgnoreMalformedConfiguration(t *testing.T) {
+	t.Parallel()
+
+	configuration := filepath.Join(t.TempDir(), "broken.yml")
+	if err := os.WriteFile(configuration, []byte("not: [valid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commands := [][]string{
+		{"list"},
+		{"status", testJobID},
+		{"show", testJobID},
+		{"logs", testJobID},
+		{"cancel", testJobID},
+		{"pause", testJobID},
+		{"resume", testJobID},
+	}
+	for _, arguments := range commands {
+		backend := newFakeBackend(t)
+		selected := append([]string{"--config", configuration}, arguments...)
+		if _, err := executeCommand(t, dependenciesFor(backend), selected); err != nil {
+			t.Errorf("%v with malformed configuration: %v", arguments, err)
+		}
+		if backend.appliedConfig != 0 {
+			t.Errorf("%v applied configuration %d times", arguments, backend.appliedConfig)
+		}
+	}
+
+	backend := newFakeBackend(t)
+	if _, err := executeCommand(
+		t,
+		dependenciesFor(backend),
+		[]string{"--config", configuration, "config", "apply"},
+	); err == nil {
+		t.Fatal("config apply accepted malformed configuration")
+	}
+	if backend.appliedConfig != 0 {
+		t.Fatalf("malformed config apply reached backend %d times", backend.appliedConfig)
+	}
+}
+
+func TestConfiguredRedactionAppliesToOutputAndWrappedErrors(t *testing.T) {
+	t.Parallel()
+
+	configuration := filepath.Join(t.TempDir(), "jobman.yml")
+	if err := os.WriteFile(configuration, []byte("redaction:\n  patterns: ['private-[0-9]+']\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend := newFakeBackend(t)
+	backend.jobs[0].Spec = mustTestSpec(t, "private-123")
+	stdout, err := executeCommand(
+		t,
+		dependenciesFor(backend),
+		[]string{"--config", configuration, "list", "--json"},
+	)
+	if err != nil {
+		t.Fatalf("list error = %v", err)
+	}
+	if strings.Contains(stdout, "private-123") || !strings.Contains(stdout, config.Redacted) {
+		t.Fatalf("redacted list output = %q", stdout)
+	}
+
+	backend = newFakeBackend(t)
+	backend.operationErr = errors.New("operation exposed private-456")
+	_, err = executeCommand(
+		t,
+		dependenciesFor(backend),
+		[]string{"--config", configuration, "status", testJobID},
+	)
+	if err == nil || strings.Contains(err.Error(), "private-456") || !strings.Contains(err.Error(), config.Redacted) {
+		t.Fatalf("redacted error = %v", err)
 	}
 }
 
@@ -380,7 +538,7 @@ func TestLifecycleAndInputCommandsUseTypedBackends(t *testing.T) {
 		t.Fatalf("pause/resume calls = %t/%t", backend.paused, backend.resumed)
 	}
 
-	command := NewCommand(dependenciesFor(backend))
+	command := newRootCommand(dependenciesFor(backend))
 	command.SetArgs([]string{"input", "--eof", testJobID})
 	command.SetIn(strings.NewReader("secret bytes\x00"))
 	command.SetOut(io.Discard)
@@ -463,6 +621,130 @@ func TestCancelUsesCanonicalCommand(t *testing.T) {
 	}
 }
 
+func TestListShowAndCancelV1Forms(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+	runID, err := model.ParseRunID("01980f4c-7b2a-7a6f-8c10-0123456789ac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := model.RunState{
+		ID: runID, JobID: backend.jobs[0].ID, Number: 1, Phase: model.RunPhaseRunning,
+		Revision: 2, ReservedAt: backend.jobs[0].SubmittedAt.Add(time.Second),
+	}
+	backend.jobs[0].ActiveRunID = runID
+	backend.details.Job = backend.jobs[0]
+	backend.details.Runs = []model.RunState{run}
+
+	stdout, err := executeCommand(t, dependenciesFor(backend), []string{
+		"list", "--json", "--active", "--limit", "5", "--phase", "submitting",
+		"--name", "example", "--group", "workers", "--submitted-after", "2026-07-01T00:00:00Z",
+		"--submitted-before", "2026-08-01T00:00:00Z", "--show-runs",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.listRequest == nil || backend.listRequest.Limit != 5 ||
+		!backend.listRequest.Active || !backend.listRequest.ShowRuns ||
+		backend.listRequest.Phase != model.JobPhaseSubmitting ||
+		backend.listRequest.Name != "example" || backend.listRequest.Group != "workers" {
+		t.Fatalf("list request = %+v", backend.listRequest)
+	}
+	if !strings.Contains(stdout, `"runs"`) || !strings.Contains(stdout, runID.String()) {
+		t.Fatalf("list --show-runs output = %q", stdout)
+	}
+
+	for _, arguments := range [][]string{
+		{"show", "job", testJobID},
+		{"show", "run", testJobID, "-1"},
+		{"show", "run", "--json", testJobID, "1"},
+	} {
+		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err != nil {
+			t.Errorf("%v error = %v", arguments, err)
+		}
+	}
+	if _, err := executeCommand(
+		t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "-1"},
+	); err != nil {
+		t.Fatalf("cancel run: %v", err)
+	}
+	if !backend.canceled {
+		t.Fatal("cancel run did not cancel owning job")
+	}
+	backend.details.Job.ActiveRunID = ""
+	if _, err := executeCommand(
+		t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "1"},
+	); !errors.Is(err, app.ErrConflict) {
+		t.Fatalf("cancel inactive run error = %v, want conflict", err)
+	}
+}
+
+func TestListOptionValidationAndAllLimit(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{"list", "--all"}); err != nil {
+		t.Fatal(err)
+	}
+	if backend.listRequest == nil || backend.listRequest.Limit != store.MaximumListLimit {
+		t.Fatalf("list --all request = %+v", backend.listRequest)
+	}
+	for _, arguments := range [][]string{
+		{"list", "--all", "--limit", "1"},
+		{"list", "--active", "--completed"},
+		{"list", "--submitted-after", "bad"},
+		{"list", "--submitted-before", "bad"},
+	} {
+		if _, err := executeCommand(t, dependenciesFor(newFakeBackend(t)), arguments); !errors.Is(err, ErrUsage) {
+			t.Errorf("%v error = %v, want usage", arguments, err)
+		}
+	}
+}
+
+func TestDoctorAndConfigurationApplyCommands(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+	stdout, err := executeCommand(t, dependenciesFor(backend), []string{
+		"doctor", "--repair", "--backup", filepath.Join(t.TempDir(), "backup.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.doctorRequest == nil || !backend.doctorRequest.Repair || backend.doctorRequest.BackupPath == "" ||
+		!strings.Contains(stdout, "healthy\tschema=7") {
+		t.Fatalf("doctor request/output = %+v/%q", backend.doctorRequest, stdout)
+	}
+	stdout, err = executeCommand(t, dependenciesFor(backend), []string{"doctor", "--json"})
+	if err != nil || !strings.Contains(stdout, `"healthy":true`) {
+		t.Fatalf("doctor JSON = %q, %v", stdout, err)
+	}
+	stdout, err = executeCommand(t, dependenciesFor(backend), []string{"config", "apply"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.appliedConfig != 1 || backend.configured == 0 || !strings.Contains(stdout, "applied") {
+		t.Fatalf("config apply calls/output = applied %d configured %d/%q", backend.appliedConfig, backend.configured, stdout)
+	}
+}
+
+func TestSelectRunValidation(t *testing.T) {
+	t.Parallel()
+	runs := []model.RunState{{Number: 1}, {Number: 2}}
+	for _, selector := range []string{"", "0", "bad"} {
+		if _, err := selectRun(runs, selector); !errors.Is(err, ErrUsage) {
+			t.Errorf("selectRun(%q) error = %v, want usage", selector, err)
+		}
+	}
+	for _, selector := range []string{"3", "-3"} {
+		if _, err := selectRun(runs, selector); !errors.Is(err, app.ErrNotFound) {
+			t.Errorf("selectRun(%q) error = %v, want not found", selector, err)
+		}
+	}
+	selected, err := selectRun(runs, "-1")
+	if err != nil || selected.Number != 2 {
+		t.Fatalf("selectRun(-1) = %+v, %v", selected, err)
+	}
+}
+
 func TestExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -487,12 +769,12 @@ func TestExitCode(t *testing.T) {
 
 func executeCommand(
 	t *testing.T,
-	dependencies Dependencies,
+	dependencies dependencies,
 	arguments []string,
 ) (stdoutText string, executeErr error) {
 	t.Helper()
 
-	command := NewCommand(dependencies)
+	command := newRootCommand(dependencies)
 	stdin := bytes.NewReader(nil)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -505,8 +787,8 @@ func executeCommand(
 	return stdout.String(), executeErr
 }
 
-func dependenciesFor(backend app.Backend) Dependencies {
-	return Dependencies{
+func dependenciesFor(backend app.Backend) dependencies {
+	return dependencies{
 		OpenBackend: func(context.Context, string) (app.Backend, error) {
 			return backend, nil
 		},
@@ -547,6 +829,27 @@ func newFakeBackend(t *testing.T) *fakeBackend {
 		details:        app.JobDetails{Job: job, Runs: []model.RunState{}},
 		inputEOFSignal: make(chan struct{}),
 	}
+}
+
+func mustTestSpec(t *testing.T, name string) model.JobSpec {
+	t.Helper()
+	specification, err := model.NewJobSpec(model.JobSpecInput{
+		Executable:             "printf",
+		Arguments:              []string{"hello"},
+		WorkingDirectory:       t.TempDir(),
+		EnvironmentInheritance: model.EnvironmentInheritSubmission,
+		Name:                   name,
+		StopPolicy: model.StopPolicy{
+			GracePeriod:     5 * time.Second,
+			ForceAfterGrace: true,
+		},
+		StdinPolicy: model.StdinNull,
+	})
+	if err != nil {
+		t.Fatalf("NewJobSpec() error = %v", err)
+	}
+
+	return specification
 }
 
 func cloneMap(values map[string]string) map[string]string {

@@ -1,6 +1,7 @@
 package jobman
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"text/tabwriter"
@@ -9,32 +10,142 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ryancswallace/jobman/internal/app"
+	"github.com/ryancswallace/jobman/internal/model"
 	"github.com/ryancswallace/jobman/internal/store"
 )
 
-func newShowCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newShowCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var jsonOutput bool
+	runCommand := &cobra.Command{
+		Use:   "run JOB RUN",
+		Short: "Show one run by number or negative index",
+		Args:  usageArgs(cobra.ExactArgs(2)),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return showRun(command, dependencies, root, arguments[0], arguments[1], jsonOutput)
+		},
+	}
+	runCommand.Flags().SetInterspersed(false)
 	command := &cobra.Command{
 		Use:   "show JOB",
 		Short: "Show a job and its run history",
 		Args:  usageArgs(cobra.ExactArgs(1)),
 		RunE: func(command *cobra.Command, arguments []string) error {
-			return withBackend(command, dependencies, root, func(backend app.Backend) error {
-				value, err := backend.Inspect(command.Context(), arguments[0])
-				if err != nil {
-					return err
-				}
-				if jsonOutput {
-					return writeJSON(command, detail(value))
-				}
-
-				return writeJobDetails(command, value)
-			})
+			return showJob(command, dependencies, root, arguments[0], jsonOutput)
 		},
 	}
-	command.Flags().BoolVar(&jsonOutput, "json", false, "emit versioned JSON")
+	command.PersistentFlags().BoolVar(&jsonOutput, "json", false, "emit versioned JSON")
+	command.AddCommand(
+		&cobra.Command{
+			Use:   "job JOB",
+			Short: "Show a job and its run history",
+			Args:  usageArgs(cobra.ExactArgs(1)),
+			RunE: func(command *cobra.Command, arguments []string) error {
+				return showJob(command, dependencies, root, arguments[0], jsonOutput)
+			},
+		},
+		runCommand,
+	)
 
 	return command
+}
+
+func showJob(
+	command *cobra.Command,
+	dependencies dependencies,
+	root *rootOptions,
+	selector string,
+	jsonOutput bool,
+) error {
+	return withBackend(command, dependencies, root, func(backend app.Backend) error {
+		value, err := backend.Inspect(command.Context(), selector)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(command, detail(value))
+		}
+
+		return writeJobDetails(command, value)
+	})
+}
+
+func showRun(
+	command *cobra.Command,
+	dependencies dependencies,
+	root *rootOptions,
+	selector,
+	runSelector string,
+	jsonOutput bool,
+) error {
+	return withBackend(command, dependencies, root, func(backend app.Backend) error {
+		value, err := backend.Inspect(command.Context(), selector)
+		if err != nil {
+			return err
+		}
+		run, err := selectRun(value.Runs, runSelector)
+		if err != nil {
+			return err
+		}
+		presented := presentRuns([]model.RunState{run})[0]
+		if jsonOutput {
+			return writeJSON(command, presented)
+		}
+
+		return writeRunDetails(command, run)
+	})
+}
+
+func selectRun(runs []model.RunState, selector string) (model.RunState, error) {
+	value, err := strconv.ParseInt(selector, 10, 64)
+	if err != nil || value == 0 {
+		return model.RunState{}, usageError(errors.New("RUN must be a nonzero run number or negative index"))
+	}
+	if value < 0 {
+		index := int64(len(runs)) + value
+		if index < 0 || index >= int64(len(runs)) {
+			return model.RunState{}, fmt.Errorf("show run %s: %w", selector, app.ErrNotFound)
+		}
+
+		return runs[index], nil
+	}
+	for _, run := range runs {
+		if run.Number == uint64(value) {
+			return run, nil
+		}
+	}
+
+	return model.RunState{}, fmt.Errorf("show run %s: %w", selector, app.ErrNotFound)
+}
+
+func writeRunDetails(command *cobra.Command, run model.RunState) error {
+	writer := tabwriter.NewWriter(command.OutOrStdout(), 0, 4, 2, ' ', 0)
+	fields := [][2]string{
+		{"ID", run.ID.String()},
+		{"Number", strconv.FormatUint(run.Number, 10)},
+		{"Phase", string(run.Phase)},
+		{"Outcome", string(run.Outcome)},
+		{"Revision", strconv.FormatUint(run.Revision, 10)},
+		{"Resolved executable", run.ResolvedExecutable},
+		{"Reserved", run.ReservedAt.UTC().Format(timeFormat)},
+		{"Started", formatOptionalTime(run.StartedAt)},
+		{"Completed", formatOptionalTime(run.CompletedAt)},
+		{"Logs", formatLogAvailability(run.Logs.Available(), run.Logs.PrunedAt)},
+	}
+	for _, field := range fields {
+		if _, err := fmt.Fprintf(
+			writer,
+			"%s:\t%s\n",
+			field[0],
+			redactField(command, field[0], field[1]),
+		); err != nil {
+			return fmt.Errorf("write run details: %w", err)
+		}
+	}
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("flush run details: %w", err)
+	}
+
+	return nil
 }
 
 func writeJobDetails(command *cobra.Command, value app.JobDetails) error {
@@ -58,7 +169,12 @@ func writeJobDetails(command *cobra.Command, value app.JobDetails) error {
 		{"Notification attempts", strconv.Itoa(len(value.NotificationAttempts))},
 	}
 	for _, field := range fields {
-		if _, err := fmt.Fprintf(writer, "%s:\t%s\n", field[0], field[1]); err != nil {
+		if _, err := fmt.Fprintf(
+			writer,
+			"%s:\t%s\n",
+			field[0],
+			redactField(command, field[0], field[1]),
+		); err != nil {
 			return fmt.Errorf("write job details: %w", err)
 		}
 	}

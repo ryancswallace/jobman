@@ -8,7 +8,7 @@ import (
 	"github.com/ryancswallace/jobman/internal/app"
 )
 
-func newStatusCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newStatusCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var jsonOutput bool
 	command := &cobra.Command{
 		Use:   "status JOB",
@@ -27,7 +27,7 @@ func newStatusCommand(dependencies Dependencies, root *rootOptions) *cobra.Comma
 					command.OutOrStdout(),
 					"%s\t%s\t%s\t%s\n",
 					value.Job.ID,
-					value.Job.Spec.Name(),
+					redactField(command, "name", value.Job.Spec.Name()),
 					value.Job.Phase,
 					value.Job.Outcome,
 				)

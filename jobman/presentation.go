@@ -19,6 +19,24 @@ type jobSummary struct {
 	SubmittedAt string `json:"submitted_at"`
 }
 
+type listedJobDetail struct {
+	Summary jobSummary  `json:"summary"`
+	Runs    []runDetail `json:"runs,omitempty"`
+}
+
+func presentListedJobs(values []app.ListedJob, showRuns bool) []listedJobDetail {
+	result := make([]listedJobDetail, 0, len(values))
+	for _, value := range values {
+		item := listedJobDetail{Summary: summary(value.Job)}
+		if showRuns {
+			item.Runs = presentRuns(value.Runs)
+		}
+		result = append(result, item)
+	}
+
+	return result
+}
+
 type jobDetail struct {
 	Summary                jobSummary                   `json:"summary"`
 	Specification          model.JobSpec                `json:"specification"`
@@ -182,23 +200,7 @@ func summaries(jobs []model.JobState) []jobSummary {
 }
 
 func detail(value app.JobDetails) jobDetail {
-	runs := make([]runDetail, 0, len(value.Runs))
-	for _, run := range value.Runs {
-		runs = append(runs, runDetail{
-			ID:                 run.ID.String(),
-			Number:             run.Number,
-			Phase:              string(run.Phase),
-			Outcome:            string(run.Outcome),
-			Revision:           run.Revision,
-			ResolvedExecutable: run.ResolvedExecutable,
-			Process:            presentProcess(run.Process),
-			ReservedAt:         run.ReservedAt.UTC(),
-			StartedAt:          run.StartedAt,
-			CompletedAt:        run.CompletedAt,
-			Exit:               presentExit(run.Exit),
-			Logs:               presentLogs(run.Logs),
-		})
-	}
+	runs := presentRuns(value.Runs)
 
 	var canceled *time.Time
 	if value.Job.Cancellation != nil {
@@ -221,6 +223,28 @@ func detail(value app.JobDetails) jobDetail {
 		NotificationDeliveries: presentNotificationDeliveries(value.NotificationDeliveries),
 		NotificationAttempts:   presentNotificationAttempts(value.NotificationAttempts),
 	}
+}
+
+func presentRuns(values []model.RunState) []runDetail {
+	runs := make([]runDetail, 0, len(values))
+	for _, run := range values {
+		runs = append(runs, runDetail{
+			ID:                 run.ID.String(),
+			Number:             run.Number,
+			Phase:              string(run.Phase),
+			Outcome:            string(run.Outcome),
+			Revision:           run.Revision,
+			ResolvedExecutable: run.ResolvedExecutable,
+			Process:            presentProcess(run.Process),
+			ReservedAt:         run.ReservedAt.UTC(),
+			StartedAt:          run.StartedAt,
+			CompletedAt:        run.CompletedAt,
+			Exit:               presentExit(run.Exit),
+			Logs:               presentLogs(run.Logs),
+		})
+	}
+
+	return runs
 }
 
 func presentRuntime(runtime store.JobRuntime) runtimeDetail {

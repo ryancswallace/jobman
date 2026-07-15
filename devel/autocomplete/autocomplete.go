@@ -17,7 +17,7 @@ type completion struct {
 }
 
 func genAutocomplete(outputRoot string) error {
-	command := jobman.NewCommand(jobman.Dependencies{})
+	command := jobman.NewCommand()
 	completions := []completion{
 		{
 			path:     filepath.Join(outputRoot, "docs", "completions", "bash", "jobman"),

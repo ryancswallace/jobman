@@ -8,9 +8,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ryancswallace/jobman/internal/app"
+	"github.com/ryancswallace/jobman/internal/config"
 )
 
-func newPauseCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newPauseCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	return lifecycleCommand("pause", "Pause a managed job", dependencies, root, func(
 		command *cobra.Command,
 		backend app.LifecycleBackend,
@@ -25,7 +26,7 @@ func newPauseCommand(dependencies Dependencies, root *rootOptions) *cobra.Comman
 	})
 }
 
-func newResumeCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newResumeCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	return lifecycleCommand("resume", "Resume a paused job", dependencies, root, func(
 		command *cobra.Command,
 		backend app.LifecycleBackend,
@@ -40,7 +41,7 @@ func newResumeCommand(dependencies Dependencies, root *rootOptions) *cobra.Comma
 	})
 }
 
-func newWaitCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newWaitCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	return lifecycleCommand("wait", "Wait for a job to finish", dependencies, root, func(
 		command *cobra.Command,
 		backend app.LifecycleBackend,
@@ -58,7 +59,7 @@ func newWaitCommand(dependencies Dependencies, root *rootOptions) *cobra.Command
 func lifecycleCommand(
 	use,
 	short string,
-	dependencies Dependencies,
+	dependencies dependencies,
 	root *rootOptions,
 	operation func(*cobra.Command, app.LifecycleBackend, string) error,
 ) *cobra.Command {
@@ -79,7 +80,7 @@ func lifecycleCommand(
 	}
 }
 
-func newInputCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var sendEOF bool
 	command := &cobra.Command{
 		Use:   "input JOB",
@@ -106,7 +107,7 @@ func newInputCommand(dependencies Dependencies, root *rootOptions) *cobra.Comman
 	return command
 }
 
-func newRerunCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var name string
 	command := &cobra.Command{
 		Use:   "rerun JOB",
@@ -132,13 +133,13 @@ func newRerunCommand(dependencies Dependencies, root *rootOptions) *cobra.Comman
 	return command
 }
 
-func newCleanCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var olderThan time.Duration
 	var dryRun bool
 	var force bool
 	command := &cobra.Command{
 		Use:   "clean [JOB]",
-		Short: "Safely remove completed job logs",
+		Short: "Safely remove completed logs and eligible metadata",
 		Args:  usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			if !dryRun && !force {
@@ -148,7 +149,7 @@ func newCleanCommand(dependencies Dependencies, root *rootOptions) *cobra.Comman
 			if len(arguments) == 1 {
 				selector = arguments[0]
 			}
-			return withBackend(command, dependencies, root, func(backend app.Backend) error {
+			return withLoadedBackend(command, dependencies, root, func(backend app.Backend, _ config.Loaded) error {
 				cleaner, ok := backend.(app.CleanupBackend)
 				if !ok {
 					return errors.New("application backend does not support cleanup")
@@ -166,11 +167,12 @@ func newCleanCommand(dependencies Dependencies, root *rootOptions) *cobra.Comman
 				}
 				_, err = fmt.Fprintf(
 					command.OutOrStdout(),
-					"%s %d runs, %d files, %d bytes\n",
+					"%s %d runs, %d files, %d bytes, %d jobs\n",
 					mode,
 					result.Runs,
 					result.Files,
 					result.Bytes,
+					result.Jobs,
 				)
 				return err
 			})

@@ -76,7 +76,7 @@ type runOptions struct {
 	foreground         bool
 }
 
-func newRunCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newRunCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	options := &runOptions{forceAfterGrace: true, slots: 1}
 	command := &cobra.Command{
 		Use:   "run [OPTIONS] (-- COMMAND [ARG...] | --job-spec NAME | --rerun JOB)",
@@ -146,12 +146,12 @@ func newRunCommand(dependencies Dependencies, root *rootOptions) *cobra.Command 
 //nolint:gocognit,nestif // Source selection keeps rerun and configured submission behavior in one command transaction.
 func run(
 	command *cobra.Command,
-	dependencies Dependencies,
+	dependencies dependencies,
 	root *rootOptions,
 	options *runOptions,
 	arguments []string,
 ) error {
-	return withConfiguredBackend(command, dependencies, root, func(backend app.Backend, loaded config.Loaded) error {
+	return withLoadedBackend(command, dependencies, root, func(backend app.Backend, loaded config.Loaded) error {
 		if options.rerun != "" {
 			if err := validateRerunOptions(command, options); err != nil {
 				return usageError(err)

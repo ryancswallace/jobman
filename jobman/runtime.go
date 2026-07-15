@@ -7,8 +7,8 @@ import (
 
 // defaultDependencies wires the production application while keeping command
 // construction free of package-global Cobra or Viper state.
-func defaultDependencies() Dependencies {
-	return Dependencies{
+func defaultDependencies() dependencies {
+	return dependencies{
 		OpenBackend: app.Open,
 		Supervise:   supervisor.Run,
 	}

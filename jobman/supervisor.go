@@ -8,7 +8,7 @@ import (
 	"github.com/ryancswallace/jobman/internal/config"
 )
 
-func newSupervisorCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newSupervisorCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	command := &cobra.Command{
 		Use:    "__supervise JOB",
 		Hidden: true,

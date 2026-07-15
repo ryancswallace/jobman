@@ -14,7 +14,7 @@ import (
 const allRunsSelection = "all"
 
 //nolint:gocognit,cyclop // Log presentation combines selection, following, retained-run iteration, and tailing modes.
-func newLogsCommand(dependencies Dependencies, root *rootOptions) *cobra.Command {
+func newLogsCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	stream := string(app.LogBoth)
 	var follow bool
 	var runSelection string

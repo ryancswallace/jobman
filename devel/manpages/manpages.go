@@ -25,7 +25,7 @@ func genManpages(outputRoot string) error {
 		return err
 	}
 
-	command := jobman.NewCommand(jobman.Dependencies{})
+	command := jobman.NewCommand()
 	if err := doc.GenManTree(command, header, manPath); err != nil {
 		return fmt.Errorf("generate man pages: %w", err)
 	}

@@ -268,16 +268,16 @@ func configuredNotifierFixtures(t *testing.T, timeout config.Duration) map[strin
 
 func TestHiddenSupervisorCommandAndDefaultDependencies(t *testing.T) {
 	called := false
-	dependencies := Dependencies{Supervise: func(
+	runtimeDependencies := dependencies{Supervise: func(
 		context.Context, string, string, io.Reader, io.Writer,
 	) error {
 		called = true
 		return nil
 	}}
-	if _, err := executeCommand(t, dependencies, []string{"--state-dir", t.TempDir(), "__supervise", testJobID}); err != nil || !called {
+	if _, err := executeCommand(t, runtimeDependencies, []string{"--state-dir", t.TempDir(), "__supervise", testJobID}); err != nil || !called {
 		t.Fatalf("__supervise = called %t, error %v", called, err)
 	}
-	if _, err := executeCommand(t, Dependencies{}, []string{"__supervise", testJobID}); err == nil {
+	if _, err := executeCommand(t, dependencies{}, []string{"__supervise", testJobID}); err == nil {
 		t.Fatal("__supervise without runtime error = nil")
 	}
 	defaults := defaultDependencies()
@@ -291,7 +291,7 @@ func TestHiddenSupervisorCommandAndDefaultDependencies(t *testing.T) {
 
 func TestExecuteCommandWithUnavailableBackend(t *testing.T) {
 	t.Parallel()
-	if _, err := executeCommand(t, Dependencies{}, []string{"list"}); err == nil {
+	if _, err := executeCommand(t, dependencies{}, []string{"list"}); err == nil {
 		t.Fatal("list without backend error = nil")
 	}
 }
@@ -453,7 +453,7 @@ func TestCommandOutputFailures(t *testing.T) {
 		t.Run(strings.Join(arguments, "_"), func(t *testing.T) {
 			backend := newFakeBackend(t)
 			backend.logs = []byte("log")
-			command := NewCommand(dependenciesFor(backend))
+			command := newRootCommand(dependenciesFor(backend))
 			command.SetArgs(arguments)
 			command.SetIn(strings.NewReader("input"))
 			command.SetOut(&commandFailWriter{})
@@ -801,7 +801,7 @@ func TestCommandsPropagateBackendFailures(t *testing.T) {
 
 func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 	backend := &basicBackend{base: newFakeBackend(t)}
-	dependencies := Dependencies{OpenBackend: func(context.Context, string) (app.Backend, error) {
+	runtimeDependencies := dependencies{OpenBackend: func(context.Context, string) (app.Backend, error) {
 		return backend, nil
 	}}
 	for _, arguments := range [][]string{
@@ -812,18 +812,18 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 		{"logs", testJobID, "--follow"},
 		{"run", "--foreground", "--", "true"},
 	} {
-		if _, err := executeCommand(t, dependencies, arguments); err == nil {
+		if _, err := executeCommand(t, runtimeDependencies, arguments); err == nil {
 			t.Errorf("%v error = nil", arguments)
 		}
 		backend.base.closed = false
 	}
 
-	if _, err := executeCommand(t, Dependencies{}, []string{
+	if _, err := executeCommand(t, dependencies{}, []string{
 		"--config", filepath.Join(t.TempDir(), "missing.yml"), "config", "paths",
 	}); err == nil {
 		t.Fatal("config paths with missing explicit file error = nil")
 	}
-	if _, err := executeCommand(t, Dependencies{}, []string{
+	if _, err := executeCommand(t, dependencies{}, []string{
 		"--config", "one.yml", "config", "validate", "two.yml",
 	}); !errors.Is(err, ErrUsage) {
 		t.Fatalf("config validate conflicting paths error = %v", err)
