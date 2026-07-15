@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ryancswallace/jobman/internal/faultinject"
 )
 
 const (
@@ -132,6 +134,9 @@ func CreateRunWithOptions(stateDir, jobID string, runNumber uint64, options RunO
 
 	if err := os.Mkdir(paths.Directory, directoryMode); err != nil {
 		return nil, fmt.Errorf("create run log directory %q: %w", paths.Directory, err)
+	}
+	if err := hardenPrivatePath(paths.Directory); err != nil {
+		return nil, fmt.Errorf("restrict run log directory %q: %w", paths.Directory, err)
 	}
 
 	run := &Run{
@@ -273,6 +278,7 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	if syncErr := file.Sync(); syncErr != nil {
 		return written, fmt.Errorf("sync %s log: %w", stream, syncErr)
 	}
+	faultinject.Hit("log-raw-synced-before-index")
 	record := Chunk{
 		Sequence:   run.nextSequence,
 		Stream:     stream,
@@ -291,6 +297,7 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	if err := run.index.Sync(); err != nil {
 		return written, fmt.Errorf("sync log chunk index: %w", err)
 	}
+	faultinject.Hit("log-index-synced")
 
 	run.nextSequence++
 
@@ -485,12 +492,19 @@ func isWithin(root, path string) bool {
 
 func ensurePrivateDirectory(path string) error {
 	err := os.Mkdir(path, directoryMode)
+	created := err == nil
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("create private directory %q: %w", path, err)
 		}
 		if mkdirErr := os.MkdirAll(path, directoryMode); mkdirErr != nil {
 			return fmt.Errorf("create private directory %q: %w", path, mkdirErr)
+		}
+		created = true
+	}
+	if created {
+		if hardenErr := hardenPrivatePath(path); hardenErr != nil {
+			return fmt.Errorf("restrict private directory %q: %w", path, hardenErr)
 		}
 	}
 
@@ -544,6 +558,13 @@ func createPrivateFile(path string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileMode)
 	if err != nil {
 		return nil, fmt.Errorf("create private log file %q: %w", path, err)
+	}
+	if err := hardenPrivatePath(path); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("restrict private log file %q: %w", path, err),
+			file.Close(),
+			os.Remove(path),
+		)
 	}
 
 	return file, nil

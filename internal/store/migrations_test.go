@@ -71,6 +71,20 @@ func TestMigrationSevenRepairsRuntimeCountersFromVersionOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(version one) error = %v", err)
 	}
+	if upgraded.LastBackupPath() == "" {
+		t.Fatal("Open(version one) did not create a migration backup")
+	}
+	if _, statErr := os.Stat(upgraded.LastBackupPath()); statErr != nil {
+		t.Fatalf("inspect migration backup: %v", statErr)
+	}
+	backup, err := sql.Open("sqlite", sqliteDSN(upgraded.LastBackupPath(), defaultBusyTimeout))
+	if err != nil {
+		t.Fatalf("open migration backup: %v", err)
+	}
+	assertPragmaInt(t, backup, "user_version", 1)
+	if closeErr := backup.Close(); closeErr != nil {
+		t.Fatalf("close migration backup: %v", closeErr)
+	}
 	defer func() {
 		if closeErr := upgraded.Close(); closeErr != nil {
 			t.Errorf("close upgraded store: %v", closeErr)

@@ -51,10 +51,13 @@ type Store struct {
 	now           func() time.Time
 	jobmanVersion string
 	eventIDs      EventIDSource
+	lastBackup    string
 }
 
 // Open creates or validates a private state directory, opens its SQLite
 // database, and applies all known migrations.
+//
+//nolint:gocognit,cyclop // Opening owns ordered validation and cleanup for each acquired resource.
 func Open(ctx context.Context, options Options) (*Store, error) {
 	if ctx == nil {
 		return nil, errors.New("open store: nil context")
@@ -63,6 +66,9 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 	stateDir, err := prepareStateDir(options.StateDir)
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
+	}
+	if filesystemErr := validateStateFilesystem(stateDir); filesystemErr != nil {
+		return nil, fmt.Errorf("open store: %w", filesystemErr)
 	}
 
 	databasePath := filepath.Join(stateDir, DatabaseFilename)
@@ -127,6 +133,14 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 
 		return nil, fmt.Errorf("open store: %w", err)
 	}
+	if err := validateDatabaseSidecars(databasePath); err != nil {
+		closeErr := db.Close()
+		if closeErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))
+		}
+
+		return nil, fmt.Errorf("open store: %w", err)
+	}
 
 	return store, nil
 }
@@ -143,6 +157,9 @@ func (s *Store) initialize(ctx context.Context) error {
 		return err
 	}
 	if err := s.verifyConnectionPragmas(ctx); err != nil {
+		return err
+	}
+	if err := s.backupBeforeUpgrade(ctx); err != nil {
 		return err
 	}
 	if err := s.migrate(ctx); err != nil {
@@ -311,3 +328,7 @@ func (s *Store) DatabasePath() string {
 func (s *Store) SQLiteVersion() string {
 	return s.sqliteVersion
 }
+
+// LastBackupPath reports the migration backup created while opening this
+// store, or an empty string when no upgrade was required.
+func (s *Store) LastBackupPath() string { return s.lastBackup }

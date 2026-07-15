@@ -18,9 +18,16 @@ func prepareStateDir(path string) (string, error) {
 	}
 	absolute = filepath.Clean(absolute)
 
+	_, inspectErr := os.Lstat(absolute)
+	created := errors.Is(inspectErr, os.ErrNotExist)
 	err = os.MkdirAll(absolute, 0o700)
 	if err != nil {
 		return "", fmt.Errorf("create state directory: %w", err)
+	}
+	if created {
+		if hardenErr := hardenPath(absolute); hardenErr != nil {
+			return "", fmt.Errorf("restrict new state directory: %w", hardenErr)
+		}
 	}
 
 	canonical, err := filepath.EvalSymlinks(absolute)
@@ -45,6 +52,9 @@ func prepareStateDir(path string) (string, error) {
 	if err := validateOwner(info); err != nil {
 		return "", fmt.Errorf("validate state directory owner: %w", err)
 	}
+	if err := validatePathSecurity(canonical); err != nil {
+		return "", fmt.Errorf("validate state directory access: %w", err)
+	}
 
 	return canonical, nil
 }
@@ -54,6 +64,10 @@ func prepareDatabaseFile(path string) error {
 	if err == nil {
 		if closeErr := file.Close(); closeErr != nil {
 			return fmt.Errorf("close new database file: %w", closeErr)
+		}
+
+		if hardenErr := hardenPath(path); hardenErr != nil {
+			return fmt.Errorf("restrict new database file: %w", hardenErr)
 		}
 
 		return validateDatabaseFile(path)
@@ -81,6 +95,39 @@ func validateDatabaseFile(path string) error {
 	}
 	if err := validateSingleLink(info); err != nil {
 		return fmt.Errorf("validate database file links: %w", err)
+	}
+	if err := validatePathSecurity(path); err != nil {
+		return fmt.Errorf("validate database file access: %w", err)
+	}
+
+	return nil
+}
+
+func validateDatabaseSidecars(databasePath string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		path := databasePath + suffix
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect database sidecar %q: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("database sidecar %q is not a regular file", path)
+		}
+		if err := validatePermissions(info); err != nil {
+			return fmt.Errorf("validate database sidecar permissions: %w", err)
+		}
+		if err := validateOwner(info); err != nil {
+			return fmt.Errorf("validate database sidecar owner: %w", err)
+		}
+		if err := validateSingleLink(info); err != nil {
+			return fmt.Errorf("validate database sidecar links: %w", err)
+		}
+		if err := validatePathSecurity(path); err != nil {
+			return fmt.Errorf("validate database sidecar access: %w", err)
+		}
 	}
 
 	return nil

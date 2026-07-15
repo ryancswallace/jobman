@@ -19,3 +19,5 @@ func validatePrivateMode(path string, info fs.FileInfo, maximum fs.FileMode) err
 
 	return nil
 }
+
+func hardenPrivatePath(string) error { return nil }
