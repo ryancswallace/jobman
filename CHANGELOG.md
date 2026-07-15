@@ -16,7 +16,25 @@ semantic-release.
 - Added UUIDv7 identifiers, strict versioned JSON output, optimistic lifecycle
   transitions, supervisor ownership leases, and stale-ownership reconciliation.
 - Added race-enabled model, store, log, supervisor, CLI, and assembled-binary
-  lifecycle tests, including process-tree and crash-recovery scenarios.
+  lifecycle tests, including retry, dependency, pause/resume, binary input,
+  rerun, process-tree, and crash-recovery scenarios.
+- Added repeated-run and retry policies with exit classification, success and
+  failure targets, constant/linear/exponential delay, jitter, and run/job
+  timeouts.
+- Added time, delay, file, and executable-probe prerequisites; immutable
+  outcome dependencies; and transactional global/named-pool slot admission
+  with durable bounded-bypass fairness.
+- Added strict layered YAML configuration, trusted project files, named job
+  specifications and profiles, environment/file secret references, and
+  effective-configuration inspection and validation commands.
+- Added log following, stream-selective capture, rotation, retention cleanup,
+  historical run selection, pause/resume, wait, rerun, foreground attachment,
+  and private live input.
+- Added bounded command, HTTPS webhook, and SMTP notifications with a
+  recoverable delivery queue and persisted attempt diagnostics that do not
+  change the managed job's outcome.
+- Added inspection of wait evaluations, policy counters, dependency results,
+  admission history, and pending or completed notification work.
 
 ### Changed
 
@@ -29,6 +47,16 @@ semantic-release.
   images.
 - Publish Homebrew Cask updates through reviewed pull requests so releases work
   with protected-branch requirements.
+- Expanded the persisted SQLite schema and immutable job specification through
+  ordered, checksum-verified migrations while retaining version 1 read
+  compatibility for stored job specifications.
+- Stabilized policy inspection JSON with explicit snake-case fields and kept
+  internal notification claim tokens out of user-facing output.
+- Hardened policy crash boundaries with stale-owner reconciliation during
+  waits and admission, run-bound live input, durable EOF intent, timeout-bounded
+  notification retries, and atomic admission release on ownership loss.
+- Added schema migration 7 to repair historical runtime counters and provide
+  deterministic admission tie-breaking without altering prior migrations.
 
 ## [0.1.0] - 2026-07-12
 
