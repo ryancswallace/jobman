@@ -33,13 +33,13 @@ func StateDir(explicit string) (string, error) {
 }
 
 func defaultStateDir() (string, error) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		if local := os.Getenv("LOCALAPPDATA"); local != "" {
 			return filepath.Join(local, "Jobman"), nil
 		}
 	}
 
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
 			return filepath.Join(stateHome, "jobman"), nil
 		}
@@ -51,9 +51,9 @@ func defaultStateDir() (string, error) {
 	}
 
 	switch runtime.GOOS {
-	case "darwin":
+	case goosDarwin:
 		return filepath.Join(home, "Library", "Application Support", "jobman"), nil
-	case "windows":
+	case goosWindows:
 		return filepath.Join(home, "AppData", "Local", "Jobman"), nil
 	default:
 		return filepath.Join(home, ".local", "state", "jobman"), nil
