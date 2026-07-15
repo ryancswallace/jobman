@@ -12,6 +12,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func supportsPauseResume() bool { return true }
+
 func applySupervisorConfiguration(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
@@ -60,6 +62,24 @@ func terminateProcess(identity ProcessIdentity, force bool) error {
 	}
 
 	err := syscall.Kill(-identity.PID, signal)
+	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+
+	return err
+}
+
+func pauseProcess(identity ProcessIdentity) error {
+	err := syscall.Kill(-identity.PID, syscall.SIGSTOP)
+	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+
+	return err
+}
+
+func resumeProcess(identity ProcessIdentity) error {
+	err := syscall.Kill(-identity.PID, syscall.SIGCONT)
 	if errors.Is(err, syscall.ESRCH) {
 		return nil
 	}

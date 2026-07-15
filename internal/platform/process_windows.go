@@ -17,6 +17,8 @@ const (
 	windowsStillActiveExitStatus = 259
 )
 
+func supportsPauseResume() bool { return false }
+
 func applySupervisorConfiguration(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS,
@@ -101,6 +103,14 @@ func terminateProcess(identity ProcessIdentity, _ bool) error {
 		return err
 	}
 	return finishProcessHandle(handle, windows.TerminateProcess(handle, 1))
+}
+
+func pauseProcess(ProcessIdentity) error {
+	return ErrUnsupported
+}
+
+func resumeProcess(ProcessIdentity) error {
+	return ErrUnsupported
 }
 
 func isProcessGone(err error) bool {

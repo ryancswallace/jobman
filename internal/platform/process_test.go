@@ -2,9 +2,13 @@ package platform
 
 import (
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"testing"
 )
+
+const processHelperEnvironment = "JOBMAN_PLATFORM_PROCESS_HELPER"
 
 func TestInspectCurrentProcess(t *testing.T) {
 	t.Parallel()
@@ -44,5 +48,109 @@ func TestAliveRejectsIdentityMismatch(t *testing.T) {
 	}
 	if alive {
 		t.Fatal("Alive() = true for mismatched identity")
+	}
+	for name, operation := range map[string]func() error{
+		"terminate": func() error { return Terminate(identity, false) },
+		"pause":     func() error { return Pause(identity) },
+		"resume":    func() error { return Resume(identity) },
+	} {
+		if err := operation(); !errors.Is(err, ErrIdentityMismatch) {
+			t.Errorf("%s(mismatched identity) error = %v", name, err)
+		}
+	}
+	if alive, err := Alive(ProcessIdentity{}); err == nil || alive {
+		t.Fatalf("Alive(invalid PID) = %t, %v", alive, err)
+	}
+}
+
+func TestProcessOperationsAndConfiguration(t *testing.T) {
+	if !PauseResumeSupported() {
+		t.Skip("managed-tree pause and resume are unavailable")
+	}
+	if _, err := Inspect(0); err == nil {
+		t.Fatal("Inspect(0) error = nil")
+	}
+
+	supervisorCommand := exec.CommandContext(t.Context(), "unused")
+	ConfigureSupervisor(supervisorCommand)
+	if supervisorCommand.SysProcAttr == nil {
+		t.Fatal("ConfigureSupervisor() did not set process attributes")
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+	for _, force := range []bool{false, true} {
+		command := exec.CommandContext(t.Context(), executable, "-test.run=^TestPlatformProcessHelper$") // #nosec G204 -- current test binary.
+		command.Env = append(os.Environ(), processHelperEnvironment+"=1")
+		ConfigureTarget(command)
+		if command.SysProcAttr == nil {
+			t.Fatal("ConfigureTarget() did not set process attributes")
+		}
+		stdin, pipeErr := command.StdinPipe()
+		if pipeErr != nil {
+			t.Fatalf("open helper stdin: %v", pipeErr)
+		}
+		if err := command.Start(); err != nil {
+			t.Fatalf("start process helper: %v", err)
+		}
+		waited := false
+		t.Cleanup(func() {
+			if waited {
+				return
+			}
+			_ = stdin.Close()
+			if killErr := command.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				t.Errorf("kill process helper: %v", killErr)
+			}
+			if waitErr := command.Wait(); waitErr != nil {
+				var exitErr *exec.ExitError
+				if !errors.As(waitErr, &exitErr) {
+					t.Errorf("wait for killed process helper: %v", waitErr)
+				}
+			}
+		})
+		identity, err := Inspect(command.Process.Pid)
+		if err != nil {
+			t.Fatalf("Inspect(helper) error = %v", err)
+		}
+		if err := Pause(identity); err != nil {
+			t.Fatalf("Pause() error = %v", err)
+		}
+		if err := Resume(identity); err != nil {
+			t.Fatalf("Resume() error = %v", err)
+		}
+		if err := Terminate(identity, force); err != nil {
+			t.Fatalf("Terminate(force=%t) error = %v", force, err)
+		}
+		if err := command.Wait(); err == nil {
+			t.Fatalf("terminated helper Wait(force=%t) error = nil", force)
+		}
+		_ = stdin.Close()
+		waited = true
+	}
+
+	gone := ProcessIdentity{PID: 1 << 30, Creation: "missing", Boot: "missing"}
+	if alive, err := Alive(gone); err != nil || alive {
+		t.Fatalf("Alive(missing) = %t, %v", alive, err)
+	}
+	for name, operation := range map[string]func() error{
+		"terminate": func() error { return Terminate(gone, false) },
+		"pause":     func() error { return Pause(gone) },
+		"resume":    func() error { return Resume(gone) },
+	} {
+		if err := operation(); err != nil {
+			t.Errorf("%s(missing) error = %v", name, err)
+		}
+	}
+}
+
+func TestPlatformProcessHelper(t *testing.T) {
+	if os.Getenv(processHelperEnvironment) != "1" {
+		t.Skip("helper process only")
+	}
+	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
+		t.Fatalf("drain helper stdin: %v", err)
 	}
 }

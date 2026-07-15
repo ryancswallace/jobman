@@ -11,11 +11,21 @@ import (
 // originally observed.
 var ErrIdentityMismatch = errors.New("process identity mismatch")
 
+// ErrUnsupported identifies an operation the current platform cannot perform
+// safely for an entire managed process tree.
+var ErrUnsupported = errors.New("platform operation is unsupported")
+
 // ProcessIdentity is a PID plus platform creation and boot identity.
 type ProcessIdentity struct {
 	PID      int    `json:"pid"`
 	Creation string `json:"creation"`
 	Boot     string `json:"boot"`
+}
+
+// PauseResumeSupported reports whether this platform has a safe managed-tree
+// suspend/resume primitive. Callers use it before recording active-run state.
+func PauseResumeSupported() bool {
+	return supportsPauseResume()
 }
 
 // ConfigureSupervisor detaches a supervisor from the submitting terminal.
@@ -66,6 +76,39 @@ func Terminate(identity ProcessIdentity, force bool) error {
 
 	if err := terminateProcess(identity, force); err != nil {
 		return fmt.Errorf("terminate process tree %d: %w", identity.PID, err)
+	}
+
+	return nil
+}
+
+// Pause suspends a verified target process tree where the platform exposes a
+// safe tree-level primitive.
+func Pause(identity ProcessIdentity) error {
+	alive, err := Alive(identity)
+	if err != nil {
+		return fmt.Errorf("verify process before pause: %w", err)
+	}
+	if !alive {
+		return nil
+	}
+	if err := pauseProcess(identity); err != nil {
+		return fmt.Errorf("pause process tree %d: %w", identity.PID, err)
+	}
+
+	return nil
+}
+
+// Resume continues a verified target process tree where supported.
+func Resume(identity ProcessIdentity) error {
+	alive, err := Alive(identity)
+	if err != nil {
+		return fmt.Errorf("verify process before resume: %w", err)
+	}
+	if !alive {
+		return nil
+	}
+	if err := resumeProcess(identity); err != nil {
+		return fmt.Errorf("resume process tree %d: %w", identity.PID, err)
 	}
 
 	return nil

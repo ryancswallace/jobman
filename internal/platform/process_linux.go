@@ -18,6 +18,8 @@ const (
 	linuxBootIDPath = linuxProcRoot + "/sys/kernel/random/boot_id"
 )
 
+func supportsPauseResume() bool { return true }
+
 func applySupervisorConfiguration(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
@@ -82,16 +84,20 @@ func parseLinuxProcessStat(data []byte) (linuxProcessStat, error) {
 }
 
 func procStatPath(pid int) (string, error) {
-	direct := fmt.Sprintf("%s/%d/stat", linuxProcRoot, pid)
-	if _, err := os.Stat(direct); err == nil {
-		return direct, nil
+	wanted := strconv.Itoa(pid)
+	selfNamespace, err := os.Stat(linuxProcRoot + "/self/ns/pid")
+	if err != nil {
+		return "", fmt.Errorf("inspect current process namespace: %w", err)
+	}
+	directRoot := fmt.Sprintf("%s/%d", linuxProcRoot, pid)
+	if linuxProcEntryMatches(directRoot, wanted, selfNamespace) {
+		return directRoot + "/stat", nil
 	}
 
 	entries, err := os.ReadDir(linuxProcRoot)
 	if err != nil {
 		return "", fmt.Errorf("enumerate processes: %w", err)
 	}
-	wanted := strconv.Itoa(pid)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -99,20 +105,36 @@ func procStatPath(pid int) (string, error) {
 		if _, err := strconv.Atoi(entry.Name()); err != nil {
 			continue
 		}
-		statusPath := linuxProcRoot + "/" + entry.Name() + "/status"
-		status, err := os.ReadFile(statusPath)
-		if err != nil {
-			continue
-		}
-		for line := range strings.SplitSeq(string(status), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 && fields[0] == "NSpid:" && fields[len(fields)-1] == wanted {
-				return linuxProcRoot + "/" + entry.Name() + "/stat", nil
-			}
+		root := linuxProcRoot + "/" + entry.Name()
+		if linuxProcEntryMatches(root, wanted, selfNamespace) {
+			return root + "/stat", nil
 		}
 	}
 
 	return "", fmt.Errorf("read process stat: %w", os.ErrNotExist)
+}
+
+// linuxProcEntryMatches disambiguates namespace-local PIDs when /proc exposes
+// entries from an ancestor PID namespace, as can happen in nested containers.
+// Choosing a same-numbered process from another namespace would make process
+// identity checks and signals unsafe.
+func linuxProcEntryMatches(root, wanted string, selfNamespace os.FileInfo) bool {
+	candidateNamespace, err := os.Stat(root + "/ns/pid")
+	if err != nil || !os.SameFile(selfNamespace, candidateNamespace) {
+		return false
+	}
+	status, err := os.ReadFile(root + "/status")
+	if err != nil {
+		return false
+	}
+	for line := range strings.SplitSeq(string(status), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "NSpid:" {
+			return fields[len(fields)-1] == wanted
+		}
+	}
+
+	return false
 }
 
 func processAlive(identity ProcessIdentity) (bool, error) {
@@ -145,6 +167,24 @@ func terminateProcess(identity ProcessIdentity, force bool) error {
 	}
 
 	err := syscall.Kill(-identity.PID, signal)
+	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+
+	return err
+}
+
+func pauseProcess(identity ProcessIdentity) error {
+	err := syscall.Kill(-identity.PID, syscall.SIGSTOP)
+	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+
+	return err
+}
+
+func resumeProcess(identity ProcessIdentity) error {
+	err := syscall.Kill(-identity.PID, syscall.SIGCONT)
 	if errors.Is(err, syscall.ESRCH) {
 		return nil
 	}
