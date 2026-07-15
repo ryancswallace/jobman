@@ -19,7 +19,7 @@ func TestStoreLifecycle(t *testing.T) {
 
 	store := openTestStore(t, "lifecycle", newSequentialEventIDs(0x1000))
 	jobID := mustJobID(t, 1, 1)
-	runID := mustRunID(t, 1, 2)
+	runID := mustRunID(t, 1)
 	supervisorID := mustSupervisorID(t, 1, 3)
 	credential := bytes.Repeat([]byte{0x42}, 32)
 	credentialHash, err := model.NewCredentialHash(credential)
@@ -208,7 +208,7 @@ func TestStartFailureAndLeaseLifecycle(t *testing.T) {
 
 	store := openTestStore(t, "start-failure", newSequentialEventIDs(0x2500))
 	jobID := mustJobID(t, 0x25, 1)
-	runID := mustRunID(t, 0x25, 2)
+	runID := mustRunID(t, 0x25)
 	supervisorID := mustSupervisorID(t, 0x25, 3)
 	credential := bytes.Repeat([]byte{0x25}, 32)
 	hash, err := model.NewCredentialHash(credential)
@@ -462,12 +462,12 @@ func TestConcurrentClaimUsesSnapshotCompareAndSwap(t *testing.T) {
 	go func() {
 		defer group.Done()
 		<-start
-		errorsFound <- first.commitTransition(t.Context(), firstResult, false)
+		errorsFound <- first.commitTransition(t.Context(), firstResult)
 	}()
 	go func() {
 		defer group.Done()
 		<-start
-		errorsFound <- second.commitTransition(t.Context(), secondResult, false)
+		errorsFound <- second.commitTransition(t.Context(), secondResult)
 	}()
 	close(start)
 	group.Wait()
@@ -544,12 +544,12 @@ func TestConcurrentCancellationUsesSnapshotCompareAndSwap(t *testing.T) {
 	go func() {
 		defer group.Done()
 		<-start
-		errorsFound <- first.commitTransition(t.Context(), firstResult, false)
+		errorsFound <- first.commitTransition(t.Context(), firstResult)
 	}()
 	go func() {
 		defer group.Done()
 		<-start
-		errorsFound <- second.commitTransition(t.Context(), secondResult, false)
+		errorsFound <- second.commitTransition(t.Context(), secondResult)
 	}()
 	close(start)
 	group.Wait()
@@ -820,10 +820,10 @@ func mustJobID(t *testing.T, prefix, suffix uint64) model.JobID {
 	return id
 }
 
-func mustRunID(t *testing.T, prefix, suffix uint64) model.RunID {
+func mustRunID(t *testing.T, prefix uint64) model.RunID {
 	t.Helper()
 
-	id, err := model.ParseRunID(uuidText(prefix, suffix))
+	id, err := model.ParseRunID(uuidText(prefix, 2))
 	if err != nil {
 		t.Fatalf("ParseRunID() error = %v", err)
 	}

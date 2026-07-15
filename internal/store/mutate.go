@@ -20,12 +20,45 @@ func (s *Store) Submit(
 	submittedAt time.Time,
 	claimDeadline time.Time,
 ) (model.TransitionResult, error) {
-	result, err := model.NewSubmittedJob(id, specification, credentialHash, submittedAt, claimDeadline)
-	if err != nil {
-		return model.TransitionResult{}, err
+	return s.SubmitWithDependencies(
+		ctx, id, specification, credentialHash, submittedAt, claimDeadline, nil,
+	)
+}
+
+// SubmitWithDependencies atomically inserts the job, immutable dependency
+// edges, runtime row, and initial transition event. A caller can never observe
+// a submitted job missing its prerequisites.
+func (s *Store) SubmitWithDependencies(
+	ctx context.Context,
+	id model.JobID,
+	specification model.JobSpec,
+	credentialHash model.CredentialHash,
+	submittedAt time.Time,
+	claimDeadline time.Time,
+	dependencies []Dependency,
+) (model.TransitionResult, error) {
+	result, transitionErr := model.NewSubmittedJob(id, specification, credentialHash, submittedAt, claimDeadline)
+	if transitionErr != nil {
+		return model.TransitionResult{}, transitionErr
 	}
-	if err := s.commitTransition(ctx, result, true); err != nil {
-		return model.TransitionResult{}, err
+	if validationErr := validateTransition(result); validationErr != nil {
+		return model.TransitionResult{}, validationErr
+	}
+	events, eventErr := s.completeEvents(result.Events)
+	if eventErr != nil {
+		return model.TransitionResult{}, eventErr
+	}
+	if writeErr := s.writeTransaction(ctx, "submit job with dependencies", func(tx *sql.Tx) error {
+		if err := applyJobTransition(ctx, tx, result, true); err != nil {
+			return err
+		}
+		if err := insertDependencies(ctx, tx, id, dependencies); err != nil {
+			return err
+		}
+
+		return insertEvents(ctx, tx, events)
+	}); writeErr != nil {
+		return model.TransitionResult{}, writeErr
 	}
 
 	return result, nil
@@ -49,7 +82,7 @@ func (s *Store) Claim(
 	if err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -73,7 +106,7 @@ func (s *Store) ReserveRun(
 	if err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -97,7 +130,7 @@ func (s *Store) MarkProcessStarted(
 	if err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -124,7 +157,7 @@ func (s *Store) MarkStartFailed(
 	if err := s.attachSupervisorRelease(ctx, &result, failedAt); err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -152,7 +185,7 @@ func (s *Store) FinalizeRun(
 	if err := s.attachSupervisorRelease(ctx, &result, completedAt); err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -185,7 +218,7 @@ func (s *Store) RequestCancellation(
 	if len(result.Events) == 0 {
 		return result, nil
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -210,7 +243,7 @@ func (s *Store) FinalizeCancellationWithoutRun(
 	if err := s.attachSupervisorRelease(ctx, &result, completedAt); err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -232,7 +265,7 @@ func (s *Store) MarkSubmissionFailed(
 	if err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	if err := s.commitTransition(ctx, result); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -266,7 +299,41 @@ func (s *Store) MarkOwnershipLost(
 	if err := s.attachSupervisorRelease(ctx, &result, lostAt); err != nil {
 		return model.TransitionResult{}, err
 	}
-	if err := s.commitTransition(ctx, result, false); err != nil {
+	runIncrement := 0
+	if result.Run != nil {
+		runIncrement = 1
+	}
+	if err := s.commitTransitionWithRuntime(ctx, result, func(tx *sql.Tx) error {
+		update, updateErr := tx.ExecContext(ctx, `
+			UPDATE job_runtime
+			SET revision = revision + 1,
+			    run_count = run_count + ?,
+			    failure_count = failure_count + ?,
+			    next_run_at_ns = NULL,
+			    waiting_reason = ?,
+			    updated_at_ns = ?
+			WHERE job_id = ?`,
+			runIncrement,
+			runIncrement,
+			nullableString(diagnosticCode),
+			lostAt.UTC().UnixNano(),
+			jobID.String(),
+		)
+		if updateErr != nil {
+			return updateErr
+		}
+		if _, releaseErr := tx.ExecContext(ctx, `
+			UPDATE admissions SET released_at_ns = COALESCE(released_at_ns, ?)
+			WHERE job_id = ?`, lostAt.UTC().UnixNano(), jobID.String()); releaseErr != nil {
+			return releaseErr
+		}
+		if _, deleteErr := tx.ExecContext(ctx, `
+			DELETE FROM admission_requests WHERE job_id = ?`, jobID.String()); deleteErr != nil {
+			return deleteErr
+		}
+
+		return requireOneUpdate(update, "job runtime", jobID.String(), 0, "")
+	}); err != nil {
 		return model.TransitionResult{}, err
 	}
 
@@ -363,7 +430,7 @@ func (s *Store) attachSupervisorRelease(
 	return nil
 }
 
-func (s *Store) commitTransition(ctx context.Context, result model.TransitionResult, createJob bool) error {
+func (s *Store) commitTransition(ctx context.Context, result model.TransitionResult) error {
 	if err := validateTransition(result); err != nil {
 		return err
 	}
@@ -373,7 +440,7 @@ func (s *Store) commitTransition(ctx context.Context, result model.TransitionRes
 	}
 
 	return s.writeTransaction(ctx, "state transition", func(tx *sql.Tx) error {
-		if err := applyJobTransition(ctx, tx, result, createJob); err != nil {
+		if err := applyJobTransition(ctx, tx, result, false); err != nil {
 			return err
 		}
 		if err := applyRunTransition(ctx, tx, result); err != nil {
@@ -407,7 +474,19 @@ func validateTransition(result model.TransitionResult) error {
 
 func applyJobTransition(ctx context.Context, tx *sql.Tx, result model.TransitionResult, create bool) error {
 	if create {
-		return insertJob(ctx, tx, result.Job)
+		if err := insertJob(ctx, tx, result.Job); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO job_runtime(job_id, updated_at_ns) VALUES (?, ?)`,
+			result.Job.ID.String(),
+			result.Job.SubmittedAt.UnixNano(),
+		); err != nil {
+			return fmt.Errorf("insert job runtime %s: %w", result.Job.ID, classifySQLite("insert job runtime", err))
+		}
+
+		return nil
 	}
 	event, ok := eventForEntity(result.Events, model.EntityJob)
 	if !ok {
@@ -771,7 +850,7 @@ func insertEvents(ctx context.Context, tx *sql.Tx, events []model.StateEvent) er
 		}
 	}
 
-	return nil
+	return queueNotificationsForStateEvents(ctx, tx, events)
 }
 
 func requireOneUpdate(
