@@ -111,6 +111,9 @@ func TestLogMetadataValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid logs: %v", err)
 	}
+	if !valid.Available() {
+		t.Fatal("new log metadata is unexpectedly unavailable")
+	}
 	tests := map[string]func(*LogMetadata){
 		"relative path": func(metadata *LogMetadata) { metadata.StdoutPath = "stdout.log" },
 		"unclean path":  func(metadata *LogMetadata) { metadata.StdoutPath += "/../stdout.log" },
@@ -118,10 +121,15 @@ func TestLogMetadataValidation(t *testing.T) {
 		"duplicate path": func(metadata *LogMetadata) {
 			metadata.StderrPath = metadata.StdoutPath
 		},
-		"index version": func(metadata *LogMetadata) { metadata.IndexVersion++ },
-		"negative size": func(metadata *LogMetadata) { metadata.StdoutSize = -1 },
-		"integrity":     func(metadata *LogMetadata) { metadata.Integrity = "unknown" },
-		"health":        func(metadata *LogMetadata) { metadata.RecordingHealth = "unknown" },
+		"index version":             func(metadata *LogMetadata) { metadata.IndexVersion += 2 },
+		"negative size":             func(metadata *LogMetadata) { metadata.StdoutSize = -1 },
+		"integrity":                 func(metadata *LogMetadata) { metadata.Integrity = "unknown" },
+		"health":                    func(metadata *LogMetadata) { metadata.RecordingHealth = "unknown" },
+		"pruned count without time": func(metadata *LogMetadata) { metadata.PrunedFiles = 1 },
+		"zero prune time": func(metadata *LogMetadata) {
+			zero := time.Time{}
+			metadata.PrunedAt = &zero
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -210,12 +218,13 @@ func TestCompletedRunValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FinalizeRun() error = %v", err)
 	}
+	completed := *result.Run
 
 	tests := map[string]func(*RunState){
 		"pending logs": func(state *RunState) { state.Logs.Integrity = LogIntegrityPending },
-		"success with nonzero exit": func(state *RunState) {
-			code := 2
-			state.Exit.ExitCode = &code
+		"success without exit code": func(state *RunState) {
+			state.Exit.ExitCode = nil
+			state.Exit.Signal = "terminated"
 		},
 		"exit observed after completion": func(state *RunState) {
 			state.Exit.ObservedAt = state.CompletedAt.Add(time.Second)
@@ -224,7 +233,7 @@ func TestCompletedRunValidation(t *testing.T) {
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			state := *result.Run
+			state := completed
 			exitCopy := *state.Exit
 			state.Exit = &exitCopy
 			mutate(&state)
@@ -232,6 +241,35 @@ func TestCompletedRunValidation(t *testing.T) {
 				t.Fatal("Validate() succeeded")
 			}
 		})
+	}
+
+	nonzeroSuccess := completed
+	nonzeroExit := *completed.Exit
+	nonzero := 42
+	nonzeroExit.ExitCode = &nonzero
+	nonzeroSuccess.Exit = &nonzeroExit
+	if err := nonzeroSuccess.Validate(); err != nil {
+		t.Fatalf("Validate(nonzero configured-success outcome) error = %v", err)
+	}
+	zeroFailure := completed
+	zeroExit := *completed.Exit
+	zero := 0
+	zeroExit.ExitCode = &zero
+	zeroFailure.Exit = &zeroExit
+	zeroFailure.Outcome = RunOutcomeFailure
+	if err := zeroFailure.Validate(); err != nil {
+		t.Fatalf("Validate(zero configured-failure outcome) error = %v", err)
+	}
+	for _, outcome := range []RunOutcome{RunOutcomeCancelled, RunOutcomeTimedOut} {
+		preStart := completed
+		preStart.Outcome = outcome
+		preStart.Exit = nil
+		preStart.Process = nil
+		preStart.StartedAt = nil
+		preStart.ResolvedExecutable = ""
+		if err := preStart.Validate(); err != nil {
+			t.Errorf("Validate(pre-start %s without exit information) error = %v", outcome, err)
+		}
 	}
 }
 

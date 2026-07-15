@@ -408,6 +408,15 @@ func TestMarkOwnershipLost(t *testing.T) {
 	})
 }
 
+func TestPauseJobRejectsProcessLaunchWindow(t *testing.T) {
+	t.Parallel()
+
+	job, _ := claimedJob(t)
+	if _, _, err := PauseJob(job, nil, testTime.Add(2*time.Second)); err == nil {
+		t.Fatal("PauseJob(starting) succeeded during process launch window")
+	}
+}
+
 func TestSupervisorLeaseLifecycle(t *testing.T) {
 	t.Parallel()
 

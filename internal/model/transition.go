@@ -317,8 +317,14 @@ func FinalizeRun(
 	if !outcome.Valid() {
 		return TransitionResult{}, invalid("run outcome", "is unknown")
 	}
-	if job.Cancellation != nil && outcome != RunOutcomeCancelled {
-		return TransitionResult{}, invalid("run outcome", "must be canceled after durable cancellation intent")
+	if job.Cancellation != nil {
+		expected := RunOutcomeCancelled
+		if job.Cancellation.Reason == StopReasonTimeout {
+			expected = RunOutcomeTimedOut
+		}
+		if outcome != expected {
+			return TransitionResult{}, invalid("run outcome", "must match durable stop intent")
+		}
 	}
 
 	return completeRunTransition(job, run, outcome, exit, logs, "", completedAt, EventRunCompleted)
@@ -422,7 +428,8 @@ func MarkOwnershipLost(
 		if err := job.Validate(); err != nil {
 			return TransitionResult{}, err
 		}
-		validWithoutRun := job.Phase == JobPhaseStarting ||
+		validWithoutRun := job.Phase == JobPhaseStarting || job.Phase == JobPhaseWaiting ||
+			job.Phase == JobPhaseQueued || job.Phase == JobPhaseBackoff || job.Phase == JobPhasePaused ||
 			job.Phase == JobPhaseStopping && job.Cancellation != nil
 		if !validWithoutRun || job.ActiveRunID != "" {
 			return TransitionResult{}, jobConflictValue(job, "mark ownership lost", "run state is required")
@@ -630,8 +637,19 @@ func validateJobRunPair(job JobState, run RunState) error {
 }
 
 func validateCancellationTarget(job JobState, run *RunState) error {
-	if job.Phase != JobPhaseStarting && job.Phase != JobPhaseRunning {
-		return jobConflict(job, "cancel", JobPhaseStarting, JobPhaseRunning)
+	if job.Phase != JobPhaseWaiting && job.Phase != JobPhaseQueued &&
+		job.Phase != JobPhaseStarting && job.Phase != JobPhaseRunning &&
+		job.Phase != JobPhaseBackoff && job.Phase != JobPhasePaused {
+		return jobConflict(
+			job,
+			"cancel",
+			JobPhaseWaiting,
+			JobPhaseQueued,
+			JobPhaseStarting,
+			JobPhaseRunning,
+			JobPhaseBackoff,
+			JobPhasePaused,
+		)
 	}
 	if run == nil {
 		if job.ActiveRunID != "" {
@@ -643,8 +661,8 @@ func validateCancellationTarget(job JobState, run *RunState) error {
 	if err := validateJobRunPair(job, *run); err != nil {
 		return err
 	}
-	if run.Phase != RunPhaseStarting && run.Phase != RunPhaseRunning {
-		return runConflict(*run, "cancel", RunPhaseStarting, RunPhaseRunning)
+	if run.Phase != RunPhaseStarting && run.Phase != RunPhaseRunning && run.Phase != RunPhasePaused {
+		return runConflict(*run, "cancel", RunPhaseStarting, RunPhaseRunning, RunPhasePaused)
 	}
 
 	return nil

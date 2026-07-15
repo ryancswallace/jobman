@@ -11,8 +11,11 @@ import (
 	"time"
 )
 
-// LogIndexVersion is the initial persisted chunk-index format version.
-const LogIndexVersion = 1
+// Log index versions accepted by persisted run metadata.
+const (
+	LogIndexVersion          = 1
+	LogIndexVersionSegmented = 2
+)
 
 // EntityKind identifies the snapshot changed by a state event.
 type EntityKind string
@@ -57,6 +60,9 @@ type JobOutcome string
 
 // Job outcomes defined by the v1 specification.
 const (
+	// JobOutcomeNone is the nonterminal zero value and is never valid as a
+	// persisted completed-job outcome.
+	JobOutcomeNone             JobOutcome = ""
 	JobOutcomeSuccess          JobOutcome = "success"
 	JobOutcomeFailure          JobOutcome = "failure"
 	JobOutcomeTimedOut         JobOutcome = "timed_out"
@@ -96,6 +102,14 @@ const (
 	EventSupervisorReleased EventType = "supervisor_released"
 	EventSubmissionFailed   EventType = "submission_failed"
 	EventOwnershipLost      EventType = "ownership_lost"
+	EventJobWaiting         EventType = "job_waiting"
+	EventJobQueued          EventType = "job_queued"
+	EventJobStarting        EventType = "job_starting"
+	EventRetryScheduled     EventType = "retry_scheduled"
+	EventTimeout            EventType = "timeout_requested"
+	EventJobPaused          EventType = "job_paused"
+	EventJobResumed         EventType = "job_resumed"
+	EventJobAborted         EventType = "job_aborted"
 )
 
 // EffectType describes an external action required after a transition commits.
@@ -106,6 +120,8 @@ const (
 	EffectLaunchSupervisor EffectType = "launch_supervisor"
 	EffectStartTarget      EffectType = "start_target"
 	EffectStopTarget       EffectType = "stop_target"
+	EffectPauseTarget      EffectType = "pause_target"
+	EffectResumeTarget     EffectType = "resume_target"
 )
 
 // StopReason identifies why termination was requested.
@@ -248,11 +264,43 @@ type LogMetadata struct {
 	Integrity       LogIntegrity
 	RecordingHealth RecordingHealth
 	DiagnosticCode  string
+	PrunedAt        *time.Time
+	PrunedFiles     uint64
+	PrunedBytes     uint64
+}
+
+// Available reports whether the run's captured logs remain in the filesystem.
+func (metadata LogMetadata) Available() bool {
+	return metadata.PrunedAt == nil
 }
 
 // Validate checks log metadata and path containment prerequisites.
 func (metadata LogMetadata) Validate() error {
 	paths := []string{metadata.StdoutPath, metadata.StderrPath, metadata.IndexPath}
+	if err := validateLogPaths(paths); err != nil {
+		return err
+	}
+	if metadata.IndexVersion != LogIndexVersion && metadata.IndexVersion != LogIndexVersionSegmented {
+		return invalid("log index version", fmt.Sprintf(
+			"must be %d or %d",
+			LogIndexVersion,
+			LogIndexVersionSegmented,
+		))
+	}
+	if metadata.StdoutSize < 0 || metadata.StderrSize < 0 {
+		return invalid("log stream size", "must not be negative")
+	}
+	if !metadata.Integrity.Valid() {
+		return invalid("log integrity", "is unknown")
+	}
+	if !metadata.RecordingHealth.Valid() {
+		return invalid("recording health", "is unknown")
+	}
+
+	return validateLogPruning(metadata)
+}
+
+func validateLogPaths(paths []string) error {
 	for _, path := range paths {
 		if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return invalid("log path", "must be a clean absolute path")
@@ -264,17 +312,17 @@ func (metadata LogMetadata) Validate() error {
 	if paths[0] == paths[1] || paths[0] == paths[2] || paths[1] == paths[2] {
 		return invalid("log paths", "must be distinct")
 	}
-	if metadata.IndexVersion != LogIndexVersion {
-		return invalid("log index version", fmt.Sprintf("must be %d", LogIndexVersion))
-	}
-	if metadata.StdoutSize < 0 || metadata.StderrSize < 0 {
-		return invalid("log stream size", "must not be negative")
-	}
-	if !metadata.Integrity.Valid() {
-		return invalid("log integrity", "is unknown")
-	}
-	if !metadata.RecordingHealth.Valid() {
-		return invalid("recording health", "is unknown")
+
+	return nil
+}
+
+func validateLogPruning(metadata LogMetadata) error {
+	if metadata.PrunedAt == nil {
+		if metadata.PrunedFiles != 0 || metadata.PrunedBytes != 0 {
+			return invalid("log pruning metadata", "removed counts require a prune time")
+		}
+	} else if metadata.PrunedAt.IsZero() {
+		return invalid("log prune time", "must not be zero")
 	}
 
 	return nil
@@ -628,14 +676,15 @@ func validateJobCancellationFields(state JobState) error {
 	if state.Cancellation == nil {
 		return nil
 	}
-	if state.Cancellation.RequestedAt.IsZero() || state.Cancellation.Reason != StopReasonCancellation {
-		return invalid("cancellation intent", "must have a request time and cancellation reason")
+	if state.Cancellation.RequestedAt.IsZero() ||
+		(state.Cancellation.Reason != StopReasonCancellation && state.Cancellation.Reason != StopReasonTimeout) {
+		return invalid("stop intent", "must have a request time and supported reason")
 	}
 	validState := state.Phase == JobPhaseStopping ||
 		state.Phase == JobPhaseCompleted &&
-			(state.Outcome == JobOutcomeCancelled || state.Outcome == JobOutcomeLost)
+			(state.Outcome == JobOutcomeCancelled || state.Outcome == JobOutcomeTimedOut || state.Outcome == JobOutcomeLost)
 	if !validState {
-		return invalid("cancellation intent", "requires a stopping or canceled job")
+		return invalid("stop intent", "requires a stopping or corresponding terminal job")
 	}
 
 	return nil
@@ -730,7 +779,7 @@ func validateRunExitFields(state RunState) error {
 	}
 	mayOmitExit := state.Outcome == RunOutcomeStartFailed ||
 		state.Outcome == RunOutcomeLost ||
-		state.Outcome == RunOutcomeCancelled && state.Process == nil
+		(state.Outcome == RunOutcomeCancelled || state.Outcome == RunOutcomeTimedOut) && state.Process == nil
 	if state.Phase == RunPhaseCompleted && !mayOmitExit && state.Exit == nil {
 		return invalid("completed run", "must have factual exit information")
 	}
@@ -745,12 +794,8 @@ func validateOutcomeExit(outcome RunOutcome, information *ExitInfo) error {
 	if information == nil || outcome == "" {
 		return nil
 	}
-	if outcome == RunOutcomeSuccess && (information.ExitCode == nil || *information.ExitCode != 0) {
-		return invalid("successful run exit", "must contain exit code 0")
-	}
-	if outcome == RunOutcomeFailure && information.ExitCode != nil && *information.ExitCode == 0 &&
-		information.Signal == "" && information.PlatformReason == "" {
-		return invalid("failed run exit", "must contain a nonzero code or termination reason")
+	if outcome == RunOutcomeSuccess && information.ExitCode == nil {
+		return invalid("successful run exit", "must contain an exit code")
 	}
 
 	return nil
@@ -768,6 +813,14 @@ func validateRunTimes(state RunState) error {
 	}
 	if state.Exit != nil && state.CompletedAt != nil && state.Exit.ObservedAt.After(*state.CompletedAt) {
 		return invalid("exit observation time", "must not follow run completion")
+	}
+	if state.Logs.PrunedAt != nil {
+		if state.CompletedAt == nil {
+			return invalid("log prune time", "requires a completed run")
+		}
+		if state.Logs.PrunedAt.Before(*state.CompletedAt) {
+			return invalid("log prune time", "must not precede run completion")
+		}
 	}
 
 	return nil
