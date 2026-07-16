@@ -6,7 +6,7 @@ FROM ghcr.io/actions/jekyll-build-pages:${JEKYLL_BUILD_PAGES_VERSION}@sha256:679
 COPY . /github/workspace
 WORKDIR /github/workspace
 
-ENV INPUT_SOURCE=./site \
+ENV INPUT_SOURCE=./site-build \
     INPUT_DESTINATION=./_site \
     INPUT_FUTURE=false \
     INPUT_VERBOSE=false \

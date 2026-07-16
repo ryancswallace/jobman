@@ -20,6 +20,7 @@ DIST_DIR := dist
 DOCS_DIR := docs
 MANPAGE_DIR := $(DOCS_DIR)/manpage
 COMPLETIONS_DIR := $(DOCS_DIR)/completions
+SITE_BUILD_DIR := site-build
 COVERAGE_FILE := coverage.txt
 COVERAGE_RAW := coverage.raw
 COVERAGE_HTML := coverage.html
@@ -27,6 +28,7 @@ COVERAGE_MIN ?= 90
 
 GEN_MANPAGE := ./devel/manpages/manpages.go
 GEN_COMPLETIONS := ./devel/autocomplete/autocomplete.go
+GEN_SITE := ./devel/sitedocs
 UPDATE_SCRIPTS := ./devel/updates
 
 GO ?= go
@@ -276,8 +278,15 @@ gen-completions: ## Generate Bash, Zsh, and PowerShell completions.
 	@test -s $(COMPLETIONS_DIR)/zsh/_$(PROJECT)
 	@test -s $(COMPLETIONS_DIR)/powershell/$(PROJECT).ps1
 
+.PHONY: gen-site
+gen-site: ## Stage authored, canonical, and generated documentation-site sources.
+	$(GO) run $(GEN_SITE)
+	@test -s $(SITE_BUILD_DIR)/index.md
+	@test -s $(SITE_BUILD_DIR)/reference/commands/run/index.md
+	@test -s $(SITE_BUILD_DIR)/reference/configuration.md
+
 .PHONY: gen-all generate
-gen-all: gen-manpage gen-completions ## Generate every derived documentation asset.
+gen-all: gen-manpage gen-completions gen-site ## Generate every derived documentation asset.
 generate: gen-all
 
 .PHONY: docs-check
@@ -290,6 +299,9 @@ docs-check: ## Check Markdown whitespace and generated documentation assets.
 	@test -s $(COMPLETIONS_DIR)/bash/$(PROJECT)
 	@test -s $(COMPLETIONS_DIR)/zsh/_$(PROJECT)
 	@test -s $(COMPLETIONS_DIR)/powershell/$(PROJECT).ps1
+	@test -s $(SITE_BUILD_DIR)/reference/commands/run/index.md
+	@test -s $(SITE_BUILD_DIR)/assets/examples/jobman.yml
+	@test -s $(SITE_BUILD_DIR)/assets/images/logo.png
 
 .PHONY: spellcheck
 spellcheck: ## Spell-check the repository using cspell or its pinned container.
@@ -308,7 +320,7 @@ spellcheck: ## Spell-check the repository using cspell or its pinned container.
 	fi
 
 .PHONY: docs-site-check
-docs-site-check: ## Build the GitHub Pages site with its production builder.
+docs-site-check: gen-site ## Build the staged GitHub Pages site with its production builder.
 	$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
 		--file Dockerfile.pages --output type=cacheonly .
 

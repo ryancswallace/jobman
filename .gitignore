@@ -4,6 +4,7 @@ dist/
 .release/
 _site/
 site/_site/
+site-build/
 
 # Environment and secrets
 .env
