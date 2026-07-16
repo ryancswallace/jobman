@@ -150,6 +150,37 @@ func TestStoreTimeoutAndCompletionWithoutRun(t *testing.T) {
 	}
 }
 
+func TestRequestTimeoutRejectsMissingActiveRun(t *testing.T) {
+	t.Parallel()
+
+	database := openTestStore(t, "timeout-missing-active-run", newSequentialEventIDs(0xfb80))
+	now := storeTestTime()
+	jobID := mustJobID(t, 0xfb81, 1)
+	runID := mustRunID(t, 0xfb81)
+	credential := submitRuntimeJob(t, database, jobID, now)
+	claimRuntimeJob(t, database, jobID, mustSupervisorID(t, 0xfb81, 2), credential, now)
+	if _, err := database.ReserveRun(
+		t.Context(), jobID, runID, 1,
+		testLogs(database, jobID, model.LogIntegrityPending, model.RecordingHealthy),
+		now.Add(time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an externally corrupted database in which the job still points
+	// at an active run that no longer exists. Timeout handling must surface the
+	// lookup failure instead of recording a transition with incomplete state.
+	if _, err := database.db.ExecContext(t.Context(), `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(t.Context(), `DELETE FROM runs WHERE id = ?`, runID.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.RequestTimeout(t.Context(), jobID, now.Add(2*time.Second)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("RequestTimeout(missing active run) error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestNotificationDeliveryLeaseQueriesAndRenewal(t *testing.T) {
 	t.Parallel()
 
