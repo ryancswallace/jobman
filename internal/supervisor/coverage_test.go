@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -36,21 +37,33 @@ func TestSupervisorCoverageHelper(*testing.T) {
 		os.Exit(0) //nolint:revive // Avoid the Go test runner's PASS text in captured output.
 	case "exit-9":
 		os.Exit(9) //nolint:revive // Helper subprocess must expose a configured exit status.
+	case "exit-7":
+		os.Exit(7) //nolint:revive // Helper subprocess must expose a configured exit status.
 	case "success":
 		os.Exit(0) //nolint:revive // Helper subprocess exits without test-runner output.
+	case "sleep":
+		time.Sleep(time.Hour)
+		os.Exit(0) //nolint:revive // Avoid the Go test runner's PASS text in captured output.
 	}
 }
 
 func supervisorCoverageCommand(t *testing.T, mode string) *exec.Cmd {
 	t.Helper()
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := supervisorTestExecutable(t)
 	command := exec.Command(executable, "-test.run=^TestSupervisorCoverageHelper$") // #nosec G204 -- current test executable.
 	command.Env = append(os.Environ(), supervisorCoverageHelperEnvironment+"="+mode)
 
 	return command
+}
+
+func supervisorTestExecutable(t *testing.T) string {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return executable
 }
 
 func TestExecProbeRunnerAndBoundedOutput(t *testing.T) {
@@ -98,7 +111,7 @@ func TestExecProbeRunnerAndBoundedOutput(t *testing.T) {
 		"PROBE_SECRET": {Provider: "unsupported", Name: "reference"},
 	}}
 	if _, err := invalidSecretRunner.RunProbe(t.Context(), policy.ProbeSpec{
-		Executable: "/bin/true", Timeout: time.Second,
+		Executable: supervisorTestExecutable(t), Timeout: time.Second,
 	}); err == nil {
 		t.Fatal("RunProbe(invalid secret reference) error = nil")
 	}
@@ -119,7 +132,7 @@ func TestNotifierInstantiationAndRetryHelpers(t *testing.T) {
 		{
 			Name: "command", Kind: model.NotifierCommand, Timeout: time.Second,
 			Command: &model.CommandNotifierDefinition{
-				Executable: "/bin/true", Environment: map[string]string{"A": "B"},
+				Executable: supervisorTestExecutable(t), Environment: map[string]string{"A": "B"},
 				SecretEnvironment: map[string]model.SecretReference{
 					"TOKEN": {Provider: "env", Name: "JOBMAN_NOTIFY_SECRET"},
 				}, OutputLimit: 128,
@@ -442,7 +455,7 @@ func TestPrepareTargetPoliciesAndFailures(t *testing.T) {
 		{name: "live stderr rollback", stdin: model.StdinLive, stream: "stderr"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			command := exec.Command("/bin/true")
+			command := supervisorCoverageCommand(t, "success")
 			if test.stream == "stdout" {
 				command.Stdout = io.Discard
 			} else {
@@ -453,7 +466,7 @@ func TestPrepareTargetPoliciesAndFailures(t *testing.T) {
 				broker = new(liveinput.Broker)
 			}
 			if _, err := configurePreparedTarget(
-				command, "/bin/true", makeJob(test.stdin, model.DefaultExecutionPolicy()), runID, broker,
+				command, supervisorTestExecutable(t), makeJob(test.stdin, model.DefaultExecutionPolicy()), runID, broker,
 			); err == nil {
 				t.Fatal("configurePreparedTarget(preconfigured stream) error = nil")
 			}
@@ -484,7 +497,12 @@ func TestWaitEvaluationMatrix(t *testing.T) {
 		{Kind: model.WaitFileExists, Path: ready, FileKind: policy.FileKindRegular, PollInterval: time.Second},
 		{
 			Kind: model.WaitProbe, PollInterval: time.Second,
-			Probe: policy.ProbeSpec{Executable: "/bin/sh", Arguments: []string{"-c", "exit 0"}, Timeout: time.Second, OutputLimit: 16},
+			Probe: policy.ProbeSpec{
+				Executable:  supervisorTestExecutable(t),
+				Arguments:   []string{"-test.run=^TestSupervisorCoverageHelper$"},
+				Timeout:     10 * time.Second,
+				OutputLimit: 16,
+			},
 		},
 	}
 	decision, nextPoll, err := evaluateWaitConditions(
@@ -506,7 +524,7 @@ func TestWaitEvaluationMatrix(t *testing.T) {
 	decision, _, err = evaluateWaitConditions(t.Context(), database, job, policy.WaitModeAll, []model.WaitCondition{{
 		Kind: model.WaitProbe, PollInterval: time.Second,
 		Probe: policy.ProbeSpec{
-			Executable: "/bin/true", Timeout: time.Second, OutputLimit: 16, FatalOnError: true,
+			Executable: supervisorTestExecutable(t), Timeout: time.Second, OutputLimit: 16, FatalOnError: true,
 		},
 		ProbeSecretEnv: map[string]model.SecretReference{
 			"TOKEN": {Provider: "env", Name: "JOBMAN_WAIT_MISSING"},
@@ -634,7 +652,7 @@ func TestNotificationHelperEdges(t *testing.T) {
 		{
 			Name: "command", Kind: model.NotifierCommand, Timeout: time.Second,
 			Command: &model.CommandNotifierDefinition{
-				Executable: "/bin/true",
+				Executable: supervisorTestExecutable(t),
 				SecretEnvironment: map[string]model.SecretReference{
 					"TOKEN": {Provider: "env", Name: "JOBMAN_NOTIFY_MISSING"},
 				},
@@ -1071,7 +1089,7 @@ func TestHandlePublishFailureCleansUpTarget(t *testing.T) {
 		IndexVersion: capture.IndexVersion(), Integrity: model.LogIntegrityPending,
 		RecordingHealth: model.RecordingHealthy,
 	}
-	command := exec.Command("/bin/sh", "-c", "sleep 30")
+	command := supervisorCoverageCommand(t, "sleep")
 	platform.ConfigureTarget(command)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -1126,7 +1144,7 @@ func TestSuperviseStartedTargetHandlesPublishFailure(t *testing.T) {
 		IndexVersion: capture.IndexVersion(), Integrity: model.LogIntegrityPending,
 		RecordingHealth: model.RecordingHealthy,
 	}
-	command := exec.Command("/bin/sh", "-c", "sleep 30")
+	command := supervisorCoverageCommand(t, "sleep")
 	platform.ConfigureTarget(command)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -1149,7 +1167,7 @@ func TestSuperviseStartedTargetHandlesPublishFailure(t *testing.T) {
 		command:  command,
 		stdout:   stdout,
 		stderr:   stderr,
-		resolved: "/bin/sh",
+		resolved: supervisorTestExecutable(t),
 	}
 	database := openSupervisorStore(t, stateDir)
 	closeSupervisorStore(t, database)
@@ -1205,7 +1223,7 @@ func TestReconcileLaunchClaimAndStoreFailure(t *testing.T) {
 	database := openSupervisorStore(t, fixture.stateDir)
 	defer closeSupervisorStore(t, database)
 	job := claimCoverageFixture(t, database, fixture, time.Minute)
-	command := exec.Command("/bin/sh", "-c", "exit 0")
+	command := supervisorCoverageCommand(t, "success")
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -1219,7 +1237,7 @@ func TestReconcileLaunchClaimAndStoreFailure(t *testing.T) {
 	fixture = submitSupervisorFixture(t, true)
 	closed := openSupervisorStore(t, fixture.stateDir)
 	closeSupervisorStore(t, closed)
-	command = exec.Command("/bin/sh", "-c", "exit 0")
+	command = supervisorCoverageCommand(t, "success")
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -1340,7 +1358,7 @@ func TestNotificationQueueFailureRetryAndRenewalEdges(t *testing.T) {
 			Name: "missing-secret", Kind: model.NotifierCommand, Timeout: time.Second,
 			Retry: model.NotifierRetryPolicy{MaxAttempts: 1},
 			Command: &model.CommandNotifierDefinition{
-				Executable: "/bin/true",
+				Executable: supervisorTestExecutable(t),
 				SecretEnvironment: map[string]model.SecretReference{
 					"TOKEN": {Provider: "env", Name: "JOBMAN_NOTIFICATION_ABSENT"},
 				},
@@ -1871,7 +1889,7 @@ func TestAwaitRunnablePausedAndDependencyFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		dependencySpec, err := model.NewJobSpec(model.JobSpecInput{
-			Executable: "/bin/false", WorkingDirectory: t.TempDir(),
+			Executable: supervisorTestExecutable(t), WorkingDirectory: t.TempDir(),
 			ExecutionPolicy: model.DefaultExecutionPolicy(),
 		})
 		if err != nil {
@@ -1902,7 +1920,7 @@ func TestAwaitRunnablePausedAndDependencyFailure(t *testing.T) {
 			JobID: dependencyID, Predicate: string(store.DependencySuccess),
 		}}
 		specification, err := model.NewJobSpec(model.JobSpecInput{
-			Executable: "/bin/true", WorkingDirectory: t.TempDir(), ExecutionPolicy: configuration,
+			Executable: supervisorTestExecutable(t), WorkingDirectory: t.TempDir(), ExecutionPolicy: configuration,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -2074,7 +2092,7 @@ func TestNotificationClosedStoreAndPausedDeadline(t *testing.T) {
 	configuration.NotifierDefinitions = []model.NotifierDefinition{{
 		Name: "command", Kind: model.NotifierCommand, Timeout: time.Second,
 		Retry:   model.NotifierRetryPolicy{MaxAttempts: 1},
-		Command: &model.CommandNotifierDefinition{Executable: "/bin/true"},
+		Command: &model.CommandNotifierDefinition{Executable: supervisorTestExecutable(t)},
 	}}
 	configuration.Notifications = []model.NotificationSubscription{{
 		Notifier: "command", Events: []string{string(notify.EventJobStarted)},
@@ -2147,6 +2165,9 @@ func TestExecuteOneRunCancellationAfterReservation(t *testing.T) {
 
 func TestAwaitTargetWithoutForcedEscalation(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows process termination has no graceful signal equivalent")
+	}
 
 	configuration := model.DefaultExecutionPolicy()
 	specification, err := model.NewJobSpec(model.JobSpecInput{
@@ -2233,7 +2254,7 @@ func TestHandlePublishFailureAfterCancellation(t *testing.T) {
 	if _, err := database.RequestCancellation(t.Context(), job.ID, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("/bin/sh", "-c", "sleep 30")
+	command := supervisorCoverageCommand(t, "sleep")
 	platform.ConfigureTarget(command)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -2318,7 +2339,7 @@ func TestPrepareTargetRejectsUnknownSecretProvider(t *testing.T) {
 		"TOKEN": {Provider: "unknown", Name: "value"},
 	}
 	specification, err := model.NewJobSpec(model.JobSpecInput{
-		Executable: "/bin/true", WorkingDirectory: t.TempDir(), StdinPolicy: model.StdinNull,
+		Executable: supervisorTestExecutable(t), WorkingDirectory: t.TempDir(), StdinPolicy: model.StdinNull,
 		StopPolicy:      model.StopPolicy{GracePeriod: time.Second, ForceAfterGrace: true},
 		ExecutionPolicy: configuration,
 	})
@@ -2454,7 +2475,7 @@ func TestAwaitTargetStoreAndTerminateErrors(t *testing.T) {
 
 	t.Run("invalid target identity", func(t *testing.T) {
 		specification, err := model.NewJobSpec(model.JobSpecInput{
-			Executable: "/bin/true", WorkingDirectory: t.TempDir(),
+			Executable: supervisorTestExecutable(t), WorkingDirectory: t.TempDir(),
 			StopPolicy:      model.StopPolicy{GracePeriod: time.Millisecond, ForceAfterGrace: false},
 			ExecutionPolicy: model.DefaultExecutionPolicy(),
 		})
@@ -2587,7 +2608,7 @@ func TestWaitAndFinalizeRunMissingPersistedRun(t *testing.T) {
 		IndexVersion: capture.IndexVersion(), Integrity: model.LogIntegrityPending,
 		RecordingHealth: model.RecordingHealthy,
 	}
-	command := exec.Command("/bin/sh", "-c", "exit 7")
+	command := supervisorCoverageCommand(t, "exit-7")
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -2793,8 +2814,13 @@ func TestNotificationRetryIsProcessedToAttemptLimit(t *testing.T) {
 	configuration := model.DefaultExecutionPolicy()
 	configuration.NotifierDefinitions = []model.NotifierDefinition{{
 		Name: "retry", Kind: model.NotifierCommand, Timeout: time.Second,
-		Retry:   model.NotifierRetryPolicy{MaxAttempts: 2, Delay: time.Millisecond, MaxDelay: time.Millisecond},
-		Command: &model.CommandNotifierDefinition{Executable: "/bin/false", OutputLimit: 64},
+		Retry: model.NotifierRetryPolicy{MaxAttempts: 2, Delay: time.Millisecond, MaxDelay: time.Millisecond},
+		Command: &model.CommandNotifierDefinition{
+			Executable:  supervisorTestExecutable(t),
+			Arguments:   []string{"-test.run=^TestSupervisorCoverageHelper$"},
+			Environment: map[string]string{supervisorCoverageHelperEnvironment: "exit-9"},
+			OutputLimit: 64,
+		},
 	}}
 	configuration.Notifications = []model.NotificationSubscription{{
 		Notifier: "retry", Events: []string{string(notify.EventJobStarted)},

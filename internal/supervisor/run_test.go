@@ -267,15 +267,14 @@ func TestRunDurablyCompletesSubscribedNotifications(t *testing.T) {
 }
 
 func TestWholeJobTimeoutBoundsNotificationRetrySchedule(t *testing.T) {
+	missingRoot := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
 	configuration := model.DefaultExecutionPolicy()
 	configuration.JobTimeout = 30 * time.Second
 	configuration.NotifierDefinitions = []model.NotifierDefinition{{
 		Name: "slow-retry", Kind: model.NotifierCommand, Timeout: time.Second,
 		Retry: model.NotifierRetryPolicy{MaxAttempts: 3, Delay: time.Hour, MaxDelay: time.Hour},
 		Command: &model.CommandNotifierDefinition{
-			Executable: filepath.Join(
-				string(filepath.Separator), "definitely-missing", "jobman-notifier",
-			),
+			Executable: filepath.Join(missingRoot, "definitely-missing", "jobman-notifier"),
 		},
 	}}
 	configuration.Notifications = []model.NotificationSubscription{{
@@ -628,7 +627,7 @@ func TestRetryableRunTimeoutsStopAtWholeJobTimeout(t *testing.T) {
 
 func TestWholeJobTimeoutBoundsRetryBackoff(t *testing.T) {
 	configuration := model.DefaultExecutionPolicy()
-	configuration.JobTimeout = 250 * time.Millisecond
+	configuration.JobTimeout = 2 * time.Second
 	configuration.FailureDelay = policy.DelayPolicy{Base: time.Hour, Backoff: policy.BackoffConstant}
 	two, err := policy.FiniteLimit(2)
 	if err != nil {
