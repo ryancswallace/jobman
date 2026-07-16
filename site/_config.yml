@@ -1,16 +1,36 @@
-title: Jobman
-description: A daemonless command-line job manager.
+title: Jobman Documentation
+description: Run and manage durable command-line jobs without a shared daemon.
 url: https://ryancswallace.github.io
 baseurl: /jobman
 repository: ryancswallace/jobman
 
 remote_theme: just-the-docs/just-the-docs@v0.12.0
 color_scheme: light
+logo: "/assets/images/logo.png"
 search_enabled: true
 heading_anchors: true
+nav_enabled: true
+nav_sort: case_sensitive
+back_to_top: true
+back_to_top_text: Back to top
+enable_copy_code_button: true
+
+callouts:
+  highlight:
+    color: yellow
+  important:
+    title: Important
+    color: blue
+  note:
+    title: Note
+    color: purple
+  warning:
+    title: Warning
+    color: red
 
 aux_links:
   Jobman on GitHub: https://github.com/ryancswallace/jobman
+  Releases: https://github.com/ryancswallace/jobman/releases
 
 plugins:
   - jekyll-remote-theme

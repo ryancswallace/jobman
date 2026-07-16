@@ -1,59 +1,76 @@
 ---
+layout: default
 title: Home
 nav_order: 1
+permalink: /
 ---
 
 # Jobman
 
-Jobman is a daemonless command-line job manager approaching v1. The current
-release-candidate implementation manages detached direct commands with retries,
-timeouts, prerequisites, local concurrency admission, durable logs, lifecycle
-controls, private local live input, and success or failure notifications
-without a resident service.
+Jobman runs and manages durable command-line jobs without a continuously
+running shared daemon. It combines detached execution, retries, timeouts,
+dependencies, concurrency limits, retained logs, lifecycle controls, live
+input, and notifications in one local CLI.
 
 {: .warning }
-The planned v1 command and configuration contracts are frozen, but a build is
-not a stable v1 release until its exact commit passes native CI, release
-packaging, upgrade, and dogfood evidence. Keep independent backups and a direct
-recovery path when evaluating prerelease builds.
+These pages document the current `main` branch and latest prerelease. Jobman is
+not a stable v1 release yet. Keep independent backups and a direct recovery
+path when evaluating it with important workloads.
 
-## Start here
+## Get productive quickly
 
-- [Project overview and installation](https://github.com/ryancswallace/jobman#readme)
-- [Configuration reference](https://github.com/ryancswallace/jobman/blob/main/docs/CONFIGURATION.md)
-- [Design and target behavior](https://github.com/ryancswallace/jobman/tree/main/docs/design)
-- [Release verification](https://github.com/ryancswallace/jobman/blob/main/RELEASE.md)
-- [Contributing](https://github.com/ryancswallace/jobman/blob/main/CONTRIBUTING.md)
-- [Security policy](https://github.com/ryancswallace/jobman/blob/main/SECURITY.md)
+- [Install Jobman]({{ site.baseurl }}/getting-started/installation/) from a
+  release, Homebrew, a container image, or source.
+- Follow [Your first job]({{ site.baseurl }}/getting-started/first-job/) to
+  submit a command and inspect its result.
+- Read [Core concepts]({{ site.baseurl }}/getting-started/concepts/) to
+  understand jobs, runs, supervisors, and durable state.
+- Browse the generated [`jobman` command reference]({{ site.baseurl }}/reference/commands/).
+- Use the [configuration guide]({{ site.baseurl }}/guides/configuration/) and
+  [schema reference]({{ site.baseurl }}/reference/configuration/) for reusable
+  policies.
 
-## Current capabilities
+## What Jobman manages
 
-- retry and repeated-run limits with bounded backoff and jitter;
-- time, file, probe, and prior-job prerequisites;
-- store-wide and named-pool concurrency slots;
-- per-run and whole-job timeouts;
-- raw stream capture, rotation, follow, retention, and guarded cleanup;
-- best-effort pause/resume and private local live input on supported platforms;
-- strict layered YAML configuration with named job specs and profiles; and
-- bounded command, HTTPS webhook, and SMTP notifications.
+- **Execution:** detached or foreground direct commands with preserved argument
+  boundaries and explicit standard-input policy.
+- **Reliability:** bounded retries, repeated successful runs, backoff, jitter,
+  per-run timeouts, and whole-job deadlines.
+- **Scheduling:** time, file, executable-probe, and prior-job dependencies plus
+  store-wide and named-pool concurrency limits.
+- **Observability:** durable state, raw stdout/stderr capture, log following,
+  rotation, retention, versioned JSON, and health checks.
+- **Control:** wait, cancel, rerun, and best-effort pause/resume and live input
+  where the platform can implement them safely.
+- **Integration:** strict layered YAML, secret references, command callbacks,
+  HTTPS webhooks, and SMTP notifications.
 
-Linux has the full assembled lifecycle and crash-boundary suite. Native macOS
-and Windows CI exercises detachment, process-tree control, private live input,
-permissions, and release-style builds. Stable support still requires those
-native jobs and the documented dogfood runbook to pass on the exact release
-commit.
-
-## Install from source
-
-Jobman currently requires Go 1.26.5:
+## A small example
 
 ```console
-git clone https://github.com/ryancswallace/jobman.git
-cd jobman
-make install
+$ jobman run --name report --retries 2 --run-timeout 5m -- ./build-report quarterly.csv
+01980f4c-7b2a-7a6f-8c10-0123456789ab
+$ jobman status 01980f4c
+01980f4c-7b2a-7a6f-8c10-0123456789ab  report  running
+$ jobman logs --follow 01980f4c
 ```
 
-Release archives, native Linux packages, signed checksums, SBOMs, provenance,
-and signed container images are published through [GitHub Releases].
+Job selectors accept a complete ID, a unique ID prefix of at least eight
+characters, or an unambiguous exact name. Target arguments after `--` are
+passed directly to the operating system; Jobman does not construct an implicit
+shell command.
 
-[GitHub Releases]: https://github.com/ryancswallace/jobman/releases
+## Choose the next topic
+
+| Goal | Documentation |
+| --- | --- |
+| Make execution resilient | [Retries, repetition, and timeouts]({{ site.baseurl }}/guides/reliability/) |
+| Order related jobs | [Dependencies and wait conditions]({{ site.baseurl }}/guides/dependencies/) |
+| Bound local resource use | [Concurrency and pools]({{ site.baseurl }}/guides/concurrency/) |
+| Inspect or prune output | [Logs and retention]({{ site.baseurl }}/guides/logs/) |
+| Operate an active job | [Lifecycle controls]({{ site.baseurl }}/guides/lifecycle/) |
+| Diagnose state | [Troubleshooting]({{ site.baseurl }}/operations/troubleshooting/) |
+| Upgrade safely | [Upgrading and restoring]({{ site.baseurl }}/operations/upgrading/) |
+| Check platform behavior | [Platform support]({{ site.baseurl }}/reference/platforms/) |
+
+Jobman is available under the [MIT License](https://github.com/ryancswallace/jobman/blob/main/LICENSE).
