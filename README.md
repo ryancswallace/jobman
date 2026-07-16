@@ -191,16 +191,16 @@ conventions.
 
 ## Documentation and support
 
-- [Documentation site](https://ryancswallace.github.io/jobman/)
-- [Configuration reference](docs/CONFIGURATION.md)
-- [v1 compatibility contract](docs/COMPATIBILITY.md)
-- [Upgrade and restore guide](docs/UPGRADING.md)
-- [Container contract](docs/CONTAINERS.md)
-- [Dogfood and release-candidate runbook](docs/DOGFOOD.md)
+- [Getting started](https://ryancswallace.github.io/jobman/getting-started/)
+- [User guides](https://ryancswallace.github.io/jobman/guides/)
+- [Generated command reference](https://ryancswallace.github.io/jobman/reference/commands/)
+- [Configuration reference](https://ryancswallace.github.io/jobman/reference/configuration/)
+- [Platform and compatibility reference](https://ryancswallace.github.io/jobman/reference/)
+- [Troubleshooting and recovery](https://ryancswallace.github.io/jobman/operations/)
+- [Dogfood and release-candidate runbook](https://ryancswallace.github.io/jobman/project/dogfood/)
 - [Design documentation](docs/design/README.md)
 - [Release and artifact verification guide](RELEASE.md)
-- [Security policy](SECURITY.md)
-- [Maintenance and support policy](SUPPORT.md)
+- [Security and support policies](https://ryancswallace.github.io/jobman/operations/)
 - [Issue tracker](https://github.com/ryancswallace/jobman/issues)
 
 Please use the issue templates for reproducible bugs and feature proposals.
