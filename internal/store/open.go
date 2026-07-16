@@ -178,7 +178,7 @@ func sqliteDSN(databasePath string, busyTimeout time.Duration) string {
 
 	return (&url.URL{
 		Scheme:   "file",
-		Path:     filepath.ToSlash(databasePath),
+		Path:     sqliteURIPath(databasePath),
 		RawQuery: query.Encode(),
 	}).String()
 }

@@ -395,6 +395,15 @@ func TestStorePublicValidationMatrix(t *testing.T) {
 	}
 }
 
+func TestHardenExistingEmptyStateDirectoryErrors(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "missing")
+	if err := hardenExistingEmptyStateDirectory(missing, false); err == nil {
+		t.Fatal("hardenExistingEmptyStateDirectory(missing) error = nil")
+	}
+}
+
 func TestPersistedConversionValidation(t *testing.T) {
 	t.Parallel()
 

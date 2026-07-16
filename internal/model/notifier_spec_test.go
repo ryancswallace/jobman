@@ -19,8 +19,8 @@ func TestJobSpecNotificationDefinitionsCanonicalRoundTrip(t *testing.T) {
 			Name: "hook", Kind: NotifierCommand, Timeout: 3 * time.Second,
 			Retry: NotifierRetryPolicy{MaxAttempts: 2, Delay: time.Second, MaxDelay: 4 * time.Second},
 			Command: &CommandNotifierDefinition{
-				Executable: "/usr/local/bin/job-event", Arguments: []string{"--json"},
-				WorkingDirectory: "/var/empty", Environment: map[string]string{"MODE": "production"},
+				Executable: testAbsolutePath("usr", "local", "bin", "job-event"), Arguments: []string{"--json"},
+				WorkingDirectory: testAbsolutePath("var", "empty"), Environment: map[string]string{"MODE": "production"},
 				SecretEnvironment: map[string]SecretReference{
 					"TOKEN": {Provider: "env", Name: "JOBMAN_HOOK_TOKEN"},
 				},
@@ -56,7 +56,7 @@ func TestJobSpecNotificationDefinitionsCanonicalRoundTrip(t *testing.T) {
 		{Notifier: "mail", Events: []string{"job_timed_out"}},
 	}
 	specification, err := NewJobSpec(JobSpecInput{
-		Executable: "/bin/echo", Arguments: []string{"test"}, WorkingDirectory: filepath.Clean(t.TempDir()),
+		Executable: testAbsolutePath("bin", "echo"), Arguments: []string{"test"}, WorkingDirectory: filepath.Clean(t.TempDir()),
 		ExecutionPolicy: policy,
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func TestParseJobSpecJSONAcceptsSchemaV2WithoutNotifierDefinitions(t *testing.T)
 	policy := DefaultExecutionPolicy()
 	policy.Notifications = []NotificationSubscription{{Notifier: "legacy", Events: []string{"job_failed"}}}
 	specification, err := NewJobSpec(JobSpecInput{
-		Executable: "/bin/echo", WorkingDirectory: filepath.Clean(t.TempDir()), ExecutionPolicy: policy,
+		Executable: testAbsolutePath("bin", "echo"), WorkingDirectory: filepath.Clean(t.TempDir()), ExecutionPolicy: policy,
 	})
 	if err != nil {
 		t.Fatalf("NewJobSpec() error = %v", err)
@@ -144,7 +144,7 @@ func TestNotifierDefinitionRejectsUnsafeOrInconsistentConfiguration(t *testing.T
 			definition.Webhook.SecretHeaders = map[string]SecretReference{"Authorization": {Provider: "", Name: "token"}}
 		},
 		"mismatched union": func(definition *NotifierDefinition) {
-			definition.Command = &CommandNotifierDefinition{Executable: "/bin/true"}
+			definition.Command = &CommandNotifierDefinition{Executable: testAbsolutePath("bin", "true")}
 		},
 		"unbounded attempts": func(definition *NotifierDefinition) {
 			definition.Retry.MaxAttempts = 0
@@ -186,7 +186,7 @@ func TestNotifierDefinitionValidationEdges(t *testing.T) {
 		return NotifierDefinition{
 			Name: "command", Kind: NotifierCommand, Timeout: time.Second,
 			Retry:   NotifierRetryPolicy{MaxAttempts: 1},
-			Command: &CommandNotifierDefinition{Executable: "/bin/true"},
+			Command: &CommandNotifierDefinition{Executable: testAbsolutePath("bin", "true")},
 		}
 	}
 	for _, mutate := range []func(*NotifierDefinition){

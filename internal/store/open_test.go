@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -273,6 +274,21 @@ func TestOpenConcurrentMigration(t *testing.T) {
 		if err := store.Close(); err != nil {
 			t.Errorf("concurrent Close() error = %v", err)
 		}
+	}
+}
+
+func TestSQLiteDSNUsesAbsoluteFileURI(t *testing.T) {
+	t.Parallel()
+
+	databasePath := filepath.Join(t.TempDir(), DatabaseFilename)
+	dsn := sqliteDSN(databasePath, defaultBusyTimeout)
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse sqlite DSN %q: %v", dsn, err)
+	}
+	wantPath := sqliteURIPath(databasePath)
+	if parsed.Scheme != "file" || parsed.Path != wantPath || parsed.Query().Get("_txlock") != "immediate" {
+		t.Fatalf("sqliteDSN() = %q, parsed as %#v; want absolute path %q", dsn, parsed, wantPath)
 	}
 }
 

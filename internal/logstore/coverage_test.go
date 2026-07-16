@@ -482,6 +482,15 @@ func TestCleanupClaimSafetyBranches(t *testing.T) {
 	}
 }
 
+func TestHardenEmptyPrivateDirectoryErrors(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "missing")
+	if err := hardenEmptyPrivateDirectory(missing); err == nil {
+		t.Fatal("hardenEmptyPrivateDirectory(missing) error = nil")
+	}
+}
+
 func TestReaderPropagatesDestinationAndIndexReplacementErrors(t *testing.T) {
 	t.Parallel()
 

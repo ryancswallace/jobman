@@ -46,6 +46,9 @@ func prepareStateDir(path string) (string, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", errors.New("state path is not a real directory")
 	}
+	if err := hardenExistingEmptyStateDirectory(canonical, created); err != nil {
+		return "", err
+	}
 	if err := validatePermissions(info); err != nil {
 		return "", fmt.Errorf("validate state directory permissions: %w", err)
 	}
@@ -57,6 +60,24 @@ func prepareStateDir(path string) (string, error) {
 	}
 
 	return canonical, nil
+}
+
+func hardenExistingEmptyStateDirectory(path string, created bool) error {
+	if created {
+		return nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("inspect existing state directory contents: %w", err)
+	}
+	if len(entries) != 0 {
+		return nil
+	}
+	if err := hardenPath(path); err != nil {
+		return fmt.Errorf("restrict empty state directory: %w", err)
+	}
+
+	return nil
 }
 
 func prepareDatabaseFile(path string) error {

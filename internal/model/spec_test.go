@@ -23,7 +23,7 @@ func TestNewJobSpecCanonicalizesAndCopiesInput(t *testing.T) {
 	input := JobSpecInput{
 		Executable:       "echo",
 		Arguments:        arguments,
-		WorkingDirectory: filepath.Join(string(filepath.Separator), "tmp", "parent", "..", "work"),
+		WorkingDirectory: filepath.Join(testAbsolutePath("tmp", "parent"), "..", "work"),
 		Environment:      environment,
 		UnsetEnvironment: unset,
 		Name:             "test",
@@ -50,7 +50,7 @@ func TestNewJobSpecCanonicalizesAndCopiesInput(t *testing.T) {
 	if got := specification.UnsetEnvironment(); !reflect.DeepEqual(got, []string{"C", "D"}) {
 		t.Fatalf("UnsetEnvironment() = %#v", got)
 	}
-	if got, want := specification.WorkingDirectory(), filepath.Join(string(filepath.Separator), "tmp", "work"); got != want {
+	if got, want := specification.WorkingDirectory(), testAbsolutePath("tmp", "work"); got != want {
 		t.Fatalf("WorkingDirectory() = %q, want %q", got, want)
 	}
 	if specification.EnvironmentInheritance() != EnvironmentInheritSubmission {
@@ -72,7 +72,7 @@ func TestNewJobSpecCanonicalizesAndCopiesInput(t *testing.T) {
 func TestJobSpecCanonicalJSON(t *testing.T) {
 	t.Parallel()
 
-	workingDirectory := filepath.Join(string(filepath.Separator), "tmp", "work")
+	workingDirectory := testAbsolutePath("tmp", "work")
 	specification, err := NewJobSpec(JobSpecInput{
 		Executable:       "echo",
 		Arguments:        []string{"hello", ""},
@@ -123,7 +123,7 @@ func TestJobSpecCanonicalJSONPreservesEmptyCollections(t *testing.T) {
 
 	specification, err := NewJobSpec(JobSpecInput{
 		Executable:       "true",
-		WorkingDirectory: filepath.Join(string(filepath.Separator), "tmp"),
+		WorkingDirectory: testAbsolutePath("tmp"),
 	})
 	if err != nil {
 		t.Fatalf("NewJobSpec() error = %v", err)
@@ -145,7 +145,7 @@ func TestJobSpecCanonicalJSONPreservesEmptyCollections(t *testing.T) {
 func TestJobSpecCanonicalJSONPreservesRetryableExitCodeDefault(t *testing.T) {
 	t.Parallel()
 
-	base := JobSpecInput{Executable: "true", WorkingDirectory: filepath.Join(string(filepath.Separator), "tmp")}
+	base := JobSpecInput{Executable: "true", WorkingDirectory: testAbsolutePath("tmp")}
 	defaultSpec, err := NewJobSpec(base)
 	if err != nil {
 		t.Fatalf("NewJobSpec(default) error = %v", err)
@@ -188,7 +188,7 @@ func TestNewJobSpecValidation(t *testing.T) {
 
 	base := JobSpecInput{
 		Executable:       "example",
-		WorkingDirectory: filepath.Join(string(filepath.Separator), "tmp"),
+		WorkingDirectory: testAbsolutePath("tmp"),
 	}
 	tests := map[string]func(*JobSpecInput){
 		"empty executable": func(input *JobSpecInput) { input.Executable = "" },

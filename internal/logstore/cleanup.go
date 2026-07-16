@@ -180,6 +180,9 @@ func claimCleanup(
 	if inspectErr != nil {
 		return cleanupClaim{}, inspectErr
 	}
+	if identityErr := primeCleanupIdentities(before, entries); identityErr != nil {
+		return cleanupClaim{}, identityErr
+	}
 	if activeErr := rejectActiveMarker(source); activeErr != nil {
 		return cleanupClaim{}, activeErr
 	}

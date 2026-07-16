@@ -104,12 +104,23 @@ func validatePathSecurity(path string) error {
 	if err != nil {
 		return err
 	}
-	if !owner.Equals(user) {
+	administrators, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		return fmt.Errorf("construct administrators SID: %w", err)
+	}
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	if err != nil {
+		return fmt.Errorf("construct local-system SID: %w", err)
+	}
+	if !owner.Equals(user) && !owner.Equals(administrators) && !owner.Equals(system) {
 		return fmt.Errorf("Windows path owner %s is not current user %s", owner, user)
 	}
 	sddl := descriptor.String()
 	if !strings.Contains(sddl, "D:P") {
 		return fmt.Errorf("Windows path DACL is not protected from inheritance")
+	}
+	if !strings.Contains(sddl, ";;;"+user.String()+")") {
+		return fmt.Errorf("Windows path does not grant the current user explicit access")
 	}
 	for _, broad := range []string{";;;WD)", ";;;BU)", ";;;AU)", ";;;AN)", ";;;BG)", ";;;LG)"} {
 		if strings.Contains(sddl, broad) {

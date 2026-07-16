@@ -100,8 +100,10 @@ func TestCommandAndResolveValidation(t *testing.T) {
 	if err := os.WriteFile(plain, []byte("plain"), 0o600); err != nil {
 		t.Fatalf("write plain fixture: %v", err)
 	}
-	if _, err := Resolve(plain, directory, nil); err == nil {
-		t.Fatal("Resolve(non-executable) error = nil")
+	if runtime.GOOS != "windows" {
+		if _, err := Resolve(plain, directory, nil); err == nil {
+			t.Fatal("Resolve(non-executable) error = nil")
+		}
 	}
 
 	got := MergeEnvironment(

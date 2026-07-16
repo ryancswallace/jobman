@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -103,8 +105,9 @@ func TestStrictLimitScalars(t *testing.T) {
 func TestSecretReferenceParsingAndSerialization(t *testing.T) {
 	t.Parallel()
 
+	fileReference := "file:" + filepath.Join(t.TempDir(), "jobman-secret")
 	var references map[string]SecretRef
-	if err := yaml.Unmarshal([]byte("token: env:JOBMAN_TOKEN\nfile: file:/tmp/jobman-secret\n"), &references); err != nil {
+	if err := yaml.Unmarshal([]byte("token: env:JOBMAN_TOKEN\nfile: "+strconv.Quote(fileReference)+"\n"), &references); err != nil {
 		t.Fatalf("yaml.Unmarshal() error = %v", err)
 	}
 	if references["token"].Provider() != "env" || references["token"].Locator() != "JOBMAN_TOKEN" {
@@ -114,8 +117,12 @@ func TestSecretReferenceParsingAndSerialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
-	if string(encoded) != `{"file":"file:/tmp/jobman-secret","token":"env:JOBMAN_TOKEN"}` {
-		t.Fatalf("json.Marshal() = %s", encoded)
+	var roundTrip map[string]string
+	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if roundTrip["file"] != fileReference {
+		t.Fatalf("json.Marshal() = %s, want file reference %q", encoded, fileReference)
 	}
 
 	for _, input := range []string{

@@ -2,6 +2,7 @@ package model
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,13 +17,18 @@ const (
 
 var testTime = time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 
+func testAbsolutePath(elements ...string) string {
+	root := filepath.VolumeName(os.TempDir()) + string(filepath.Separator)
+	return filepath.Join(append([]string{root}, elements...)...)
+}
+
 func validSpec(tb testing.TB) JobSpec {
 	tb.Helper()
 
 	specification, err := NewJobSpec(JobSpecInput{
 		Executable:             "/usr/bin/example",
 		Arguments:              []string{"first", "second value"},
-		WorkingDirectory:       filepath.Join(string(filepath.Separator), "tmp", "jobman-work"),
+		WorkingDirectory:       testAbsolutePath("tmp", "jobman-work"),
 		Environment:            map[string]string{"JOBMAN_TEST": "true"},
 		UnsetEnvironment:       []string{"REMOVE_ME"},
 		EnvironmentInheritance: EnvironmentInheritSubmission,
@@ -53,7 +59,7 @@ func validCredential(t *testing.T) ([]byte, CredentialHash) {
 }
 
 func validLogs() LogMetadata {
-	root := filepath.Join(string(filepath.Separator), "tmp", "jobman-state", testJobID.String(), "1")
+	root := testAbsolutePath("tmp", "jobman-state", testJobID.String(), "1")
 
 	return LogMetadata{
 		StdoutPath:      filepath.Join(root, "stdout.log"),

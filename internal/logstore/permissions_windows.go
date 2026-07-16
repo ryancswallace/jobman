@@ -28,12 +28,23 @@ func validatePrivateMode(path string, _ fs.FileInfo, _ fs.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("%w: read current Windows user: %v", ErrUnsafePath, err)
 	}
-	if !owner.Equals(user.User.Sid) {
+	administrators, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		return fmt.Errorf("%w: construct administrators SID: %v", ErrUnsafePath, err)
+	}
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	if err != nil {
+		return fmt.Errorf("%w: construct local-system SID: %v", ErrUnsafePath, err)
+	}
+	if !owner.Equals(user.User.Sid) && !owner.Equals(administrators) && !owner.Equals(system) {
 		return fmt.Errorf("%w: %q is not owned by the current Windows user", ErrUnsafePath, path)
 	}
 	sddl := descriptor.String()
 	if !strings.Contains(sddl, "D:P") {
 		return fmt.Errorf("%w: %q has an inherited Windows DACL", ErrUnsafePath, path)
+	}
+	if !strings.Contains(sddl, ";;;"+user.User.Sid.String()+")") {
+		return fmt.Errorf("%w: %q does not grant the current Windows user explicit access", ErrUnsafePath, path)
 	}
 	for _, broad := range []string{";;;WD)", ";;;BU)", ";;;AU)", ";;;AN)", ";;;BG)", ";;;LG)"} {
 		if strings.Contains(sddl, broad) {

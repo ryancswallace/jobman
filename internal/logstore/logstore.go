@@ -515,8 +515,28 @@ func ensurePrivateDirectory(path string) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("%w: %q is not a real directory", ErrUnsafePath, path)
 	}
+	if !created {
+		if err := hardenEmptyPrivateDirectory(path); err != nil {
+			return err
+		}
+	}
 	if err := validatePrivateMode(path, info, directoryMode); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func hardenEmptyPrivateDirectory(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("inspect private directory contents %q: %w", path, err)
+	}
+	if len(entries) != 0 {
+		return nil
+	}
+	if err := hardenPrivatePath(path); err != nil {
+		return fmt.Errorf("restrict empty private directory %q: %w", path, err)
 	}
 
 	return nil

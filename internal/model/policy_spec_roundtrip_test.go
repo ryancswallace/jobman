@@ -2,7 +2,6 @@ package model
 
 import (
 	"bytes"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,6 +12,8 @@ func TestExecutionPolicyFullCanonicalRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	retryAbortAt := testTime.Add(24 * time.Hour)
+	probeExecutable := testAbsolutePath("usr", "bin", "check")
+	secretPath := testAbsolutePath("run", "secrets", "database-password")
 	configuration := ExecutionPolicy{
 		Completion: policy.CompletionPolicy{
 			MaxRuns:         policy.Limit{Value: 5},
@@ -44,17 +45,17 @@ func TestExecutionPolicyFullCanonicalRoundTrip(t *testing.T) {
 			{Kind: WaitUntil, Until: testTime.Add(time.Hour), PollInterval: time.Second},
 			{Kind: WaitDelay, Delay: 3 * time.Second, PollInterval: 2 * time.Second},
 			{
-				Kind: WaitFileExists, Path: filepath.Join(string(filepath.Separator), "tmp", "ready"),
+				Kind: WaitFileExists, Path: testAbsolutePath("tmp", "ready"),
 				FileKind: policy.FileKindRegular, PollInterval: 3 * time.Second,
 				AbortAt: testTime.Add(2 * time.Hour),
 			},
 			{
 				Kind: WaitProbe,
 				Probe: policy.ProbeSpec{
-					Executable: "/usr/bin/check", Arguments: []string{"--ready"},
+					Executable: probeExecutable, Arguments: []string{"--ready"},
 					Timeout: 4 * time.Second, OutputLimit: 4096, FatalOnError: true,
 				},
-				ProbeDirectory:        "/var/empty",
+				ProbeDirectory:        testAbsolutePath("var", "empty"),
 				ProbeEnvironment:      map[string]string{"MODE": "ready"},
 				ProbeUnsetEnvironment: []string{"REMOVE"},
 				ProbeSecretEnv: map[string]SecretReference{
@@ -70,9 +71,9 @@ func TestExecutionPolicyFullCanonicalRoundTrip(t *testing.T) {
 		Tags:                []string{"critical", "nightly"},
 		Groups:              []string{"operations"},
 		SecretEnv: map[string]SecretReference{
-			"DATABASE_PASSWORD": {Provider: "file", Name: "/run/secrets/database-password"},
+			"DATABASE_PASSWORD": {Provider: "file", Name: secretPath},
 		},
-		StdinPath:               "/tmp/jobman-input",
+		StdinPath:               testAbsolutePath("tmp", "jobman-input"),
 		LogRotateSize:           1024,
 		LogMaxSegmentsPerStream: 3,
 		LogCapture:              "stdout",
@@ -80,7 +81,7 @@ func TestExecutionPolicyFullCanonicalRoundTrip(t *testing.T) {
 		LogRetentionConfigured:  true,
 	}
 	specification, err := NewJobSpec(JobSpecInput{
-		Executable: "/bin/echo", WorkingDirectory: t.TempDir(),
+		Executable: testAbsolutePath("bin", "echo"), WorkingDirectory: t.TempDir(),
 		StdinPolicy: StdinFile, ExecutionPolicy: configuration,
 	})
 	if err != nil {
@@ -103,7 +104,7 @@ func TestExecutionPolicyFullCanonicalRoundTrip(t *testing.T) {
 	}
 	got := parsed.ExecutionPolicy()
 	if got.Concurrency != configuration.Concurrency || len(got.WaitConditions) != 4 ||
-		got.WaitConditions[3].Probe.Executable != "/usr/bin/check" ||
+		got.WaitConditions[3].Probe.Executable != probeExecutable ||
 		got.SecretEnv["DATABASE_PASSWORD"] != configuration.SecretEnv["DATABASE_PASSWORD"] {
 		t.Fatalf("execution policy round trip lost populated fields: %#v", got)
 	}
@@ -115,7 +116,7 @@ func TestWaitConditionValidationVariants(t *testing.T) {
 	valid := []WaitCondition{
 		{Kind: WaitUntil, Until: testTime, PollInterval: time.Second},
 		{Kind: WaitDelay, PollInterval: time.Second},
-		{Kind: WaitFileExists, Path: "/tmp/ready", FileKind: policy.FileKindSymlink, PollInterval: time.Second},
+		{Kind: WaitFileExists, Path: testAbsolutePath("tmp", "ready"), FileKind: policy.FileKindSymlink, PollInterval: time.Second},
 		{
 			Kind:         WaitProbe,
 			Probe:        policy.ProbeSpec{Executable: "true", Timeout: time.Second, OutputLimit: 1},
@@ -131,7 +132,7 @@ func TestWaitConditionValidationVariants(t *testing.T) {
 		{Kind: WaitUntil, PollInterval: time.Second},
 		{Kind: WaitDelay, Delay: -1, PollInterval: time.Second},
 		{Kind: WaitFileExists, Path: "", PollInterval: time.Second},
-		{Kind: WaitFileExists, Path: "/tmp/x", FileKind: policy.FileKind("unknown"), PollInterval: time.Second},
+		{Kind: WaitFileExists, Path: testAbsolutePath("tmp", "x"), FileKind: policy.FileKind("unknown"), PollInterval: time.Second},
 		{Kind: WaitConditionKind("unknown"), PollInterval: time.Second},
 		{Kind: WaitDelay, PollInterval: 0},
 		{Kind: WaitDelay, PollInterval: time.Second, AbortAt: time.Unix(-1, 0)},
@@ -148,7 +149,7 @@ func TestExecutionPolicyValidationEdges(t *testing.T) {
 	base := DefaultExecutionPolicy()
 	validFilePolicy := func() ExecutionPolicy {
 		value := base
-		value.StdinPath = "/tmp/input"
+		value.StdinPath = testAbsolutePath("tmp", "input")
 
 		return value
 	}
@@ -177,7 +178,7 @@ func TestExecutionPolicyValidationEdges(t *testing.T) {
 		{name: "zero slots", mutate: func(value *ExecutionPolicy) { value.Concurrency.Slots = 0 }},
 		{name: "foreground live", stdin: StdinLive, mutate: func(value *ExecutionPolicy) { value.Foreground = true }},
 		{name: "file path missing", stdin: StdinFile},
-		{name: "path for null", mutate: func(value *ExecutionPolicy) { value.StdinPath = "/tmp/input" }},
+		{name: "path for null", mutate: func(value *ExecutionPolicy) { value.StdinPath = testAbsolutePath("tmp", "input") }},
 		{name: "background inherit", stdin: StdinInherit},
 		{name: "negative rotation", mutate: func(value *ExecutionPolicy) { value.LogRotateSize = -1 }},
 		{name: "too many segments", mutate: func(value *ExecutionPolicy) { value.LogMaxSegmentsPerStream = 1 << 16 }},
@@ -249,7 +250,7 @@ func TestExecutionPolicyWireRejectsMalformedFields(t *testing.T) {
 	t.Parallel()
 
 	specification, err := NewJobSpec(JobSpecInput{
-		Executable: "/bin/true", WorkingDirectory: t.TempDir(),
+		Executable: testAbsolutePath("bin", "true"), WorkingDirectory: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("NewJobSpec() error = %v", err)
