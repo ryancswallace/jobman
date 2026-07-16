@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,8 @@ func TestJobSpecNotificationDefinitionsCanonicalRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	password := SecretReference{Provider: "env", Name: "JOBMAN_SMTP_PASSWORD"}
-	signing := SecretReference{Provider: "file", Name: "/run/secrets/webhook-signing-key"}
+	signingPath := testAbsolutePath("run", "secrets", "webhook-signing-key")
+	signing := SecretReference{Provider: "file", Name: signingPath}
 	definitions := []NotifierDefinition{
 		{
 			Name: "hook", Kind: NotifierCommand, Timeout: 3 * time.Second,
@@ -70,7 +72,7 @@ func TestJobSpecNotificationDefinitionsCanonicalRoundTrip(t *testing.T) {
 	returned := specification.ExecutionPolicy()
 	returned.NotifierDefinitions[2].SMTP.To[0] = "mutated@example.test"
 	if got := specification.ExecutionPolicy().NotifierDefinitions; got[0].Command.Environment["MODE"] != "production" ||
-		got[1].Webhook.SigningSecret.Name != "/run/secrets/webhook-signing-key" || got[2].SMTP.To[0] != "ops@example.test" {
+		got[1].Webhook.SigningSecret.Name != signingPath || got[2].SMTP.To[0] != "ops@example.test" {
 		t.Fatal("notification definition was mutated through caller-owned data")
 	}
 
@@ -78,7 +80,8 @@ func TestJobSpecNotificationDefinitionsCanonicalRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CanonicalJSON() error = %v", err)
 	}
-	if bytes.Contains(encoded, []byte("top-secret")) || !bytes.Contains(encoded, []byte(`"signing_secret":{"provider":"file","name":"/run/secrets/webhook-signing-key"}`)) {
+	wantSigning := []byte(`"signing_secret":{"provider":"file","name":` + strconv.Quote(signingPath) + `}`)
+	if bytes.Contains(encoded, []byte("top-secret")) || !bytes.Contains(encoded, wantSigning) {
 		t.Fatalf("canonical notification credential representation is unsafe or incomplete: %s", encoded)
 	}
 	parsed, err := ParseJobSpecJSON(encoded)

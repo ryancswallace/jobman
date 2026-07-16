@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -262,12 +263,14 @@ func TestFilesystemRollbackAndValidationBranches(t *testing.T) {
 	if err := ensurePrivateDirectory(nested); err != nil {
 		t.Fatalf("ensurePrivateDirectory() error = %v", err)
 	}
-	unsafeDirectory := filepath.Join(root, "unsafe")
-	if err := os.Mkdir(unsafeDirectory, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensurePrivateDirectory(unsafeDirectory); err == nil {
-		t.Fatal("ensurePrivateDirectory(unsafe mode) error = nil")
+	if runtime.GOOS != "windows" {
+		unsafeDirectory := filepath.Join(root, "unsafe")
+		if err := os.Mkdir(unsafeDirectory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensurePrivateDirectory(unsafeDirectory); err == nil {
+			t.Fatal("ensurePrivateDirectory(unsafe mode) error = nil")
+		}
 	}
 	notDirectory := filepath.Join(root, "file")
 	if err := os.WriteFile(notDirectory, nil, 0o600); err != nil {
@@ -279,19 +282,22 @@ func TestFilesystemRollbackAndValidationBranches(t *testing.T) {
 	if _, err := openPrivateRegularFile(filepath.Join(root, "missing")); err == nil {
 		t.Fatal("openPrivateRegularFile(missing) error = nil")
 	}
-	unsafeFile := filepath.Join(root, "unsafe-file")
-	if err := os.WriteFile(unsafeFile, nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := openPrivateRegularFile(unsafeFile); err == nil {
-		t.Fatal("openPrivateRegularFile(unsafe mode) error = nil")
+	if runtime.GOOS != "windows" {
+		unsafeFile := filepath.Join(root, "unsafe-file")
+		if err := os.WriteFile(unsafeFile, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := openPrivateRegularFile(unsafeFile); err == nil {
+			t.Fatal("openPrivateRegularFile(unsafe mode) error = nil")
+		}
 	}
 	symlink := filepath.Join(root, "link")
-	if err := os.Symlink(notDirectory, symlink); err != nil {
+	if err := os.Symlink(notDirectory, symlink); err == nil {
+		if _, openErr := openPrivateRegularFile(symlink); !errors.Is(openErr, ErrUnsafePath) {
+			t.Fatalf("openPrivateRegularFile(symlink) error = %v", openErr)
+		}
+	} else if runtime.GOOS != "windows" {
 		t.Fatal(err)
-	}
-	if _, err := openPrivateRegularFile(symlink); !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("openPrivateRegularFile(symlink) error = %v", err)
 	}
 
 	runDirectory := filepath.Join(root, "rollback")

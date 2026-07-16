@@ -259,15 +259,16 @@ func TestAutomaticNotificationQueueAndEventMapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	absoluteRoot := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
 	specification, err := model.NewJobSpec(model.JobSpecInput{
-		Executable: "/test/bin/worker", WorkingDirectory: t.TempDir(), StdinPolicy: model.StdinNull,
+		Executable: filepath.Join(absoluteRoot, "test", "bin", "worker"), WorkingDirectory: t.TempDir(), StdinPolicy: model.StdinNull,
 		StopPolicy: model.StopPolicy{GracePeriod: time.Second, ForceAfterGrace: true},
 		ExecutionPolicy: model.ExecutionPolicy{
 			Notifications: []model.NotificationSubscription{{Notifier: "hook", Events: []string{"job_started"}}},
 			NotifierDefinitions: []model.NotifierDefinition{{
 				Name: "hook", Kind: model.NotifierCommand, Timeout: time.Second,
 				Retry:   model.NotifierRetryPolicy{MaxAttempts: 3},
-				Command: &model.CommandNotifierDefinition{Executable: "/bin/true", OutputLimit: 1024},
+				Command: &model.CommandNotifierDefinition{Executable: filepath.Join(absoluteRoot, "bin", "true"), OutputLimit: 1024},
 			}},
 		},
 	})

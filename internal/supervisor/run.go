@@ -431,7 +431,10 @@ func handlePublishFailure(
 	logs = completedLogMetadata(logs, captureErr, closeErr)
 	latest, getErr := database.GetJob(ctx, jobID)
 	if getErr == nil && latest.Cancellation != nil {
-		exit := processExitInfo(target.command, waitErr, time.Now().UTC())
+		exit := exitInfoForOutcome(
+			model.RunOutcomeCancelled,
+			processExitInfo(target.command, waitErr, time.Now().UTC()),
+		)
 		_, finalizeErr := database.FinalizeRun(
 			ctx,
 			jobID,
@@ -528,7 +531,7 @@ func waitAndFinalizeRun(
 		outcome = model.RunOutcomeSuccess
 	}
 	completedAt := time.Now().UTC()
-	exit := processExitInfo(target.command, waitErr, completedAt)
+	exit := exitInfoForOutcome(outcome, processExitInfo(target.command, waitErr, completedAt))
 	runtimeState, err := database.GetRuntime(operationCtx, jobID)
 	if err != nil {
 		return false, errors.Join(err, captureErr, closeErr)
@@ -576,6 +579,23 @@ func waitAndFinalizeRun(
 	notifyCompletedRun(operationCtx, database, completed, outcome, completedAt)
 
 	return disposition.TerminalOutcome != "", controlErr
+}
+
+// exitInfoForOutcome keeps controlled termination distinct from an ordinary
+// command failure. Windows reports the job-object termination status as exit
+// code 1, but the durable outcome contract permits exit codes only for normal
+// success or failure. Preserve the factual observation as a platform reason.
+func exitInfoForOutcome(outcome model.RunOutcome, exit *model.ExitInfo) *model.ExitInfo {
+	if exit == nil || exit.ExitCode == nil ||
+		(outcome != model.RunOutcomeTimedOut && outcome != model.RunOutcomeCancelled) {
+		return exit
+	}
+	exit.ExitCode = nil
+	if exit.Signal == "" && exit.PlatformReason == "" {
+		exit.PlatformReason = "process_terminated"
+	}
+
+	return exit
 }
 
 //nolint:gocognit,cyclop // Target control coordinates completion, durable intents, two timeout budgets, and signal escalation.

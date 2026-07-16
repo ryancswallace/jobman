@@ -302,6 +302,26 @@ func TestProcessExitInfoAndJitterSource(t *testing.T) {
 	}
 }
 
+func TestExitInfoForOutcome(t *testing.T) {
+	t.Parallel()
+
+	code := 1
+	observedAt := time.Now()
+	for _, outcome := range []model.RunOutcome{model.RunOutcomeTimedOut, model.RunOutcomeCancelled} {
+		exit := exitInfoForOutcome(outcome, &model.ExitInfo{ExitCode: &code, ObservedAt: observedAt})
+		if exit.ExitCode != nil || exit.PlatformReason != "process_terminated" {
+			t.Fatalf("exitInfoForOutcome(%s) = %+v", outcome, exit)
+		}
+	}
+	exit := &model.ExitInfo{ExitCode: &code, ObservedAt: observedAt}
+	if got := exitInfoForOutcome(model.RunOutcomeFailure, exit); got != exit || got.ExitCode == nil {
+		t.Fatalf("exitInfoForOutcome(failure) = %+v", got)
+	}
+	if exitInfoForOutcome(model.RunOutcomeCancelled, nil) != nil {
+		t.Fatal("exitInfoForOutcome(canceled, nil) != nil")
+	}
+}
+
 type failingReader struct{ err error }
 
 func (reader *failingReader) Read([]byte) (int, error) { return 0, reader.err }

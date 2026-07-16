@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"testing"
 	"time"
 
@@ -227,11 +226,18 @@ func TestServicePausesResumesAndCancelsActiveProcess(t *testing.T) {
 	}
 	command := exec.Command(os.Args[0], "-test.run=^TestServicePausesResumesAndCancelsActiveProcess$")
 	command.Env = append(os.Environ(), "JOBMAN_APP_PROCESS_HELPER=1")
+	platform.ConfigureTarget(command)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	treeID, err := platform.FinalizeTargetStart(command.Process.Pid)
+	if err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -249,7 +255,7 @@ func TestServicePausesResumesAndCancelsActiveProcess(t *testing.T) {
 		t.Context(), job.ID, runID, os.Args[0],
 		model.ProcessIdentity{
 			PID: identity.PID, Platform: runtime.GOOS, CreationID: identity.Creation,
-			BootID: identity.Boot, TreeID: strconv.Itoa(identity.PID),
+			BootID: identity.Boot, TreeID: treeID,
 		}, clock.now.Add(2*time.Second),
 	); err != nil {
 		t.Fatal(err)

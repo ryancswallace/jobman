@@ -68,7 +68,8 @@ func attachStartedTarget(pid int) (tree string, returnedErr error) {
 		return "", err
 	}
 	process, err := windows.OpenProcess(
-		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.PROCESS_QUERY_LIMITED_INFORMATION,
+		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.PROCESS_QUERY_LIMITED_INFORMATION|
+			windows.PROCESS_DUP_HANDLE,
 		false,
 		processID,
 	)
@@ -80,6 +81,17 @@ func attachStartedTarget(pid int) (tree string, returnedErr error) {
 	}()
 	if err := windows.AssignProcessToJobObject(job, process); err != nil {
 		return "", fmt.Errorf("assign target to job object: %w", err)
+	}
+	// A named job object ceases to exist when its last handle closes. Retain a
+	// handle in the target itself so independent Jobman invocations can reopen
+	// the object for pause, resume, and tree-wide termination after this process
+	// closes its setup handle. The target-owned handle closes automatically when
+	// the target exits.
+	var targetJob windows.Handle
+	if err := windows.DuplicateHandle(
+		windows.CurrentProcess(), job, process, &targetJob, 0, false, windows.DUPLICATE_SAME_ACCESS,
+	); err != nil {
+		return "", fmt.Errorf("retain target job object: %w", err)
 	}
 	if err := resumeInitialThread(processID); err != nil {
 		return "", err

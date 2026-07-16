@@ -24,9 +24,9 @@ func TestCommandDeliversExactInvocationAndMinimalEnvironment(t *testing.T) {
 	var received CommandRequest
 	notifier := Command{
 		NameValue:  "audit",
-		Executable: filepath.Join(string(filepath.Separator), "opt", "jobman", "hook"),
+		Executable: notifyTestAbsolutePath(t, "opt", "jobman", "hook"),
 		Arguments:  []string{"one argument", "$(not-a-shell)"},
-		Directory:  filepath.Join(string(filepath.Separator), "var", "empty"),
+		Directory:  notifyTestAbsolutePath(t, "var", "empty"),
 		Environment: map[string]string{
 			"HOOK_MODE": "audit",
 		},
@@ -72,7 +72,7 @@ func TestCommandBoundsInjectedRunnerOutput(t *testing.T) {
 
 	notifier := Command{
 		NameValue:   "audit",
-		Executable:  filepath.Join(string(filepath.Separator), "hook"),
+		Executable:  notifyTestAbsolutePath(t, "hook"),
 		OutputLimit: 4,
 		Runner: commandRunnerFunc(func(_ context.Context, _ CommandRequest) (CommandResult, error) {
 			return CommandResult{Stdout: []byte("codes"), Stderr: []byte("logsX")}, nil
@@ -92,7 +92,7 @@ func TestCommandHidesRunnerError(t *testing.T) {
 
 	notifier := Command{
 		NameValue:  "audit",
-		Executable: filepath.Join(string(filepath.Separator), "hook"),
+		Executable: notifyTestAbsolutePath(t, "hook"),
 		Runner: commandRunnerFunc(func(_ context.Context, _ CommandRequest) (CommandResult, error) {
 			return CommandResult{}, errors.New("password=top-secret")
 		}),
@@ -112,14 +112,16 @@ func TestCommandHidesRunnerError(t *testing.T) {
 func TestCommandRejectsUnsafeConfiguration(t *testing.T) {
 	t.Parallel()
 
+	absoluteHook := notifyTestAbsolutePath(t, "hook")
+	uncleanHook := notifyTestAbsolutePath(t, "a", "hook") + string(filepath.Separator) + ".."
 	tests := []struct {
 		command Command
 		name    string
 	}{
 		{name: "relative executable", command: Command{NameValue: "x", Executable: "hook"}},
-		{name: "unclean executable", command: Command{NameValue: "x", Executable: filepath.Join(string(filepath.Separator), "a", "..", "hook") + string(filepath.Separator) + ".."}},
-		{name: "relative directory", command: Command{NameValue: "x", Executable: filepath.Join(string(filepath.Separator), "hook"), Directory: "tmp"}},
-		{name: "invalid environment", command: Command{NameValue: "x", Executable: filepath.Join(string(filepath.Separator), "hook"), Environment: map[string]string{"A=B": "x"}}},
+		{name: "unclean executable", command: Command{NameValue: "x", Executable: uncleanHook}},
+		{name: "relative directory", command: Command{NameValue: "x", Executable: absoluteHook, Directory: "tmp"}},
+		{name: "invalid environment", command: Command{NameValue: "x", Executable: absoluteHook, Environment: map[string]string{"A=B": "x"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -129,6 +131,13 @@ func TestCommandRejectsUnsafeConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func notifyTestAbsolutePath(t *testing.T, elements ...string) string {
+	t.Helper()
+	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
+
+	return filepath.Join(append([]string{root}, elements...)...)
 }
 
 func TestExecRunnerStartFailureDoesNotPanic(t *testing.T) {
