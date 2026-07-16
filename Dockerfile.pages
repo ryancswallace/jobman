@@ -14,3 +14,11 @@ ENV INPUT_SOURCE=./site-build \
     GITHUB_WORKSPACE=/github/workspace
 
 RUN /entrypoint.sh
+
+# The Pages artifact uploader runs outside this container and must be able to
+# read static files whose modes Jekyll preserves from the staged source.
+RUN unreadable="$(find ./_site -type f ! -perm -004 -print -quit)" && \
+    if [ -n "${unreadable}" ]; then \
+        echo "Rendered site contains a non-public file: ${unreadable}" >&2; \
+        exit 1; \
+    fi

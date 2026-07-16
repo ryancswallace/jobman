@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -48,6 +49,23 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 	}
 	if !strings.Contains(string(commandPage), "# jobman run") || strings.Contains(string(commandPage), "Auto generated") {
 		t.Fatalf("generated command page is incomplete or nondeterministic:\n%s", commandPage)
+	}
+	if runtime.GOOS != "windows" {
+		for _, relative := range []string{
+			"index.md",
+			"assets/examples/jobman.yml",
+			"assets/images/logo.png",
+			"guides/containers.md",
+			"reference/commands/run/index.md",
+		} {
+			info, statErr := os.Stat(filepath.Join(outputRoot, filepath.FromSlash(relative)))
+			if statErr != nil {
+				t.Fatalf("stat generated %s: %v", relative, statErr)
+			}
+			if got := info.Mode().Perm(); got != 0o644 {
+				t.Errorf("generated %s mode = %04o, want 0644", relative, got)
+			}
+		}
 	}
 
 	secondRoot := filepath.Join(t.TempDir(), "site")

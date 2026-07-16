@@ -144,8 +144,8 @@ func copyFile(source, destination string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o750); err != nil {
 		return fmt.Errorf("create directory for %s: %w", destination, err)
 	}
-	// #nosec G703 -- destination is derived from the repository-controlled authored tree.
-	if err := os.WriteFile(destination, contents, 0o600); err != nil {
+	// #nosec G306,G703 -- staged documentation is a public deployment input at a repository-controlled path.
+	if err := os.WriteFile(destination, contents, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", destination, err)
 	}
 
@@ -167,8 +167,8 @@ func publishCanonicalPage(repositoryRoot, outputRoot string, page publishedPage)
 		return fmt.Errorf("create canonical page directory: %w", err)
 	}
 	contents = pageFrontMatter(page.title, page.parent, page.grandParent, page.permalink, page.navOrder, false) + contents
-	// #nosec G703 -- destination is derived from the static publication manifest.
-	if err := os.WriteFile(destination, []byte(contents), 0o600); err != nil {
+	// #nosec G306,G703 -- staged documentation is a public deployment input at a static path.
+	if err := os.WriteFile(destination, []byte(contents), 0o644); err != nil {
 		return fmt.Errorf("write canonical page %s: %w", page.destination, err)
 	}
 
@@ -241,7 +241,8 @@ func writeCommandPage(outputRoot string, command *cobra.Command, navOrder int) e
 	}
 	contents := pageFrontMatter(title, parent, grandParent, commandPermalink(command.CommandPath()), navOrder, hasChildren) + body
 	path := filepath.Join(directory, "index.md")
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+	// #nosec G306 -- generated command references are public deployment inputs.
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		return fmt.Errorf("write command reference %s: %w", path, err)
 	}
 
