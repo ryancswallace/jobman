@@ -8,7 +8,21 @@ on:
     paths:
       - ".github/workflows/pages.yml"
       - "assets/**"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "CONTRIBUTING.md"
+      - "Dockerfile.pages"
+      - "Makefile"
+      - "RELEASE.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "devel/sitedocs/**"
       - "docs/**"
+      - "etc/jobman/jobman.yml"
+      - "go.mod"
+      - "go.sum"
+      - "go.version"
+      - "jobman/**"
       - "site/**"
   workflow_dispatch:
 
@@ -30,13 +44,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Stage documentation
+        run: make gen-site
+
       - name: Set up Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
         with:
-          source: ./site
+          source: ./site-build
           destination: ./_site
 
       - name: Upload Pages artifact
