@@ -40,6 +40,25 @@ Documentation changes should pass `make docs`, and public API behavior changes
 should update tests, docs, and [CHANGELOG.md](CHANGELOG.md) when users will
 notice the change.
 
+The published manual is assembled rather than maintained as a duplicate tree:
+
+- author task-oriented pages under `site/`;
+- update canonical contracts under `docs/` or at the repository root;
+- update Cobra help for command and flag reference text; and
+- run `make gen-site` to stage and validate the combined source in the ignored
+  `site-build/` directory.
+
+Never edit `site-build/` directly. Internal site links should use the
+`{{ site.baseurl }}/getting-started/` form so local, project Pages, and
+production paths remain consistent. The site generator rejects missing
+internal destinations, missing assets, duplicate permalinks, legacy
+Python-project instructions, and command reference drift.
+
+The `Docs links` workflow separately checks published HTTPS destinations with
+bounded concurrency and retries. Keep exclusions limited to deliberate example
+endpoints; do not exclude a failing documentation provider merely to make the
+check pass.
+
 Useful focused checks include:
 
 - `make quick-check` for the normal edit-test loop;
@@ -58,9 +77,10 @@ Useful focused checks include:
 - `make docker-image` for runtime-image changes.
 - `make docker-smoke` for persistent-state and derived-image behavior.
 
-Generated man pages and completions are ignored in the working tree and are
-created during releases. Change their generators under `devel/`, then run
-`make docs` to validate the generated output.
+Generated man pages, completions, the staged site, and its command reference are
+ignored in the working tree and created during validation or releases. Change
+their generators under `devel/`, then run `make docs` to validate the generated
+output and production-equivalent Pages build.
 
 ## Commit messages
 

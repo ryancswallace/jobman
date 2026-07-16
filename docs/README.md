@@ -1,6 +1,9 @@
 # Documentation
 
-The published documentation is available on the [Jobman documentation site].
+The published user and operator manual is available on the
+[Jobman documentation site]. `site/` contains authored guides and
+`devel/sitedocs/` stages selected canonical documents from this directory for
+publication without duplicating their maintained source.
 
 - `design/` records the target product model and architectural constraints.
 - `manpage/` contains release-generated manual pages.

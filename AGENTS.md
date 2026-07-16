@@ -29,7 +29,9 @@ claim unimplemented functionality is available.
 - `tests/perf/` is reserved for benchmarks and regression measurements.
 - `docs/design/` records architectural intent. Generated man pages and shell
   completions live under `docs/manpage/` and `docs/completions/`.
-- `site/` is the GitHub Pages source.
+- `site/` contains authored GitHub Pages content. `devel/sitedocs/` combines it
+  with selected canonical repository documents and generated Cobra reference
+  pages in the ignored `site-build/` staging directory.
 - `etc/jobman/` contains safe system-wide configuration assets installed by
   native packages.
 - `.github/workflows/`, `.goreleaser.yml`, Docker files, and `.releaserc` form the
@@ -203,11 +205,12 @@ make coverage
 
 ## Generated files and documentation
 
-Man pages and shell completions are derived from the Cobra command tree and are
-ignored by Git. Do not edit them directly.
+Man pages, shell completions, and the staged site command reference are derived
+from the Cobra command tree and are ignored by Git. Do not edit them directly.
 
 - Change command definitions or the generator under `devel/`.
-- Run `make gen-manpage`, `make gen-completions`, or `make gen-all`.
+- Run `make gen-manpage`, `make gen-completions`, `make gen-site`, or
+  `make gen-all`.
 - Run `make docs` to generate and validate man pages, completions, spelling, and
   the production-equivalent GitHub Pages build.
 - Keep generators deterministic, non-interactive, and independently testable by
@@ -216,6 +219,10 @@ ignored by Git. Do not edit them directly.
 Documentation must distinguish current behavior from planned behavior. Keep
 `README.md`, `docs/`, `site/`, command help, sample configuration, and release
 instructions consistent. Update `CHANGELOG.md` for notable user-visible changes.
+Author task-oriented website content in `site/`; keep imported contracts in
+their canonical repository paths. Never edit ignored `site-build/` output.
+Use `{{ site.baseurl }}/path/` for internal published links so the site
+generator can validate destinations and assets.
 
 ## Shell, workflow, container, and release changes
 

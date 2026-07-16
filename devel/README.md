@@ -5,6 +5,8 @@ the shipped Jobman binary.
 
 - `autocomplete/` generates Bash, Zsh, and PowerShell completion files.
 - `manpages/` generates manual pages from the Cobra command tree.
+- `sitedocs/` stages the published manual, imports canonical contracts, checks
+  internal links, and generates the web command reference from Cobra.
 - `updates/` contains deterministic repository-maintenance scripts.
 
 Run the utilities through the Makefile so paths and validation stay consistent:
