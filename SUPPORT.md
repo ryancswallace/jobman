@@ -49,6 +49,12 @@ A v1 release commit must:
 5. verify generated citation metadata, archives, native packages, SBOMs,
    signatures, attestations, and workload-derived container behavior.
 
+The four fuzz jobs run on every pull request and every push to `main`, so the
+release decision can use evidence from the exact candidate commit rather than
+only its pre-merge pull-request head. The scheduled or manually dispatched soak
+workflow supplies the longer-duration evidence; it is intentionally not hidden
+inside the ordinary Test workflow.
+
 A skipped gate needs a documented risk acceptance in the release notes. It is
 not silently equivalent to a passing gate.
 

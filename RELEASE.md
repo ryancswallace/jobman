@@ -82,6 +82,13 @@ to `automation/homebrew-<version>` and opens a pull request. Review and merge
 that pull request after its required checks pass; the release artifacts remain
 published even while the Cask update is awaiting review.
 
+GitHub may hold the bot-authored pull request's first workflow runs with an
+`action_required` conclusion. If that happens, use the pull request's **Approve
+and run workflows** prompt to authorize the unmodified automation branch. Do
+not approve a run until the pull request diff contains only the expected
+generated Cask update. This manual approval avoids storing a long-lived
+maintainer token solely to trigger checks.
+
 Because this repository does not use Homebrew's conventional
 `homebrew-<name>` repository name, users must add it with the explicit remote:
 
@@ -140,7 +147,15 @@ Snapshot mode writes artifacts to `dist/` and does not create a GitHub release.
 The Homebrew publisher and keyless checksum and container signing are skipped
 locally because they need GitHub credentials and an Actions OIDC identity.
 Docker Buildx may create local platform-suffixed images during snapshot
-validation.
+validation. `make snapshot` finishes by checking artifact counts, checksums,
+required archive contents, absence of repository scaffolding, executable
+version metadata, and release-specific `CITATION.cff` metadata. The release
+workflow repeats the same artifact check before generating attestations.
+
+`make release-check` also verifies that the tracked `CITATION.cff`, changelog
+section, and Unreleased comparison link match the latest published semantic
+version tag. Update these records after every release before preparing the next
+candidate.
 
 Run every target in `.github/workflows/fuzz.yml` for 30 seconds and complete a
 race-enabled `make soaktest` run as recorded in the [dogfood runbook] before
@@ -161,6 +176,14 @@ test -s docs/manpage/jobman.1
 test -s docs/completions/bash/jobman
 test -s docs/completions/zsh/_jobman
 ```
+
+Before approving the `main` release environment, confirm that the exact commit
+shown by the pending Release workflow has successful Test, CodeQL, Docs site,
+Docs links, OpenSSF Scorecard, and all four Fuzz jobs. Run the Soak workflow on
+that commit with the duration required by the dogfood campaign, and attach the
+manual evidence described in `docs/DOGFOOD.md` to the release decision. The
+environment approval is the final human boundary; do not approve merely because
+semantic-release calculated `v1.0.0`.
 
 ## Verifying a release
 
