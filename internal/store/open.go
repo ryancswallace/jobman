@@ -76,6 +76,11 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
 	}
+	// Validate existing journals before SQLite can read them. Journals created
+	// by this open are hardened immediately after initialization below.
+	if sidecarErr := validateExistingDatabaseSidecars(databasePath); sidecarErr != nil {
+		return nil, fmt.Errorf("open store: %w", sidecarErr)
+	}
 
 	busyTimeout := options.BusyTimeout
 	if busyTimeout == 0 {
@@ -126,6 +131,14 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 		return nil, err
 	}
 	if err := validateDatabaseFile(databasePath); err != nil {
+		closeErr := db.Close()
+		if closeErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))
+		}
+
+		return nil, fmt.Errorf("open store: %w", err)
+	}
+	if err := hardenDatabaseSidecars(databasePath); err != nil {
 		closeErr := db.Close()
 		if closeErr != nil {
 			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))

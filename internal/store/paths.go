@@ -125,6 +125,14 @@ func validateDatabaseFile(path string) error {
 }
 
 func validateDatabaseSidecars(databasePath string) error {
+	return validateDatabaseSidecarsWith(databasePath, validatePathSecurity)
+}
+
+func validateExistingDatabaseSidecars(databasePath string) error {
+	return validateDatabaseSidecarsWith(databasePath, validateExistingDatabaseSidecarSecurity)
+}
+
+func validateDatabaseSidecarsWith(databasePath string, validateSecurity func(string) error) error {
 	for _, suffix := range []string{"-wal", "-shm"} {
 		path := databasePath + suffix
 		info, err := os.Lstat(path)
@@ -146,8 +154,29 @@ func validateDatabaseSidecars(databasePath string) error {
 		if err := validateSingleLink(info); err != nil {
 			return fmt.Errorf("validate database sidecar links: %w", err)
 		}
-		if err := validatePathSecurity(path); err != nil {
+		if err := validateSecurity(path); err != nil {
 			return fmt.Errorf("validate database sidecar access: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func hardenDatabaseSidecars(databasePath string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		path := databasePath + suffix
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect database sidecar %q before hardening: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("database sidecar %q is not a regular file", path)
+		}
+		if err := hardenPath(path); err != nil {
+			return fmt.Errorf("restrict database sidecar %q: %w", path, err)
 		}
 	}
 

@@ -238,11 +238,13 @@ func TestStoreErrorsAndValidationHelpers(t *testing.T) {
 	if _, err := nonnegativeIntFromDatabase("value", -1); err == nil {
 		t.Fatal("nonnegativeIntFromDatabase(-1) error = nil")
 	}
-	if err := validateOwner(fakeFileInfo{name: "fake"}); err == nil {
-		t.Fatal("validateOwner(fake metadata) error = nil")
-	}
-	if err := validateSingleLink(fakeFileInfo{name: "fake"}); err == nil {
-		t.Fatal("validateSingleLink(fake metadata) error = nil")
+	if runtime.GOOS != "windows" {
+		if err := validateOwner(fakeFileInfo{name: "fake"}); err == nil {
+			t.Fatal("validateOwner(fake metadata) error = nil")
+		}
+		if err := validateSingleLink(fakeFileInfo{name: "fake"}); err == nil {
+			t.Fatal("validateSingleLink(fake metadata) error = nil")
+		}
 	}
 }
 
@@ -863,6 +865,7 @@ func TestCoreStateRowDecodingMatrices(t *testing.T) {
 		}
 	}
 
+	absoluteRoot := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
 	runValues := []any{
 		runID, jobID, int64(1), string(model.RunPhaseStarting),
 		sql.NullString{},
@@ -879,7 +882,8 @@ func TestCoreStateRowDecodingMatrices(t *testing.T) {
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullInt64{},
-		"/stdout", "/stderr", "/index", int64(0), int64(0), int(1),
+		filepath.Join(absoluteRoot, "stdout"), filepath.Join(absoluteRoot, "stderr"),
+		filepath.Join(absoluteRoot, "index"), int64(0), int64(0), int(1),
 		string(model.LogIntegrityPending), string(model.RecordingHealthy),
 		sql.NullString{},
 		sql.NullInt64{},

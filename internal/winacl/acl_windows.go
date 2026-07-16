@@ -71,6 +71,16 @@ func Harden(path string) error {
 // Validate ensures path is owned by a trusted principal and its protected DACL
 // grants the current user access without granting broad principals access.
 func Validate(path string) error {
+	return validate(path, true)
+}
+
+// ValidateInherited applies the same principal checks as Validate while
+// allowing an ACL inherited from an already validated private parent.
+func ValidateInherited(path string) error {
+	return validate(path, false)
+}
+
+func validate(path string, requireProtected bool) error {
 	descriptor, err := windows.GetNamedSecurityInfo(
 		path,
 		windows.SE_FILE_OBJECT,
@@ -102,7 +112,7 @@ func Validate(path string) error {
 	if err != nil {
 		return fmt.Errorf("read Windows security descriptor control: %w", err)
 	}
-	if control&windows.SE_DACL_PROTECTED == 0 {
+	if requireProtected && control&windows.SE_DACL_PROTECTED == 0 {
 		return errors.New("Windows path DACL is not protected from inheritance")
 	}
 	dacl, _, err := descriptor.DACL()

@@ -255,3 +255,63 @@ func TestStorePathValidationFailures(t *testing.T) {
 		t.Fatal("validateStateFilesystem(missing) error = nil")
 	}
 }
+
+func TestHardenDatabaseSidecars(t *testing.T) {
+	t.Parallel()
+
+	databasePath := filepath.Join(t.TempDir(), DatabaseFilename)
+	for _, suffix := range []string{"-wal", "-shm"} {
+		path := databasePath + suffix
+		if err := os.WriteFile(path, nil, 0o644); err != nil { //nolint:gosec // Intentionally broadened before hardening.
+			t.Fatal(err)
+		}
+	}
+	if err := validateExistingDatabaseSidecars(databasePath); err == nil {
+		t.Fatal("validateExistingDatabaseSidecars(public sidecars) error = nil")
+	}
+	if err := hardenDatabaseSidecars(databasePath); err != nil {
+		t.Fatalf("hardenDatabaseSidecars() error = %v", err)
+	}
+	if err := validateExistingDatabaseSidecars(databasePath); err != nil {
+		t.Fatalf("validateExistingDatabaseSidecars() error = %v", err)
+	}
+	if err := validateDatabaseSidecarsWith(databasePath, func(string) error {
+		return errors.New("injected sidecar security failure")
+	}); err == nil {
+		t.Fatal("validateDatabaseSidecarsWith(security failure) error = nil")
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		info, err := os.Stat(databasePath + suffix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Errorf("sidecar %s mode = %04o, want 0600", suffix, got)
+		}
+	}
+
+	invalidDatabase := filepath.Join(t.TempDir(), DatabaseFilename)
+	if err := os.Mkdir(invalidDatabase+"-wal", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := hardenDatabaseSidecars(invalidDatabase); err == nil {
+		t.Fatal("hardenDatabaseSidecars(directory) error = nil")
+	}
+
+	restricted := t.TempDir()
+	if err := os.Chmod(restricted, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(restricted, 0o700); err != nil { // #nosec G302 -- Restores private directory traversal for cleanup.
+			t.Errorf("restore restricted directory permissions: %v", err)
+		}
+	})
+	restrictedDatabase := filepath.Join(restricted, DatabaseFilename)
+	if err := validateDatabaseSidecars(restrictedDatabase); err == nil {
+		t.Fatal("validateDatabaseSidecars(inaccessible parent) error = nil")
+	}
+	if err := hardenDatabaseSidecars(restrictedDatabase); err == nil {
+		t.Fatal("hardenDatabaseSidecars(inaccessible parent) error = nil")
+	}
+}
