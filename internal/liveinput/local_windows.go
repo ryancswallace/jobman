@@ -7,10 +7,15 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net"
+	"path/filepath"
 
 	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
 )
+
+func localEndpoint(stateDir, jobID string) string {
+	return filepath.Join(stateDir, "input", jobID+".sock")
+}
 
 func listenLocal(endpoint string) (net.Listener, error) {
 	securityDescriptor, err := currentUserPipeSecurityDescriptor()

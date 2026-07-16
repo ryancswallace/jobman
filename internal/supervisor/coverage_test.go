@@ -24,14 +24,49 @@ import (
 	"github.com/ryancswallace/jobman/internal/store"
 )
 
+const supervisorCoverageHelperEnvironment = "JOBMAN_SUPERVISOR_COVERAGE_HELPER"
+
+func TestSupervisorCoverageHelper(*testing.T) {
+	switch os.Getenv(supervisorCoverageHelperEnvironment) {
+	case "probe-exit":
+		_, _ = fmt.Fprint(os.Stdout, os.Getenv("PROBE_VALUE"))
+		os.Exit(7) //nolint:revive // Helper subprocess must expose a configured exit status.
+	case "probe-secret":
+		_, _ = fmt.Fprint(os.Stdout, os.Getenv("PROBE_SECRET"))
+		os.Exit(0) //nolint:revive // Avoid the Go test runner's PASS text in captured output.
+	case "exit-9":
+		os.Exit(9) //nolint:revive // Helper subprocess must expose a configured exit status.
+	case "success":
+		os.Exit(0) //nolint:revive // Helper subprocess exits without test-runner output.
+	}
+}
+
+func supervisorCoverageCommand(t *testing.T, mode string) *exec.Cmd {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(executable, "-test.run=^TestSupervisorCoverageHelper$") // #nosec G204 -- current test executable.
+	command.Env = append(os.Environ(), supervisorCoverageHelperEnvironment+"="+mode)
+
+	return command
+}
+
 func TestExecProbeRunnerAndBoundedOutput(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
-	runner := execProbeRunner{directory: directory, environment: map[string]string{"PROBE_VALUE": "abcdef"}}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := execProbeRunner{directory: directory, environment: map[string]string{
+		"PROBE_VALUE": "abcdef", supervisorCoverageHelperEnvironment: "probe-exit",
+	}}
 	result, err := runner.RunProbe(t.Context(), policy.ProbeSpec{
-		Executable: "/bin/sh", Arguments: []string{"-c", "printf %s \"$PROBE_VALUE\"; exit 7"},
-		Timeout: time.Second, OutputLimit: 3,
+		Executable: executable, Arguments: []string{"-test.run=^TestSupervisorCoverageHelper$"},
+		Timeout: 10 * time.Second, OutputLimit: 3,
 	})
 	if err != nil || result.ExitCode != 7 || string(result.Output) != "abc" || !result.Truncated {
 		t.Fatalf("RunProbe() = (%+v, %v)", result, err)
@@ -46,14 +81,15 @@ func TestExecProbeRunnerAndBoundedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	secretRunner := execProbeRunner{
-		directory: directory,
+		directory:   directory,
+		environment: map[string]string{supervisorCoverageHelperEnvironment: "probe-secret"},
 		secretEnvironment: map[string]model.SecretReference{
 			"PROBE_SECRET": {Provider: "file", Name: secretPath},
 		},
 	}
 	result, err = secretRunner.RunProbe(t.Context(), policy.ProbeSpec{
-		Executable: "/bin/sh", Arguments: []string{"-c", "printf %s \"$PROBE_SECRET\""},
-		Timeout: time.Second, OutputLimit: 32,
+		Executable: executable, Arguments: []string{"-test.run=^TestSupervisorCoverageHelper$"},
+		Timeout: 10 * time.Second, OutputLimit: 32,
 	})
 	if err != nil || result.ExitCode != 0 || string(result.Output) != "resolved" {
 		t.Fatalf("RunProbe(secret environment) = (%+v, %v)", result, err)
@@ -185,7 +221,7 @@ func TestPipeAndPreparedTargetHelpers(t *testing.T) {
 func TestProcessExitInfoAndJitterSource(t *testing.T) {
 	t.Parallel()
 
-	command := exec.Command("/bin/sh", "-c", "exit 9")
+	command := supervisorCoverageCommand(t, "exit-9")
 	err := command.Run()
 	info := processExitInfo(command, err, time.Now())
 	if info.ExitCode == nil || *info.ExitCode != 9 {
@@ -2501,7 +2537,7 @@ func TestWaitAndFinalizeRunClosedStore(t *testing.T) {
 		IndexVersion: capture.IndexVersion(), Integrity: model.LogIntegrityPending,
 		RecordingHealth: model.RecordingHealthy,
 	}
-	command := exec.Command("/bin/true")
+	command := supervisorCoverageCommand(t, "success")
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

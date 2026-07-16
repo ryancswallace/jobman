@@ -86,8 +86,9 @@ func hardenPrivatePath(path string) error {
 	return windows.SetNamedSecurityInfo(
 		path,
 		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|
+			windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		user.User.Sid,
 		nil,
 		acl,
 		nil,

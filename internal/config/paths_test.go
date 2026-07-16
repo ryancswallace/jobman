@@ -44,8 +44,12 @@ func TestFindTrustedProjectConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindTrustedProjectConfig() error = %v", err)
 	}
-	if !found || path != configPath {
-		t.Fatalf("FindTrustedProjectConfig() = (%q, %v), want (%q, true)", path, found, configPath)
+	want, err := filepath.EvalSymlinks(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || path != want {
+		t.Fatalf("FindTrustedProjectConfig() = (%q, %v), want (%q, true)", path, found, want)
 	}
 
 	_, found, err = FindTrustedProjectConfig(nested, nil)
@@ -79,7 +83,10 @@ func TestFindTrustedProjectConfigCanonicalizesSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindTrustedProjectConfig() error = %v", err)
 	}
-	want := filepath.Join(root, projectConfigName)
+	want, err := filepath.EvalSymlinks(filepath.Join(root, projectConfigName))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !found || path != want {
 		t.Fatalf("FindTrustedProjectConfig() = (%q, %v), want (%q, true)", path, found, want)
 	}

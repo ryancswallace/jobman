@@ -91,5 +91,7 @@ func resumeProcess(identity ProcessIdentity) error {
 }
 
 func isProcessGone(err error) bool {
-	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH)
+	// kern.proc.pid reports EIO, rather than ESRCH, for a PID that disappeared
+	// before SysctlKinfoProc could read it on supported macOS releases.
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) || errors.Is(err, syscall.EIO)
 }

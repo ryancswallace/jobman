@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ const testRunID = "018f0000-0000-7000-8000-000000000001"
 func TestBrokerDeliversBytesAndEOF(t *testing.T) {
 	t.Parallel()
 
-	broker, listenErr := Listen(filepath.Join(t.TempDir(), "input.sock"))
+	broker, listenErr := Listen(NewEndpoint(t.TempDir(), "deliver"))
 	if listenErr != nil {
 		if errors.Is(listenErr, syscall.EPERM) {
 			t.Skipf("local sockets are blocked by the test sandbox: %v", listenErr)
@@ -129,7 +130,7 @@ func TestWriteEOFRequestDoesNotWriteEmptyPayload(t *testing.T) {
 func TestBrokerRejectsRequestForDifferentRunBeforeWriting(t *testing.T) {
 	t.Parallel()
 
-	broker, listenErr := Listen(filepath.Join(t.TempDir(), "input.sock"))
+	broker, listenErr := Listen(NewEndpoint(t.TempDir(), "different-run"))
 	if listenErr != nil {
 		if errors.Is(listenErr, syscall.EPERM) {
 			t.Skipf("local sockets are blocked by the test sandbox: %v", listenErr)
@@ -160,7 +161,7 @@ func TestBrokerRejectsRequestForDifferentRunBeforeWriting(t *testing.T) {
 func TestBrokerReportsPartialTargetWrite(t *testing.T) {
 	t.Parallel()
 
-	broker, listenErr := Listen(filepath.Join(t.TempDir(), "input.sock"))
+	broker, listenErr := Listen(NewEndpoint(t.TempDir(), "partial-write"))
 	if listenErr != nil {
 		if errors.Is(listenErr, syscall.EPERM) {
 			t.Skipf("local sockets are blocked by the test sandbox: %v", listenErr)
@@ -406,6 +407,10 @@ func TestLiveInputWireHelpers(t *testing.T) {
 	if got := NewEndpoint("/state", "job"); got != filepath.Clean("/state/input/job.sock") {
 		t.Fatalf("NewEndpoint() = %q", got)
 	}
+	longEndpoint := NewEndpoint(filepath.Join(string(filepath.Separator), strings.Repeat("long-state-directory", 8)), "job")
+	if len(longEndpoint) >= portableUnixSocketPathLimit {
+		t.Fatalf("NewEndpoint(long state path) length = %d, endpoint %q", len(longEndpoint), longEndpoint)
+	}
 	if _, err := Send(t.Context(), "unused", "short", bytes.NewReader(nil), false); err == nil {
 		t.Fatal("Send(short run ID) error = nil")
 	}
@@ -516,7 +521,7 @@ func TestBrokerServeAndConnectionBookkeeping(t *testing.T) {
 func TestBrokerSerializesConcurrentClientsInAcceptOrder(t *testing.T) {
 	t.Parallel()
 
-	broker, listenErr := Listen(filepath.Join(t.TempDir(), "input.sock"))
+	broker, listenErr := Listen(NewEndpoint(t.TempDir(), "serialized-clients"))
 	if listenErr != nil {
 		if errors.Is(listenErr, syscall.EPERM) {
 			t.Skipf("local sockets are blocked by the test sandbox: %v", listenErr)

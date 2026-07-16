@@ -243,6 +243,10 @@ func TestConfiguredWaitAndNotifierConversion(t *testing.T) {
 
 func configuredNotifierFixtures(t *testing.T, timeout config.Duration) map[string]config.Notifier {
 	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	delay, err := config.NewDuration(0)
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +255,7 @@ func configuredNotifierFixtures(t *testing.T, timeout config.Duration) map[strin
 	return map[string]config.Notifier{
 		"command": {
 			Type: "command", Timeout: timeout, Retry: retry, Events: []string{"job_failed"},
-			Command: &config.CommandNotifier{Command: []string{"/bin/true"}, OutputLimit: config.NewByteLimit(128)},
+			Command: &config.CommandNotifier{Command: []string{executable}, OutputLimit: config.NewByteLimit(128)},
 		},
 		"http": {
 			Type: "http", Timeout: timeout, Retry: retry, Events: []string{"job_failed"},

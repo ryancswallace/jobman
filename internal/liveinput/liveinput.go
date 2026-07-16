@@ -396,5 +396,5 @@ func writeAck(writer io.Writer, status byte, delivered uint64) error {
 
 // NewEndpoint returns the conventional private endpoint for one job.
 func NewEndpoint(stateDir, jobID string) string {
-	return filepath.Join(stateDir, "input", jobID+".sock")
+	return localEndpoint(stateDir, jobID)
 }

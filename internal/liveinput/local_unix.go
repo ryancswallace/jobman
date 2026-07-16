@@ -4,12 +4,29 @@ package liveinput
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 )
+
+const portableUnixSocketPathLimit = 100
+
+func localEndpoint(stateDir, jobID string) string {
+	conventional := filepath.Join(stateDir, "input", jobID+".sock")
+	if len(conventional) < portableUnixSocketPathLimit {
+		return conventional
+	}
+
+	digest := sha256.Sum256([]byte(filepath.Clean(stateDir) + "\x00" + jobID))
+	return filepath.Join(
+		os.TempDir(),
+		fmt.Sprintf("jobman-%d", os.Getuid()),
+		fmt.Sprintf("%x.sock", digest[:16]),
+	)
+}
 
 func listenLocal(path string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
