@@ -43,6 +43,10 @@ semantic-release.
 - Added a v1 container contract, maintenance/support policy, compatibility and
   upgrade runbooks, release health checks, migration backups, conservative
   recovery, and automatic release-specific citation metadata.
+- Added a task-oriented documentation site with installation, tutorials,
+  feature and operations guides, canonical contract publication, validated
+  internal links, external-link health checks, and a command reference
+  generated from the Cobra tree.
 
 ### Changed
 
