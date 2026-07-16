@@ -64,8 +64,14 @@ archives:
         dst: etc/jobman/jobman.yml
       - src: docs/manpage/jobman*.1
         dst: docs/manpage
-      - src: docs/completions/**
-        dst: docs/completions
+      # List generated completions explicitly so repository scaffolding such as
+      # README.md and .gitkeep files cannot leak into release archives.
+      - src: docs/completions/bash/jobman
+        dst: docs/completions/bash/jobman
+      - src: docs/completions/zsh/_jobman
+        dst: docs/completions/zsh/_jobman
+      - src: docs/completions/powershell/jobman.ps1
+        dst: docs/completions/powershell/jobman.ps1
 
 nfpms:
   - id: jobman
