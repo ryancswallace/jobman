@@ -53,6 +53,10 @@ branches:
           - "Build (windows/amd64)"
           - "Build (windows/arm64)"
           - "Build (windows/386)"
+          - Fuzz FuzzParseConfiguration
+          - Fuzz FuzzParseJobSpecJSON
+          - Fuzz FuzzReaderIndexSafety
+          - Fuzz FuzzScanIndexSafety
 
       # Keep a break-glass path for the sole maintainer. Normal pull requests
       # remain subject to the review and check requirements above.
