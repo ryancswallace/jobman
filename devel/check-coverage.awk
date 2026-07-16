@@ -64,6 +64,11 @@ END {
 	printf "Merged coverage (minimum %.2f%% per package):\n", minimum
 	for (i = 1; i <= package_count; i++) {
 		package = package_order[i]
+		if (package_total[package] == 0) {
+			printf "  %-68s %6s (%d/%d)\n", package, "n/a",
+				package_covered[package], package_total[package]
+			continue
+		}
 		percent = 100 * package_covered[package] / package_total[package]
 		printf "  %-68s %6.2f%% (%d/%d)\n", package, percent,
 			package_covered[package], package_total[package]
