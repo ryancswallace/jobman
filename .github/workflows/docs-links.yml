@@ -1,0 +1,95 @@
+---
+name: Docs links
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docs-links.yml"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "CONTRIBUTING.md"
+      - "Makefile"
+      - "README.md"
+      - "RELEASE.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "devel/sitedocs/**"
+      - "docs/**"
+      - "etc/jobman/jobman.yml"
+      - "go.mod"
+      - "go.sum"
+      - "go.version"
+      - "jobman/**"
+      - "site/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docs-links.yml"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "CONTRIBUTING.md"
+      - "Makefile"
+      - "README.md"
+      - "RELEASE.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "devel/sitedocs/**"
+      - "docs/**"
+      - "etc/jobman/jobman.yml"
+      - "go.mod"
+      - "go.sum"
+      - "go.version"
+      - "jobman/**"
+      - "site/**"
+  schedule:
+    - cron: "23 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-links-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  links:
+    name: Check published links
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Stage documentation
+        run: make gen-site
+
+      - name: Check HTTPS links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: >-
+            --no-progress
+            --max-concurrency 16
+            --max-retries 3
+            --retry-wait-time 2
+            --timeout 30
+            --scheme https
+            --exclude '^https://([^.]+\.)?example\.com/'
+            --exclude '^https://token\.actions\.githubusercontent\.com/?$'
+            './site-build/**/*.md'
+          fail: true
+          failIfEmpty: true
+          lycheeVersion: v0.24.2
+          token: ${{ github.token }}
