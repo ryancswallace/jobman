@@ -73,8 +73,12 @@ Useful focused checks include:
 - `make soaktest SOAK_TIME=10m` for the opt-in race-enabled storage, logging,
   cleanup, and admission soak;
 - `make release-build` to compile every supported release platform;
-- `make snapshot` for release or packaging changes;
-- `make docker-image` for runtime-image changes.
+- `make release-check` to validate release configuration and tracked release
+  records;
+- `make snapshot` to build and verify archives, native packages, SBOMs,
+  checksums, release metadata, and container images for release or packaging
+  changes;
+- `make docker-image` for runtime-image changes;
 - `make docker-smoke` for persistent-state and derived-image behavior.
 
 Generated man pages, completions, the staged site, and its command reference are

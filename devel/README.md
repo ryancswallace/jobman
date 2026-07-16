@@ -7,12 +7,16 @@ the shipped Jobman binary.
 - `manpages/` generates manual pages from the Cobra command tree.
 - `sitedocs/` stages the published manual, imports canonical contracts, checks
   internal links, and generates the web command reference from Cobra.
+- `check-release.sh` verifies tracked release records and the contents,
+  checksums, SBOM inventory, and embedded metadata of a built release snapshot.
 - `updates/` contains deterministic repository-maintenance scripts.
 
 Run the utilities through the Makefile so paths and validation stay consistent:
 
 ```console
 make gen-all
+make release-check
+make snapshot
 make update
 ```
 
