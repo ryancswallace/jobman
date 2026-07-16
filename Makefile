@@ -30,6 +30,7 @@ GEN_MANPAGE := ./devel/manpages/manpages.go
 GEN_COMPLETIONS := ./devel/autocomplete/autocomplete.go
 GEN_SITE := ./devel/sitedocs
 UPDATE_SCRIPTS := ./devel/updates
+RELEASE_CHECK := ./devel/check-release.sh
 
 GO ?= go
 DOCKER ?= docker
@@ -193,10 +194,11 @@ workflow-check: tool-actionlint ## Validate all GitHub Actions workflows.
 .PHONY: shellcheck
 shellcheck: ## Statically analyze repository shell scripts.
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck devel/updates/*.sh; \
+		shellcheck devel/*.sh devel/updates/*.sh; \
 	elif $(DOCKER) info >/dev/null 2>&1; then \
 		$(DOCKER) run --rm -v '$(CURDIR):/src:ro' -w /src \
-			koalaman/shellcheck-alpine:v0.11.0 devel/updates/*.sh; \
+			koalaman/shellcheck-alpine:v0.11.0 \
+			devel/*.sh devel/updates/*.sh; \
 	else \
 		echo 'shellcheck requires shellcheck or a running Docker daemon.' >&2; \
 		exit 2; \
@@ -375,8 +377,16 @@ docker-run: docker-image ## Run the local image; pass jobman arguments with ARGS
 .PHONY: build-all
 build-all: build docker-image ## Build the local binary and container image.
 
+.PHONY: release-metadata-check
+release-metadata-check: ## Verify citation and changelog records match the latest release tag.
+	$(RELEASE_CHECK) metadata
+
+.PHONY: artifact-check
+artifact-check: ## Verify the complete release artifact set already present in dist/.
+	$(RELEASE_CHECK) artifacts $(DIST_DIR)
+
 .PHONY: release-check
-release-check: tool-goreleaser ## Validate the GoReleaser configuration.
+release-check: tool-goreleaser release-metadata-check ## Validate release configuration and tracked release records.
 	$(GORELEASER) check
 
 .PHONY: release-build
@@ -388,6 +398,7 @@ snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without pu
 	PATH='$(abspath $(BIN_DIR))':$$PATH \
 		$(GORELEASER) release --snapshot --clean --parallelism 2 \
 			--skip=sign,homebrew
+	$(MAKE) --no-print-directory artifact-check
 
 .PHONY: check quick-check ci
 check: go-version-check mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check release-build ## Run all presubmission checks.
