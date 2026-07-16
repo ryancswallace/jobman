@@ -158,7 +158,6 @@ func broadSIDs() ([]*windows.SID, error) {
 		windows.WinAuthenticatedUserSid,
 		windows.WinAnonymousSid,
 		windows.WinBuiltinGuestsSid,
-		windows.WinAccountGuestSid,
 	}
 	sids := make([]*windows.SID, 0, len(types))
 	for _, sidType := range types {

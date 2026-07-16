@@ -365,6 +365,9 @@ func prepareRawDatabase(t *testing.T, stateDir string) string {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		t.Fatalf("create raw state directory: %v", err)
 	}
+	if err := hardenPath(stateDir); err != nil {
+		t.Fatalf("harden raw state directory: %v", err)
+	}
 	path := filepath.Join(stateDir, DatabaseFilename)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 	if err != nil {
@@ -372,6 +375,9 @@ func prepareRawDatabase(t *testing.T, stateDir string) string {
 	}
 	if err := file.Close(); err != nil {
 		t.Fatalf("close raw database file: %v", err)
+	}
+	if err := hardenPath(path); err != nil {
+		t.Fatalf("harden raw database file: %v", err)
 	}
 
 	return path

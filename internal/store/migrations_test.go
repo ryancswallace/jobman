@@ -21,6 +21,9 @@ func TestMigrationSevenRepairsRuntimeCountersFromVersionOne(t *testing.T) {
 	if err := os.Mkdir(stateDir, 0o700); err != nil {
 		t.Fatalf("create version-one state directory: %v", err)
 	}
+	if err := hardenPath(stateDir); err != nil {
+		t.Fatalf("harden version-one state directory: %v", err)
+	}
 	databasePath := filepath.Join(stateDir, DatabaseFilename)
 	database, err := sql.Open("sqlite", sqliteDSN(databasePath, defaultBusyTimeout))
 	if err != nil {
@@ -63,6 +66,9 @@ func TestMigrationSevenRepairsRuntimeCountersFromVersionOne(t *testing.T) {
 	}
 	if err = os.Chmod(databasePath, 0o600); err != nil {
 		t.Fatalf("make version-one database private: %v", err)
+	}
+	if err = hardenPath(databasePath); err != nil {
+		t.Fatalf("harden version-one database: %v", err)
 	}
 
 	upgraded, err := Open(t.Context(), Options{
