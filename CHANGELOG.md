@@ -10,6 +10,36 @@ semantic-release.
 
 ### Added
 
+- Added release-record consistency checks and executable snapshot artifact
+  validation before publication.
+
+### Changed
+
+- Updated the pure-Go SQLite driver and its runtime dependencies to the latest
+  compatible versions reviewed for v1.
+
+### Fixed
+
+- Excluded completion-directory scaffolding from portable release archives.
+
+## [0.7.0] - 2026-07-16
+
+### Added
+
+- Added a task-oriented documentation site with installation, tutorials,
+  feature and operations guides, canonical contract publication, validated
+  internal links, external-link health checks, and a command reference
+  generated from the Cobra tree.
+
+### Fixed
+
+- Made staged and rendered documentation files readable by the GitHub Pages
+  artifact uploader.
+
+## [0.6.0] - 2026-07-16
+
+### Added
+
 - Added the initial daemonless job lifecycle: direct detached execution,
   SQLite-backed state, per-run raw logs, inspection commands, and durable
   process-tree cancellation.
@@ -43,11 +73,6 @@ semantic-release.
 - Added a v1 container contract, maintenance/support policy, compatibility and
   upgrade runbooks, release health checks, migration backups, conservative
   recovery, and automatic release-specific citation metadata.
-- Added a task-oriented documentation site with installation, tutorials,
-  feature and operations guides, canonical contract publication, validated
-  internal links, external-link health checks, and a command reference
-  generated from the Cobra tree.
-
 ### Changed
 
 - Modernized repository automation, dependency management, documentation, and
@@ -124,7 +149,9 @@ semantic-release.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ryancswallace/jobman/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/ryancswallace/jobman/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ryancswallace/jobman/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ryancswallace/jobman/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ryancswallace/jobman/compare/v0.2.0...v0.3.0
