@@ -25,7 +25,53 @@ import (
 	"github.com/ryancswallace/jobman/internal/store"
 )
 
-const supervisorCoverageHelperEnvironment = "JOBMAN_SUPERVISOR_COVERAGE_HELPER"
+const (
+	supervisorCoverageHelperEnvironment = "JOBMAN_SUPERVISOR_COVERAGE_HELPER"
+	supervisorLaunchHelperEnvironment   = "JOBMAN_SUPERVISOR_LAUNCH_HELPER"
+)
+
+func TestMain(m *testing.M) {
+	if exitCode, handled := runSupervisorLaunchHelper(); handled {
+		os.Exit(exitCode)
+	}
+	os.Exit(m.Run())
+}
+
+func runSupervisorLaunchHelper() (int, bool) {
+	mode := os.Getenv(supervisorLaunchHelperEnvironment)
+	if mode == "" || len(os.Args) < 3 || os.Args[1] != "__supervise" {
+		return 0, false
+	}
+	credential := make([]byte, credentialSize)
+	if _, err := io.ReadFull(os.Stdin, credential); err != nil {
+		return 2, true
+	}
+	const supervisorID = "019c5f8b-7c8a-7000-8000-000000000099"
+	switch mode {
+	case "success":
+		_, _ = fmt.Fprintf(
+			os.Stdout,
+			"{\"schema_version\":1,\"job_id\":%q,\"supervisor_id\":%q}\n",
+			os.Args[2],
+			supervisorID,
+		)
+	case "mismatch":
+		_, _ = fmt.Fprintf(
+			os.Stdout,
+			"{\"schema_version\":1,\"job_id\":%q,\"supervisor_id\":%q}\n",
+			"019c5f8b-7c8a-7000-8000-000000000098",
+			supervisorID,
+		)
+	case "malformed":
+		_, _ = fmt.Fprintln(os.Stdout, "not-json")
+	case "slow":
+		time.Sleep(100 * time.Millisecond)
+	default:
+		return 2, true
+	}
+
+	return 0, true
+}
 
 func TestSupervisorCoverageHelper(*testing.T) {
 	switch os.Getenv(supervisorCoverageHelperEnvironment) {
@@ -2303,14 +2349,12 @@ func TestSchedulerJitterDefensiveBranches(t *testing.T) {
 }
 
 func TestLaunchAdditionalFailurePaths(t *testing.T) {
-	t.Parallel()
-
 	fixture := submitSupervisorFixture(t, true)
 	database := openSupervisorStore(t, fixture.stateDir)
 	defer closeSupervisorStore(t, database)
 	options := LaunchOptions{
 		Store: database, Executable: filepath.Join(t.TempDir(), "missing"), StateDir: fixture.stateDir,
-		JobID: fixture.jobID, Credential: fixture.credential, Timeout: time.Second,
+		JobID: fixture.jobID, Credential: fixture.credential, Timeout: 10 * time.Second,
 	}
 	defaulted := options
 	defaulted.Timeout = 0
@@ -2321,9 +2365,8 @@ func TestLaunchAdditionalFailurePaths(t *testing.T) {
 		t.Fatal("Launch(missing executable) error = nil")
 	}
 
-	script := filepath.Join(t.TempDir(), "slow-supervisor")
-	writeExecutableScript(t, script, "sleep 0.05")
-	options.Executable = script
+	t.Setenv(supervisorLaunchHelperEnvironment, "slow")
+	options.Executable = supervisorTestExecutable(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := Launch(ctx, options); !errors.Is(err, context.Canceled) {
@@ -2896,48 +2939,37 @@ func TestLaunchAcknowledgementAndFailurePaths(t *testing.T) {
 	defer closeSupervisorStore(t, database)
 	supervisorID := "019c5f8b-7c8a-7000-8000-000000000099"
 
-	script := filepath.Join(t.TempDir(), "supervisor-success")
-	writeExecutableScript(t, script, "printf '{\"schema_version\":1,\"job_id\":\"%s\",\"supervisor_id\":\""+supervisorID+"\"}\\n' \"$2\"")
+	t.Setenv(supervisorLaunchHelperEnvironment, "success")
 	ack, err := Launch(t.Context(), LaunchOptions{
-		Store: database, Executable: script, StateDir: fixture.stateDir,
-		JobID: fixture.jobID, Credential: fixture.credential, Timeout: time.Second,
+		Store: database, Executable: supervisorTestExecutable(t), StateDir: fixture.stateDir,
+		JobID: fixture.jobID, Credential: fixture.credential, Timeout: 10 * time.Second,
 	})
 	if err != nil || ack.JobID != fixture.jobID || ack.SupervisorID.String() != supervisorID {
 		t.Fatalf("Launch(success) = (%+v, %v)", ack, err)
 	}
 
-	mismatch := filepath.Join(t.TempDir(), "supervisor-mismatch")
-	writeExecutableScript(t, mismatch, "printf '{\"schema_version\":1,\"job_id\":\"019c5f8b-7c8a-7000-8000-000000000098\",\"supervisor_id\":\""+supervisorID+"\"}\\n'")
+	t.Setenv(supervisorLaunchHelperEnvironment, "mismatch")
 	if _, err := Launch(t.Context(), LaunchOptions{
-		Store: database, Executable: mismatch, StateDir: fixture.stateDir,
-		JobID: fixture.jobID, Credential: fixture.credential, Timeout: time.Second,
+		Store: database, Executable: supervisorTestExecutable(t), StateDir: fixture.stateDir,
+		JobID: fixture.jobID, Credential: fixture.credential, Timeout: 10 * time.Second,
 	}); err == nil {
 		t.Fatal("Launch(identity mismatch) error = nil")
 	}
 
-	malformed := filepath.Join(t.TempDir(), "supervisor-malformed")
-	writeExecutableScript(t, malformed, "printf 'not-json\\n'")
+	t.Setenv(supervisorLaunchHelperEnvironment, "malformed")
 	if _, err := Launch(t.Context(), LaunchOptions{
-		Store: database, Executable: malformed, StateDir: fixture.stateDir,
-		JobID: fixture.jobID, Credential: fixture.credential, Timeout: time.Second,
+		Store: database, Executable: supervisorTestExecutable(t), StateDir: fixture.stateDir,
+		JobID: fixture.jobID, Credential: fixture.credential, Timeout: 10 * time.Second,
 	}); err == nil {
 		t.Fatal("Launch(malformed acknowledgement) error = nil")
 	}
 
-	slow := filepath.Join(t.TempDir(), "supervisor-slow")
-	writeExecutableScript(t, slow, "sleep 0.1")
+	t.Setenv(supervisorLaunchHelperEnvironment, "slow")
 	if _, err := Launch(t.Context(), LaunchOptions{
-		Store: database, Executable: slow, StateDir: fixture.stateDir,
+		Store: database, Executable: supervisorTestExecutable(t), StateDir: fixture.stateDir,
 		JobID: fixture.jobID, Credential: fixture.credential, Timeout: time.Millisecond,
 	}); err == nil {
 		t.Fatal("Launch(timeout) error = nil")
-	}
-}
-
-func writeExecutableScript(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
-		t.Fatalf("write helper script: %v", err)
 	}
 }
 
