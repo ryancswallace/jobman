@@ -4,6 +4,8 @@ This directory contains repository-maintenance programs that are not part of
 the shipped Jobman binary.
 
 - `autocomplete/` generates Bash, Zsh, and PowerShell completion files.
+- `dogfood/` contains disposable evidence, process-tree, notifier, and bounded
+  soak helpers used by the release-candidate runbook in `docs/DOGFOOD.md`.
 - `manpages/` generates manual pages from the Cobra command tree.
 - `sitedocs/` stages the published manual, imports canonical contracts, checks
   internal links, and generates the web command reference from Cobra.

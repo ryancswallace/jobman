@@ -194,11 +194,11 @@ workflow-check: tool-actionlint ## Validate all GitHub Actions workflows.
 .PHONY: shellcheck
 shellcheck: ## Statically analyze repository shell scripts.
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck devel/*.sh devel/updates/*.sh; \
+		find devel -type f -name '*.sh' -print0 | xargs -0 shellcheck; \
 	elif $(DOCKER) info >/dev/null 2>&1; then \
 		$(DOCKER) run --rm -v '$(CURDIR):/src:ro' -w /src \
 			koalaman/shellcheck-alpine:v0.11.0 \
-			devel/*.sh devel/updates/*.sh; \
+			$$(find devel -type f -name '*.sh' -print); \
 	else \
 		echo 'shellcheck requires shellcheck or a running Docker daemon.' >&2; \
 		exit 2; \
