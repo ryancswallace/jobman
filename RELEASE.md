@@ -154,8 +154,9 @@ workflow repeats the same artifact check before generating attestations.
 
 `make release-check` also verifies that the tracked `CITATION.cff`, changelog
 section, and Unreleased comparison link match the latest published semantic
-version tag. Update these records after every release before preparing the next
-candidate.
+version tag. After a successful Release workflow, repository maintenance runs
+automatically and opens a reviewed pull request that updates those records.
+Merge that pull request before preparing the next release candidate.
 
 Run every target in `.github/workflows/fuzz.yml` for 30 seconds and complete a
 race-enabled `make soaktest` run as recorded in the [dogfood runbook] before

@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: "17 5 1 * *"
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -16,6 +21,9 @@ concurrency:
 jobs:
   update:
     name: Update generated repository files
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -24,6 +32,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Release metadata synchronization needs the complete semantic-tag
+          # history. workflow_run data is never used as a checkout ref.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -36,7 +48,7 @@ jobs:
         run: make update-all
 
       - name: Validate changes
-        run: make quick-check
+        run: make quick-check release-metadata-check
 
       - name: Create maintenance pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
@@ -46,8 +58,9 @@ jobs:
           commit-message: "chore: run repository maintenance"
           title: "chore: run repository maintenance"
           body: |
-            Automated monthly repository maintenance.
+            Automated repository maintenance.
 
             - Synchronizes pinned Go version declarations.
             - Updates copyright years.
+            - Reconciles citation and changelog records after releases.
             - Regenerates and validates documentation assets.

@@ -16,11 +16,16 @@ maintenance cannot publish its branch.
 - `copyright-date.sh` updates copyright ranges in tracked files.
 - `go-vers.sh` synchronizes Go version declarations across tooling, containers,
   workflows, and documentation.
+- `release-metadata.sh` synchronizes `CITATION.cff` and the tracked changelog
+  section with the newest reachable semantic-version tag.
 
-Release-specific citation metadata is intentionally not written by
-`make update`: GoReleaser runs `devel/releasemetadata` with its resolved version
-and release timestamp and archives the generated `.release/CITATION.cff`. The
-tracked file records the latest published release for repository viewers.
+GoReleaser runs `devel/releasemetadata` with its resolved version and release
+timestamp and archives the generated `.release/CITATION.cff`. After a successful
+Release workflow, the repository-maintenance workflow runs `make update-all`
+and opens a reviewed pull request that advances the tracked `CITATION.cff` and
+changelog records. This post-release pull request is necessary because the
+release tag must remain attached to the exact commit that passed the test
+workflow.
 
 Container base images are pinned by both tag and digest. When changing a base
 image tag manually, update its digest in the same change; an old digest paired

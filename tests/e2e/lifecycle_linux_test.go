@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,8 @@ type jobDetail struct {
 }
 
 type jobRuntime struct {
-	InputEndpoint string `json:"input_endpoint"`
+	InputEndpoint     string `json:"input_endpoint"`
+	InputEOFRequested bool   `json:"input_eof_requested"`
 }
 
 type jobSummary struct {
@@ -62,6 +64,8 @@ type jobSummary struct {
 }
 
 type runDetail struct {
+	ID      string           `json:"id"`
+	Number  uint64           `json:"number"`
 	Process *processIdentity `json:"process"`
 	Exit    *exitInfo        `json:"exit"`
 	Logs    logDetail        `json:"logs"`
@@ -254,9 +258,11 @@ wait "$child"`
 		start := make(chan struct{})
 		errorsChannel := make(chan error, 16)
 		operations := [][]string{
+			{"list", "--json"},
 			{"status", jobID},
 			{"show", "--json", jobID},
 			{"logs", "--stream", "stdout", jobID},
+			{"doctor", "--json"},
 		}
 		var wait sync.WaitGroup
 		for _, arguments := range operations {
@@ -269,6 +275,11 @@ wait "$child"`
 						result := invoke(ctx, binary, stateDir, arguments...)
 						if result.err != nil {
 							errorsChannel <- fmt.Errorf("jobman %s: %w: %s", arguments[0], result.err, result.stderr)
+
+							return
+						}
+						if slices.Contains(arguments, "--json") && !json.Valid([]byte(result.stdout)) {
+							errorsChannel <- fmt.Errorf("jobman %s returned invalid JSON: %q", arguments[0], result.stdout)
 
 							return
 						}
@@ -455,7 +466,11 @@ notifiers:
 		jobID := submitConfiguredRun(
 			t, binary, stateDir, configuration, "--notify", "audit", "--", printf, "notified",
 		)
-		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		completed := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "completed" && len(detail.NotificationDeliveries) == 1 &&
+				detail.NotificationDeliveries[0].Status == "succeeded" &&
+				detail.NotificationDeliveries[0].AttemptCount == 1
+		})
 		assertJobAndRunOutcome(t, completed, "success")
 		if len(completed.NotificationDeliveries) != 1 {
 			t.Fatalf("notification deliveries = %+v, want one", completed.NotificationDeliveries)
@@ -653,6 +668,488 @@ while :; do "$1" 1; done`
 	})
 }
 
+// TestAssembledBinaryDogfoodContracts automates release-candidate scenarios
+// from docs/DOGFOOD.md that can be exercised deterministically on one local
+// Linux host. Cross-host disconnects, native packaging, remote transports, and
+// endurance evidence remain explicit operator checks in the runbook.
+func TestAssembledBinaryDogfoodContracts(t *testing.T) {
+	binary := buildJobman(t)
+
+	t.Run("preflight health backup and restore", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		version := invokeWithTimeout(t, binary, stateDir, "--version")
+		if version.err != nil || !strings.HasPrefix(version.stdout, "jobman ") {
+			t.Fatalf("jobman --version = %q/%v: %s", version.stdout, version.err, version.stderr)
+		}
+		validation := invokeWithTimeout(t, binary, stateDir, "config", "validate")
+		if validation.err != nil || !strings.HasPrefix(validation.stdout, "valid\t") {
+			t.Fatalf("jobman config validate = %q/%v: %s", validation.stdout, validation.err, validation.stderr)
+		}
+
+		type doctorEnvelope struct {
+			SchemaVersion int `json:"schema_version"`
+			Data          struct {
+				Store struct {
+					Healthy              bool   `json:"healthy"`
+					StateDirectory       string `json:"state_directory"`
+					SchemaVersion        int    `json:"schema_version"`
+					SupportedSchema      int    `json:"supported_schema_version"`
+					IntegrityResult      string `json:"integrity_result"`
+					ForeignKeyViolations int    `json:"foreign_key_violations"`
+				} `json:"store"`
+			} `json:"data"`
+		}
+		health := invokeWithTimeout(t, binary, stateDir, "doctor", "--json")
+		if health.err != nil {
+			t.Fatalf("jobman doctor error = %v: %s", health.err, health.stderr)
+		}
+		var report doctorEnvelope
+		if err := json.Unmarshal([]byte(health.stdout), &report); err != nil {
+			t.Fatalf("decode doctor JSON: %v: %s", err, health.stdout)
+		}
+		if report.SchemaVersion != 1 || !report.Data.Store.Healthy ||
+			report.Data.Store.StateDirectory != filepath.Clean(stateDir) ||
+			report.Data.Store.SchemaVersion != report.Data.Store.SupportedSchema ||
+			report.Data.Store.IntegrityResult != "ok" || report.Data.Store.ForeignKeyViolations != 0 {
+			t.Fatalf("doctor report = %+v", report)
+		}
+		stateInfo, err := os.Stat(stateDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if permissions := stateInfo.Mode().Perm(); permissions != 0o700 {
+			t.Fatalf("state directory permissions = %04o, want 0700", permissions)
+		}
+
+		printf := requireExecutable(t, "printf")
+		jobID := submit(t, binary, stateDir, printf, "backup-marker")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		backup := filepath.Join(t.TempDir(), "jobman-backup.db")
+		backedUp := invokeWithTimeout(t, binary, stateDir, "doctor", "--backup", backup, "--json")
+		if backedUp.err != nil {
+			t.Fatalf("jobman doctor --backup error = %v: %s", backedUp.err, backedUp.stderr)
+		}
+		backupBytes, err := os.ReadFile(backup) // #nosec G304 -- Test-controlled path.
+		if err != nil {
+			t.Fatal(err)
+		}
+		restoredState := filepath.Join(t.TempDir(), "restored-state")
+		if err := os.Mkdir(restoredState, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// #nosec G703 -- The restored state path and fixed database filename are test-controlled.
+		if err := os.WriteFile(filepath.Join(restoredState, store.DatabaseFilename), backupBytes, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if restoredHealth := invokeWithTimeout(t, binary, restoredState, "doctor", "--json"); restoredHealth.err != nil {
+			t.Fatalf("doctor restored backup: %v: %s", restoredHealth.err, restoredHealth.stderr)
+		}
+		restored := showJob(t, binary, restoredState, jobID)
+		if restored.Summary.Outcome != "success" || len(restored.Runs) != 1 {
+			t.Fatalf("restored job = %+v", restored)
+		}
+	})
+
+	t.Run("start failures and dependency predicates", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		missing := filepath.Join(t.TempDir(), "not-an-executable")
+		startFailure := submitRun(t, binary, stateDir, "--", missing)
+		failedToStart := waitForCompletedJob(t, binary, stateDir, startFailure)
+		if failedToStart.Summary.Outcome != "failure" || len(failedToStart.Runs) != 1 ||
+			failedToStart.Runs[0].Outcome != "start_failed" || failedToStart.Runs[0].Exit != nil {
+			t.Fatalf("start-failure job = %+v", failedToStart)
+		}
+
+		gate := filepath.Join(t.TempDir(), "release")
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		waitScript := `while [ ! -e "$1" ]; do :; done`
+		failed := submit(t, binary, stateDir, shell, "-c", waitScript+`; exit 7`, "jobman-e2e", gate)
+		succeeded := submit(t, binary, stateDir, shell, "-c", waitScript, "jobman-e2e", gate)
+		for _, jobID := range []string{failed, succeeded} {
+			registerCancellationCleanup(t, binary, stateDir, jobID)
+			waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+				return detail.Summary.Phase == "running"
+			})
+		}
+
+		afterFailed := submitRun(t, binary, stateDir, "--after-failed", failed, "--", printf, "after-failed")
+		afterFinish := submitRun(t, binary, stateDir, "--after-finish", failed, "--", printf, "after-finish")
+		afterOutcome := submitRun(
+			t, binary, stateDir, "--after-outcome", failed+"=failure", "--", printf, "after-outcome",
+		)
+		multiple := submitRun(
+			t, binary, stateDir,
+			"--after-failed", failed, "--after-success", succeeded, "--", printf, "multiple",
+		)
+		impossible := submitRun(t, binary, stateDir, "--after-success", failed, "--", printf, "must-not-run")
+		for _, jobID := range []string{afterFailed, afterFinish, afterOutcome, multiple, impossible} {
+			registerCancellationCleanup(t, binary, stateDir, jobID)
+			waiting := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+				return detail.Summary.Phase == "waiting"
+			})
+			if len(waiting.Runs) != 0 {
+				t.Fatalf("dependent %s started before its prerequisites: %+v", jobID, waiting.Runs)
+			}
+		}
+		if err := os.WriteFile(gate, []byte("release"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if detail := waitForCompletedJob(t, binary, stateDir, failed); detail.Summary.Outcome != "failure" {
+			t.Fatalf("failed predecessor outcome = %q", detail.Summary.Outcome)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, succeeded), "success")
+		for _, jobID := range []string{afterFailed, afterFinish, afterOutcome, multiple} {
+			assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		}
+		aborted := waitForCompletedJob(t, binary, stateDir, impossible)
+		if aborted.Summary.Outcome != "aborted" || len(aborted.Runs) != 0 {
+			t.Fatalf("impossible dependency = %+v, want aborted without a run", aborted)
+		}
+	})
+
+	t.Run("wait pause resume abort and paused cancellation", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		gate := filepath.Join(t.TempDir(), "wait-file")
+		printf := requireExecutable(t, "printf")
+		waitingJob := submitRun(t, binary, stateDir, "--wait-file", gate, "--wait-poll", "10ms", "--", printf, "waited")
+		registerCancellationCleanup(t, binary, stateDir, waitingJob)
+		waitForJob(t, binary, stateDir, waitingJob, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "waiting"
+		})
+		if result := invokeWithTimeout(t, binary, stateDir, "pause", waitingJob); result.err != nil {
+			t.Fatalf("pause waiting job: %v: %s", result.err, result.stderr)
+		}
+		waitForJob(t, binary, stateDir, waitingJob, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "paused"
+		})
+		if err := os.WriteFile(gate, []byte("ready"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-t.Context().Done():
+			t.Fatal(t.Context().Err())
+		}
+		if paused := showJob(t, binary, stateDir, waitingJob); paused.Summary.Phase != "paused" || len(paused.Runs) != 0 {
+			t.Fatalf("wait condition bypassed pause: %+v", paused)
+		}
+		if result := invokeWithTimeout(t, binary, stateDir, "resume", waitingJob); result.err != nil {
+			t.Fatalf("resume waiting job: %v: %s", result.err, result.stderr)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, waitingJob), "success")
+
+		abortAt := time.Now().UTC().Add(300 * time.Millisecond).Format(time.RFC3339Nano)
+		abortedID := submitRun(
+			t, binary, stateDir,
+			"--wait-file", filepath.Join(t.TempDir(), "absent"), "--wait-poll", "10ms",
+			"--wait-abort-at", abortAt, "--", printf, "must-not-run",
+		)
+		aborted := waitForCompletedJob(t, binary, stateDir, abortedID)
+		if aborted.Summary.Outcome != "aborted" || len(aborted.Runs) != 0 {
+			t.Fatalf("wait deadline result = %+v", aborted)
+		}
+
+		sleep := requireExecutable(t, "sleep")
+		pausedID := submit(t, binary, stateDir, sleep, "60")
+		registerCancellationCleanup(t, binary, stateDir, pausedID)
+		running := waitForJob(t, binary, stateDir, pausedID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running" && len(detail.Runs) == 1 && detail.Runs[0].Process != nil
+		})
+		pid := running.Runs[0].Process.PID
+		registerProcessGroupCleanup(t, pid)
+		if result := invokeWithTimeout(t, binary, stateDir, "pause", pausedID); result.err != nil {
+			t.Fatalf("pause active job: %v: %s", result.err, result.stderr)
+		}
+		waitForJob(t, binary, stateDir, pausedID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "paused"
+		})
+		if result := invokeWithTimeout(t, binary, stateDir, "cancel", pausedID); result.err != nil {
+			t.Fatalf("cancel paused job: %v: %s", result.err, result.stderr)
+		}
+		assertJobAndRunOutcome( //nolint:misspell // Stable persisted spelling.
+			t, waitForCompletedJob(t, binary, stateDir, pausedID), "cancelled",
+		)
+		waitForProcessesGone(t, pid)
+	})
+
+	t.Run("named pool multi-slot admission and removal", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		configuration := writeConfiguration(t, `---
+schema_version: 1
+concurrency:
+  max_active_slots: 3
+  pools:
+    build: 2
+`)
+		applied := invokeWithTimeout(t, binary, stateDir, "--config", configuration, "config", "apply")
+		if applied.err != nil || !strings.HasPrefix(applied.stdout, "applied\t") {
+			t.Fatalf("config apply = %q/%v: %s", applied.stdout, applied.err, applied.stderr)
+		}
+		gate := filepath.Join(t.TempDir(), "release")
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		blocker := submitConfiguredRun(
+			t, binary, stateDir, configuration,
+			"--pool", "build", "--slots", "2", "--",
+			shell, "-c", `while [ ! -e "$1" ]; do :; done`, "jobman-e2e", gate,
+		)
+		registerCancellationCleanup(t, binary, stateDir, blocker)
+		waitForJob(t, binary, stateDir, blocker, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		queued := submitConfiguredRun(
+			t, binary, stateDir, configuration, "--pool", "build", "--", printf, "pool-next",
+		)
+		registerCancellationCleanup(t, binary, stateDir, queued)
+		waitForJob(t, binary, stateDir, queued, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "queued" && len(detail.Runs) == 0
+		})
+		unpooled := submitConfiguredRun(t, binary, stateDir, configuration, "--", printf, "global-slot")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, unpooled), "success")
+		if err := os.WriteFile(gate, []byte("release"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, blocker), "success")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, queued), "success")
+		if err := os.WriteFile(configuration, []byte("---\nschema_version: 1\nconcurrency:\n  max_active_slots: 3\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		removed := invokeWithTimeout(t, binary, stateDir, "--config", configuration, "config", "apply")
+		if removed.err != nil {
+			t.Fatalf("remove unused pool: %v: %s", removed.err, removed.stderr)
+		}
+	})
+
+	t.Run("logs follow active job through completion", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		gate := filepath.Join(t.TempDir(), "release")
+		shell := requireExecutable(t, "sh")
+		jobID := submit(
+			t, binary, stateDir, shell, "-c",
+			`printf follow-start; while [ ! -e "$1" ]; do :; done; printf -- -finish`,
+			"jobman-e2e", gate,
+		)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		waitForLogs(t, binary, stateDir, jobID, "stdout", "follow-start")
+
+		ctx, cancel := context.WithTimeout(t.Context(), commandTimeout)
+		defer cancel()
+		command := exec.CommandContext(
+			ctx, binary, "--state-dir", stateDir, "logs", "--follow", "--stream", "stdout", jobID,
+		)
+		command.Env = removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR")
+		stdout, err := command.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stderr bytes.Buffer
+		command.Stderr = &stderr
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		prefix := make([]byte, len("follow-start"))
+		prefixRead := make(chan error, 1)
+		go func() {
+			_, readErr := io.ReadFull(stdout, prefix)
+			prefixRead <- readErr
+		}()
+		select {
+		case err := <-prefixRead:
+			if err != nil || string(prefix) != "follow-start" {
+				t.Fatalf("read initial followed log = %q/%v", prefix, err)
+			}
+		case <-ctx.Done():
+			t.Fatalf("wait for initial followed log: %v", ctx.Err())
+		}
+		if err := os.WriteFile(gate, []byte("release"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		rest, readErr := io.ReadAll(stdout)
+		waitErr := command.Wait()
+		if readErr != nil || waitErr != nil {
+			t.Fatalf("follow completion = read %v/wait %v: %s", readErr, waitErr, stderr.String())
+		}
+		if got := string(prefix) + string(rest); got != "follow-start-finish" {
+			t.Fatalf("followed log = %q, want %q", got, "follow-start-finish")
+		}
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+	})
+
+	t.Run("multi-client live input spans repeated runs", func(t *testing.T) {
+		stateDir := shortStateDir(t)
+		requireLiveInputSockets(t, stateDir)
+		cat := requireExecutable(t, "cat")
+		jobID := submitRun(
+			t, binary, stateDir,
+			"--stdin", "live", "--max-runs", "2", "--success-target", "2", "--", cat,
+		)
+		registerCancellationCleanup(t, binary, stateDir, jobID)
+		first := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running" && len(detail.Runs) == 1 && detail.Runtime.InputEndpoint != ""
+		})
+		assertPrivateSocket(t, first.Runtime.InputEndpoint)
+		firstPart := []byte{'f', 'i', 'r', 's', 't', 0}
+		secondPart := []byte{0xff, '-', 'c', 'l', 'i', 'e', 'n', 't'}
+		if result := invokeWithInput(t.Context(), binary, stateDir, firstPart, "input", jobID); result.err != nil {
+			t.Fatalf("first input client: %v: %s", result.err, result.stderr)
+		}
+		if result := invokeWithInput(t.Context(), binary, stateDir, secondPart, "input", "--eof", jobID); result.err != nil {
+			t.Fatalf("second input client: %v: %s", result.err, result.stderr)
+		}
+		second := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running" && len(detail.Runs) == 2 &&
+				detail.Runs[1].Phase == "running" && detail.Runtime.InputEndpoint != ""
+		})
+		if second.Runs[0].ID == second.Runs[1].ID || second.Runtime.InputEOFRequested {
+			t.Fatalf("second live-input run did not receive fresh identity/EOF scope: %+v", second)
+		}
+		assertPrivateSocket(t, second.Runtime.InputEndpoint)
+		lastPayload := []byte("second-run")
+		if result := invokeWithInput(t.Context(), binary, stateDir, lastPayload, "input", "--eof", jobID); result.err != nil {
+			t.Fatalf("second-run input: %v: %s", result.err, result.stderr)
+		}
+		completed := waitForCompletedJob(t, binary, stateDir, jobID)
+		if completed.Summary.Outcome != "success" || len(completed.Runs) != 2 {
+			t.Fatalf("repeated live-input job = %+v", completed)
+		}
+		firstLogs := invokeWithTimeout(t, binary, stateDir, "logs", "--run", "1", "--stream", "stdout", jobID)
+		if firstLogs.err != nil || !bytes.Equal([]byte(firstLogs.stdout), slices.Concat(firstPart, secondPart)) {
+			t.Fatalf("first-run input log = %v/%v", firstLogs.err, []byte(firstLogs.stdout))
+		}
+		secondLogs := invokeWithTimeout(t, binary, stateDir, "logs", "--run", "2", "--stream", "stdout", jobID)
+		if secondLogs.err != nil || !bytes.Equal([]byte(secondLogs.stdout), lastPayload) {
+			t.Fatalf("second-run input log = %v/%v", secondLogs.err, []byte(secondLogs.stdout))
+		}
+		if repeatedEOF := invokeWithInput(t.Context(), binary, stateDir, nil, "input", "--eof", jobID); repeatedEOF.err == nil {
+			t.Fatal("repeated EOF after terminal completion unexpectedly succeeded")
+		}
+	})
+
+	t.Run("broken configuration preserves emergency access and redaction", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		printf := requireExecutable(t, "printf")
+		const canary = "private-8675309"
+		redactionConfig := writeConfiguration(t, `---
+schema_version: 1
+redaction:
+  patterns: ['private-[0-9]+']
+`)
+		redactedID := submitConfiguredRun(
+			t, binary, stateDir, redactionConfig, "--name", canary, "--", printf, canary,
+		)
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, redactedID), "success")
+		for _, arguments := range [][]string{{"list", "--json"}, {"show", "--json", redactedID}} {
+			result := invokeWithTimeout(
+				t, binary, stateDir, append([]string{"--config", redactionConfig}, arguments...)...,
+			)
+			if result.err != nil || strings.Contains(result.stdout, canary) ||
+				!strings.Contains(result.stdout, "[REDACTED]") {
+				t.Fatalf("redacted %s = %q/%v: %s", arguments[0], result.stdout, result.err, result.stderr)
+			}
+		}
+		rawLogs := invokeWithTimeout(
+			t, binary, stateDir, "--config", redactionConfig, "logs", "--stream", "stdout", redactedID,
+		)
+		if rawLogs.err != nil || rawLogs.stdout != canary {
+			t.Fatalf("raw target log redaction boundary = %q/%v", rawLogs.stdout, rawLogs.err)
+		}
+
+		brokenConfig := writeConfiguration(t, "not: [valid\n")
+		sleep := requireExecutable(t, "sleep")
+		activeID := submit(t, binary, stateDir, sleep, "60")
+		registerCancellationCleanup(t, binary, stateDir, activeID)
+		waitForJob(t, binary, stateDir, activeID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "running"
+		})
+		operations := [][]string{
+			{"list", "--json"},
+			{"status", activeID},
+			{"show", "--json", activeID},
+			{"logs", "--stream", "stdout", activeID},
+			{"doctor", "--json"},
+		}
+		for _, arguments := range operations {
+			result := invokeWithTimeout(
+				t, binary, stateDir, append([]string{"--config", brokenConfig}, arguments...)...,
+			)
+			if result.err != nil {
+				t.Fatalf("emergency %s with malformed config: %v: %s", arguments[0], result.err, result.stderr)
+			}
+			if slices.Contains(arguments, "--json") && !json.Valid([]byte(result.stdout)) {
+				t.Fatalf("emergency %s returned invalid JSON: %q", arguments[0], result.stdout)
+			}
+		}
+		if invalid := invokeWithTimeout(
+			t, binary, stateDir, "--config", brokenConfig, "config", "validate",
+		); invalid.err == nil {
+			t.Fatal("config validate accepted malformed configuration")
+		}
+		if canceled := invokeWithTimeout(
+			t, binary, stateDir, "--config", brokenConfig, "cancel", activeID,
+		); canceled.err != nil {
+			t.Fatalf("emergency cancel with malformed config: %v: %s", canceled.err, canceled.stderr)
+		}
+		assertJobAndRunOutcome( //nolint:misspell // Stable persisted spelling.
+			t, waitForCompletedJob(t, binary, stateDir, activeID), "cancelled",
+		)
+	})
+
+	t.Run("notification exhaustion does not alter job outcome", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		shell := requireExecutable(t, "sh")
+		printf := requireExecutable(t, "printf")
+		configuration := writeConfiguration(t, fmt.Sprintf(`---
+schema_version: 1
+notifiers:
+  failing:
+    type: command
+    events: [job_succeeded]
+    timeout: 1s
+    retry:
+      max_attempts: 2
+      delay: 1ms
+      max_delay: 1ms
+    command:
+      command: [%s, -c, %s]
+      output_limit: 32B
+`, yamlQuote(shell), yamlQuote(`printf 'notifier failure' >&2; exit 19`)))
+		jobID := submitConfiguredRun(
+			t, binary, stateDir, configuration, "--notify", "failing", "--", printf, "job-succeeded",
+		)
+		completed := waitForJob(t, binary, stateDir, jobID, func(detail jobDetail) bool {
+			return detail.Summary.Phase == "completed" && len(detail.NotificationDeliveries) == 1 &&
+				detail.NotificationDeliveries[0].Status == "failed" &&
+				detail.NotificationDeliveries[0].AttemptCount == 2
+		})
+		assertJobAndRunOutcome(t, completed, "success")
+	})
+
+	t.Run("cleanup dry run is nonmutating before forced pruning", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		printf := requireExecutable(t, "printf")
+		jobID := submit(t, binary, stateDir, printf, "retained-log")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		dryRun := invokeWithTimeout(t, binary, stateDir, "clean", jobID, "--older-than", "0s")
+		if dryRun.err != nil || !strings.HasPrefix(dryRun.stdout, "would remove 1 runs") {
+			t.Fatalf("clean dry-run = %q/%v: %s", dryRun.stdout, dryRun.err, dryRun.stderr)
+		}
+		assertLogs(t, binary, stateDir, jobID, "stdout", "retained-log")
+		removed := invokeWithTimeout(
+			t, binary, stateDir, "clean", jobID, "--older-than", "0s", "--dry-run=false", "--force",
+		)
+		if removed.err != nil || !strings.HasPrefix(removed.stdout, "removed 1 runs") {
+			t.Fatalf("forced clean = %q/%v: %s", removed.stdout, removed.err, removed.stderr)
+		}
+		detail := showJob(t, binary, stateDir, jobID)
+		if len(detail.Runs) != 1 || detail.Runs[0].Logs.Available || detail.Runs[0].Logs.PrunedAt == nil {
+			t.Fatalf("pruned logs = %+v", detail.Runs)
+		}
+	})
+}
+
 func TestAssembledBinaryCrashBoundaries(t *testing.T) {
 	binary := buildJobman(t)
 	shell := requireExecutable(t, "sh")
@@ -803,6 +1300,28 @@ func requireLiveInputSockets(t *testing.T, stateDir string) {
 	}
 	if closeErr := probe.Close(); closeErr != nil {
 		t.Fatalf("close live-input socket probe: %v", closeErr)
+	}
+}
+
+func assertPrivateSocket(t *testing.T, path string) {
+	t.Helper()
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("inspect live-input endpoint %q: %v", path, err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("live-input endpoint mode = %v, want socket", info.Mode())
+	}
+	if permissions := info.Mode().Perm(); permissions != 0o600 {
+		t.Fatalf("live-input endpoint permissions = %04o, want 0600", permissions)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("live-input endpoint has unsupported stat type %T", info.Sys())
+	}
+	if int64(stat.Uid) != int64(os.Getuid()) {
+		t.Fatalf("live-input endpoint owner = %d, want %d", stat.Uid, os.Getuid())
 	}
 }
 

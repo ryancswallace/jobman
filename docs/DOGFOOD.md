@@ -5,6 +5,33 @@ tests. Run it against the exact release-candidate commit and artifacts on
 dedicated Linux, macOS, and Windows test accounts. Do not use production jobs,
 credentials, configuration, or a shared home directory.
 
+## Automated baseline
+
+Run the automated acceptance suites before beginning the manual campaign:
+
+```console
+make e2etest
+make perftest
+make soaktest SOAK_TIME=10m
+```
+
+On Linux, `TestAssembledBinaryDogfoodContracts` exercises the assembled binary
+through preflight health and backup restore, start failures and dependency
+predicates, wait-state controls, named-pool and multi-slot admission, log
+following, repeated-run live input, configuration failure and redaction,
+notification exhaustion, and cleanup dry-run/force behavior. The adjacent
+assembled-binary lifecycle and crash-boundary tests cover terminal detachment,
+process trees, retries, timeouts, rotation, stale ownership, and durable crash
+points. Native macOS and Windows lifecycle tests and the performance/soak
+suites provide the remaining automated platform and scale baseline.
+
+These tests deliberately do not replace evidence that requires an independent
+SSH client, real release packages, network filesystems, controlled remote
+SMTP/HTTPS services, supported-prior-release artifacts, or long-running
+resource observation. A release campaign must still perform every applicable
+manual step below, and core live-input tests must not be skipped on release
+hosts.
+
 ## 1. Prepare the test campaign
 
 For each operating system, record:
