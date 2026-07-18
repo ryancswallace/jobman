@@ -1026,14 +1026,3 @@ printf 'Review %s before copying or attaching it.\n' \
 The grep output is a mandatory human-review queue, not proof that evidence is
 safe. Do not archive the state directory by default: immutable job
 specifications and raw logs can contain sensitive target data.
-
-The v1 candidate passes only when:
-
-- automated `make check`, snapshot, and all native CI jobs pass on the release
-  commit;
-- this runbook passes on Linux, macOS, and Windows without skipped core cases;
-- upgrade and restore evidence exists for every supported prior release;
-- the 24-hour soaks have no unexplained resource growth or state corruption;
-  and
-- every deviation is fixed, explicitly accepted as a documented limitation,
-  or deferred out of the claimed v1 contract.
