@@ -139,6 +139,23 @@ func TestRunPolicyParsingHelpers(t *testing.T) {
 	if len(classification.RetryableExitCodes) != 1 || !classification.RetryTimeout {
 		t.Fatalf("classificationFromConfig() = %+v", classification)
 	}
+	maximumDelay, err := config.NewDurationLimit(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delay, err := delayFromConfig(config.DelayPolicy{MaxDelay: maximumDelay})
+	if err != nil || !delay.HasMaxDelay || delay.MaxDelay != 5*time.Second {
+		t.Fatalf("delayFromConfig(maximum) = (%+v, %v)", delay, err)
+	}
+	for name, completion := range map[string]config.CompletionPolicy{
+		"max runs":       {MaxRuns: config.NewIntegerLimit(0)},
+		"success target": {SuccessTarget: config.NewIntegerLimit(0)},
+		"failure limit":  {MaxFailures: config.NewIntegerLimit(0)},
+	} {
+		if _, completionErr := completionFromConfig(completion); completionErr == nil {
+			t.Errorf("completionFromConfig(%s) error = nil", name)
+		}
+	}
 }
 
 func TestConfiguredWaitAndNotifierConversion(t *testing.T) {
@@ -375,15 +392,21 @@ func TestRunOptionValidationMatrix(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"run", "--stdin", "null", "--stdin-file", stdinFile, "--", "true"},
 		{"run", "--foreground", "--stdin", "null", "--", "true"},
+		{"run", "--foreground", "--stdin-file", stdinFile, "--", "true"},
 		{"run", "--retries", "2", "--max-runs", "3", "--", "true"},
+		{"run", "--retries", "18446744073709551615", "--", "true"},
 		{"run", "--max-runs", "0", "--", "true"},
 		{"run", "--slots", "0", "--", "true"},
+		{"run", "--wait-condition", "missing", "--", "true"},
+		{"run", "--wait-abort-at", "bad", "--", "true"},
 		{"run", "--wait-until", "bad", "--", "true"},
 		{"run", "--wait-delay", "bad", "--", "true"},
 		{"run", "--wait-delay", "-1s", "--", "true"},
 		{"run", "--log-segments", "0", "--", "true"},
 		{"run", "--log-segments", "65536", "--", "true"},
+		{"run", "--log-segment-bytes", "18446744073709551615", "--", "true"},
 		{"run", "--log-retention", "bad", "--", "true"},
+		{"run", "--notify", "missing", "--", "true"},
 		{"run", "--after-outcome", "bad", "--", "true"},
 		{"run", "--after-outcome", "job=unknown", "--", "true"},
 		{"run", "--env", "bad", "--", "true"},
@@ -712,6 +735,21 @@ func TestNotifierDefinitionValidationFailures(t *testing.T) {
 	})
 	if err != nil || len(definitions) != 1 {
 		t.Fatalf("notifierDefinitions(duplicate) = (%+v, %v)", definitions, err)
+	}
+
+	valid["http"].HTTP.SigningSecret = "shared"
+	valid["smtp"].SMTP.Username = "jobman"
+	valid["smtp"].SMTP.PasswordSecret = "shared"
+	configuration = config.Config{
+		Notifiers: valid,
+		Secrets:   map[string]config.SecretRef{"shared": secret},
+	}
+	definitions, err = notifierDefinitions(configuration, []model.NotificationSubscription{
+		{Notifier: "http"}, {Notifier: "smtp"},
+	})
+	if err != nil || len(definitions) != 2 || definitions[0].Webhook.SigningSecret == nil ||
+		definitions[1].SMTP.PasswordSecret == nil {
+		t.Fatalf("notifierDefinitions(secrets) = (%+v, %v)", definitions, err)
 	}
 }
 

@@ -53,9 +53,11 @@ END {
 		statements = block_statements[block]
 		file_total[file] += statements
 		package_total[package] += statements
+		repository_total += statements
 		if (block_hits[block] > 0) {
 			file_covered[file] += statements
 			package_covered[package] += statements
+			repository_covered += statements
 		}
 	}
 	close(output)
@@ -73,6 +75,17 @@ END {
 		printf "  %-68s %6.2f%% (%d/%d)\n", package, percent,
 			package_covered[package], package_total[package]
 		if (100 * package_covered[package] < minimum * package_total[package]) {
+			failed = 1
+		}
+	}
+
+	if (repository_total == 0) {
+		printf "Repository coverage: n/a (%d/%d)\n", repository_covered, repository_total
+	} else {
+		repository_percent = 100 * repository_covered / repository_total
+		printf "Repository coverage: %.2f%% (%d/%d; minimum %.2f%%)\n",
+			repository_percent, repository_covered, repository_total, minimum
+		if (100 * repository_covered < minimum * repository_total) {
 			failed = 1
 		}
 	}
