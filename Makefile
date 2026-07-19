@@ -23,8 +23,13 @@ COMPLETIONS_DIR := $(DOCS_DIR)/completions
 SITE_BUILD_DIR := site-build
 COVERAGE_FILE := coverage.txt
 COVERAGE_RAW := coverage.raw
+COVERAGE_E2E_DIR := .coverage-e2e
+COVERAGE_E2E_FILE := coverage.e2e.raw
+COVERAGE_COMBINED_FILE := coverage.combined.raw
 COVERAGE_HTML := coverage.html
-COVERAGE_MIN ?= 90
+COVERAGE_MIN ?= 95
+COVERAGE_PACKAGE_MIN ?= 90
+UNIT_COVERAGE_MIN ?= 90
 
 GEN_MANPAGE := ./devel/manpages/manpages.go
 GEN_COMPLETIONS := ./devel/autocomplete/autocomplete.go
@@ -220,7 +225,7 @@ unittest: ## Run unit tests with race detection and coverage.
 		| grep -Ev '/tests/(e2e|perf)($$|/)' )"; \
 	$(GO) test $(GO_TEST_FLAGS) -covermode=atomic -coverpkg=./... \
 		-coverprofile=$(COVERAGE_RAW) $$packages; \
-	awk -v minimum='$(COVERAGE_MIN)' -v output='$(COVERAGE_FILE)' \
+	awk -v minimum='$(UNIT_COVERAGE_MIN)' -v output='$(COVERAGE_FILE)' \
 		-f devel/check-coverage.awk $(COVERAGE_RAW)
 unit: unittest
 
@@ -260,7 +265,23 @@ fuzz: ## Fuzz a selected Go target (FUZZ_PACKAGE, FUZZ_TARGET, FUZZ_TIME, FUZZ_P
 test: unittest e2etest perftest ## Run unit, end-to-end, and performance tests.
 
 .PHONY: coverage
-coverage: unittest ## Generate the coverage profile.
+coverage: UNIT_COVERAGE_MIN=0
+coverage: unittest ## Generate merged unit and assembled-binary coverage.
+	@set -eu; \
+	trap '$(RM) -r $(COVERAGE_E2E_DIR); \
+		$(RM) $(COVERAGE_E2E_FILE) $(COVERAGE_COMBINED_FILE)' EXIT; \
+	$(RM) -r $(COVERAGE_E2E_DIR); \
+	mkdir -p $(COVERAGE_E2E_DIR); \
+	JOBMAN_E2E_COVERDIR='$(abspath $(COVERAGE_E2E_DIR))' \
+		$(GO) test $(GO_TEST_FLAGS) ./tests/e2e/...; \
+	$(GO) tool covdata textfmt -i=$(COVERAGE_E2E_DIR) \
+		-o=$(COVERAGE_E2E_FILE); \
+	awk 'FNR == 1 && NR != 1 { next } { print }' \
+		$(COVERAGE_FILE) $(COVERAGE_E2E_FILE) >$(COVERAGE_COMBINED_FILE); \
+	awk -v package_minimum='$(COVERAGE_PACKAGE_MIN)' \
+		-v repository_minimum='$(COVERAGE_MIN)' \
+		-v output='$(COVERAGE_FILE)' -f devel/check-coverage.awk \
+		$(COVERAGE_COMBINED_FILE)
 	$(GO) tool cover -func=$(COVERAGE_FILE)
 
 .PHONY: coverage-html
@@ -427,7 +448,9 @@ clean-generated: ## Remove generated man pages and completion scripts.
 .PHONY: clean
 clean: clean-generated ## Remove build, release, and test artifacts.
 	$(RM) -r $(BIN_DIR) $(DIST_DIR)
-	$(RM) $(COVERAGE_FILE) $(COVERAGE_RAW) $(COVERAGE_HTML)
+	$(RM) -r $(COVERAGE_E2E_DIR)
+	$(RM) $(COVERAGE_FILE) $(COVERAGE_RAW) $(COVERAGE_E2E_FILE)
+	$(RM) $(COVERAGE_COMBINED_FILE) $(COVERAGE_HTML)
 
 .PHONY: clean-tools
 clean-tools: ## Remove tools installed into bin/ by this Makefile.

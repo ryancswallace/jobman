@@ -201,7 +201,12 @@ func buildNativeJobman(t *testing.T) string {
 	binary := filepath.Join(t.TempDir(), name)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", binary, "../..")
+	arguments := []string{"build", "-trimpath"}
+	if os.Getenv("JOBMAN_E2E_COVERDIR") != "" {
+		arguments = append(arguments, "-cover", "-covermode=atomic", "-coverpkg=./...")
+	}
+	arguments = append(arguments, "-o", binary, "../..")
+	command := exec.CommandContext(ctx, "go", arguments...)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build assembled binary: %v: %s", err, output)
 	}
@@ -242,6 +247,7 @@ func nativeCommand(t *testing.T, binary string, arguments ...string) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary, arguments...)
+	command.Env = nativeAssembledBinaryEnvironment()
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil {
@@ -249,6 +255,20 @@ func nativeCommand(t *testing.T, binary string, arguments ...string) string {
 	}
 
 	return stdout.String()
+}
+
+func nativeAssembledBinaryEnvironment() []string {
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, item := range os.Environ() {
+		if !strings.HasPrefix(item, "GOCOVERDIR=") {
+			environment = append(environment, item)
+		}
+	}
+	if directory := os.Getenv("JOBMAN_E2E_COVERDIR"); directory != "" {
+		environment = append(environment, "GOCOVERDIR="+directory)
+	}
+
+	return environment
 }
 
 func waitNativeJob(

@@ -558,6 +558,7 @@ while :; do "$1" 1; done`
 		ctx, cancel := context.WithTimeout(t.Context(), commandTimeout)
 		defer cancel()
 		command := exec.CommandContext(ctx, scriptCommand, "-q", "-e", "-c", commandLine, "/dev/null")
+		command.Env = assembledBinaryEnvironment()
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("submit through controlling terminal: %v: %s", err, output)
@@ -940,7 +941,7 @@ concurrency:
 		command := exec.CommandContext(
 			ctx, binary, "--state-dir", stateDir, "logs", "--follow", "--stream", "stdout", jobID,
 		)
-		command.Env = removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR")
+		command.Env = assembledBinaryEnvironment()
 		stdout, err := command.StdoutPipe()
 		if err != nil {
 			t.Fatal(err)
@@ -1247,7 +1248,12 @@ func buildJobman(t *testing.T) string {
 	binary := filepath.Join(t.TempDir(), "jobman")
 	ctx, cancel := context.WithTimeout(t.Context(), buildTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "go", "build", "-tags", "jobman_faultinject", "-o", binary, ".")
+	arguments := []string{"build", "-tags", "jobman_faultinject"}
+	if os.Getenv("JOBMAN_E2E_COVERDIR") != "" {
+		arguments = append(arguments, "-cover", "-covermode=atomic", "-coverpkg=./...")
+	}
+	arguments = append(arguments, "-o", binary, ".")
+	command := exec.CommandContext(ctx, "go", arguments...)
 	command.Dir = repository
 	command.Env = os.Environ()
 	output, err := command.CombinedOutput()
@@ -1707,7 +1713,7 @@ func invokeFault(
 	commandArguments := append([]string{"--state-dir", stateDir}, arguments...)
 	command := exec.CommandContext(ctx, binary, commandArguments...)
 	command.Env = append(
-		removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR"),
+		assembledBinaryEnvironment(),
 		"JOBMAN_ENABLE_FAULT_INJECTION=1",
 		"JOBMAN_FAULT_POINT="+point,
 	)
@@ -1756,7 +1762,7 @@ func invokeWithInput(
 	commandArguments = append(commandArguments, "--state-dir", stateDir)
 	commandArguments = append(commandArguments, arguments...)
 	command := exec.CommandContext(ctx, binary, commandArguments...)
-	command.Env = removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR")
+	command.Env = assembledBinaryEnvironment()
 	command.Stdin = bytes.NewReader(input)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -1777,4 +1783,14 @@ func removeEnvironment(environment []string, name string) []string {
 	}
 
 	return result
+}
+
+func assembledBinaryEnvironment() []string {
+	environment := removeEnvironment(os.Environ(), "JOBMAN_STATE_DIR")
+	environment = removeEnvironment(environment, "GOCOVERDIR")
+	if directory := os.Getenv("JOBMAN_E2E_COVERDIR"); directory != "" {
+		environment = append(environment, "GOCOVERDIR="+directory)
+	}
+
+	return environment
 }

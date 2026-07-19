@@ -30,6 +30,7 @@ bin/
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
+.coverage-e2e/
 *.coverprofile
 profile.cov
 

@@ -2,6 +2,12 @@ BEGIN {
 	if (minimum == "") {
 		minimum = 90
 	}
+	if (package_minimum == "") {
+		package_minimum = minimum
+	}
+	if (repository_minimum == "") {
+		repository_minimum = minimum
+	}
 	if (output == "") {
 		output = "coverage.txt"
 	}
@@ -63,7 +69,7 @@ END {
 	close(output)
 
 	failed = 0
-	printf "Merged coverage (minimum %.2f%% per package):\n", minimum
+	printf "Merged coverage (minimum %.2f%% per package):\n", package_minimum
 	for (i = 1; i <= package_count; i++) {
 		package = package_order[i]
 		if (package_total[package] == 0) {
@@ -74,7 +80,7 @@ END {
 		percent = 100 * package_covered[package] / package_total[package]
 		printf "  %-68s %6.2f%% (%d/%d)\n", package, percent,
 			package_covered[package], package_total[package]
-		if (100 * package_covered[package] < minimum * package_total[package]) {
+		if (100 * package_covered[package] < package_minimum * package_total[package]) {
 			failed = 1
 		}
 	}
@@ -84,8 +90,8 @@ END {
 	} else {
 		repository_percent = 100 * repository_covered / repository_total
 		printf "Repository coverage: %.2f%% (%d/%d; minimum %.2f%%)\n",
-			repository_percent, repository_covered, repository_total, minimum
-		if (100 * repository_covered < minimum * repository_total) {
+			repository_percent, repository_covered, repository_total, repository_minimum
+		if (100 * repository_covered < repository_minimum * repository_total) {
 			failed = 1
 		}
 	}
