@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -2132,13 +2133,18 @@ func TestReconcileExpiredOwnerWithActiveRun(t *testing.T) {
 	if err := capture.Close(); err != nil {
 		t.Fatal(err)
 	}
+	reserved, err := database.GetRun(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := reserved.ReservedAt.Add(time.Millisecond)
 	if _, err := database.MarkProcessStarted(
-		t.Context(), claim.Job.ID, runID, "/missing/target", deadIdentity, time.Now().UTC(),
+		t.Context(), claim.Job.ID, runID, "/missing/target", deadIdentity, startedAt,
 	); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := reconcileExpiredJobOwner(
-		t.Context(), database, claim.Job.ID, now.Add(time.Second),
+		t.Context(), database, claim.Job.ID, startedAt.Add(time.Second),
 	)
 	if err != nil || !changed {
 		t.Fatalf("reconcileExpiredJobOwner(active run) = (%t, %v)", changed, err)
@@ -2483,6 +2489,96 @@ func TestSchedulerEvaluationErrorEdges(t *testing.T) {
 	}); err == nil {
 		t.Fatal("RunProbe(empty executable) error = nil")
 	}
+}
+
+func TestAwaitRunnablePersistenceFailureBoundaries(t *testing.T) {
+	t.Parallel()
+
+	t.Run("runtime load", func(t *testing.T) {
+		configuration := model.DefaultExecutionPolicy()
+		fixture := submitSupervisorFixtureWithPolicy(t, true, false, configuration)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		claimCoverageFixture(t, database, fixture, time.Minute)
+		raw := openSupervisorRawDatabase(t, database)
+		if _, err := raw.ExecContext(t.Context(), `ALTER TABLE job_runtime RENAME TO broken_runtime`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := awaitRunnable(t.Context(), t.Context(), database, fixture.jobID, fixedJitterSource(0)); err == nil {
+			t.Fatal("awaitRunnable(runtime load failure) error = nil")
+		}
+	})
+
+	t.Run("initial move", func(t *testing.T) {
+		configuration := model.DefaultExecutionPolicy()
+		configuration.WaitConditions = []model.WaitCondition{{
+			Kind: model.WaitDelay, Delay: time.Hour, PollInterval: time.Second,
+		}}
+		fixture := submitSupervisorFixtureWithPolicy(t, true, false, configuration)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		claimCoverageFixture(t, database, fixture, time.Minute)
+		raw := openSupervisorRawDatabase(t, database)
+		if _, err := raw.ExecContext(t.Context(), `
+			CREATE TRIGGER fail_wait_move BEFORE UPDATE ON jobs
+			BEGIN SELECT RAISE(ABORT, 'injected move failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := awaitRunnable(t.Context(), t.Context(), database, fixture.jobID, fixedJitterSource(0)); err == nil {
+			t.Fatal("awaitRunnable(initial move failure) error = nil")
+		}
+	})
+
+	t.Run("prerequisite persistence", func(t *testing.T) {
+		fixture := submitSupervisorFixture(t, true)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		claimCoverageFixture(t, database, fixture, time.Minute)
+		raw := openSupervisorRawDatabase(t, database)
+		if _, err := raw.ExecContext(t.Context(), `
+			CREATE TRIGGER fail_prerequisite BEFORE UPDATE ON job_runtime
+			BEGIN SELECT RAISE(ABORT, 'injected prerequisite failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := awaitRunnable(t.Context(), t.Context(), database, fixture.jobID, fixedJitterSource(0)); err == nil {
+			t.Fatal("awaitRunnable(prerequisite failure) error = nil")
+		}
+	})
+
+	t.Run("paused interruption", func(t *testing.T) {
+		fixture := submitSupervisorFixture(t, true)
+		database := openSupervisorStore(t, fixture.stateDir)
+		defer closeSupervisorStore(t, database)
+		job := claimCoverageFixture(t, database, fixture, time.Minute)
+		if _, err := database.MoveJob(t.Context(), job.ID, model.JobPhaseQueued, time.Now().UTC(), "queued"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Pause(t.Context(), job.ID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		raw := openSupervisorRawDatabase(t, database)
+		if _, err := raw.ExecContext(t.Context(), `
+			CREATE TRIGGER fail_wait_cancel BEFORE UPDATE ON jobs
+			BEGIN SELECT RAISE(ABORT, 'injected cancellation failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		stopCtx, cancel := context.WithCancel(t.Context())
+		cancel()
+		if _, err := awaitRunnable(stopCtx, t.Context(), database, fixture.jobID, fixedJitterSource(0)); err == nil {
+			t.Fatal("awaitRunnable(paused cancellation persistence) error = nil")
+		}
+	})
+}
+
+func openSupervisorRawDatabase(t *testing.T, database *store.Store) *sql.DB {
+	t.Helper()
+	raw, err := sql.Open("sqlite", database.DatabasePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = raw.Close() })
+
+	return raw
 }
 
 func TestDispositionRejectsMissingJitterSource(t *testing.T) {
