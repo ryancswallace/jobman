@@ -160,6 +160,57 @@ func TestTimeoutBudgetRejectsInvalidReadings(t *testing.T) {
 	}
 }
 
+func TestTimeoutBudgetPropagatesInvalidInternalState(t *testing.T) {
+	t.Parallel()
+	invalid := TimeoutBudget{}
+	operations := []func() error{
+		func() error { _, err := invalid.Pause(testPolicyTime()); return err },
+		func() error { _, err := invalid.Resume(testPolicyTime()); return err },
+		func() error { _, err := invalid.Elapsed(testPolicyTime()); return err },
+		func() error { _, _, err := invalid.Remaining(testPolicyTime()); return err },
+		func() error { _, err := invalid.Expired(testPolicyTime()); return err },
+		func() error { _, _, err := invalid.Deadline(testPolicyTime()); return err },
+	}
+	for index, operation := range operations {
+		if err := operation(); err == nil {
+			t.Errorf("operation %d error = nil", index)
+		}
+	}
+
+	startedAt := testPolicyTime()
+	paused := TimeoutBudget{
+		scope: TimeoutScopeRun, limit: time.Minute, startedAt: startedAt,
+		pausedAt: startedAt.Add(time.Second),
+	}
+	if _, err := paused.Elapsed(startedAt); err == nil {
+		t.Fatal("Elapsed(before pause) error = nil")
+	}
+
+	for name, budget := range map[string]TimeoutBudget{
+		"scope": {scope: "invalid", limit: time.Second, startedAt: startedAt},
+		"limit": {scope: TimeoutScopeRun, limit: -1, startedAt: startedAt},
+		"start": {scope: TimeoutScopeRun, limit: time.Second},
+	} {
+		if err := budget.validateTime(startedAt); err == nil {
+			t.Errorf("validateTime(%s) error = nil", name)
+		}
+	}
+	valid := TimeoutBudget{scope: TimeoutScopeRun, limit: time.Second, startedAt: startedAt}
+	if err := valid.validateTime(time.Time{}); err == nil {
+		t.Fatal("validateTime(zero current time) error = nil")
+	}
+	if got := addNonnegativeDurationSaturating(time.Second, -time.Second); got != time.Second {
+		t.Fatalf("negative saturation = %s", got)
+	}
+	if got := addNonnegativeDurationSaturating(time.Duration(1<<63-2), time.Second); got != time.Duration(1<<63-1) {
+		t.Fatalf("overflow saturation = %s", got)
+	}
+}
+
+func testPolicyTime() time.Time {
+	return time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+}
+
 func TestTimeoutBudgetPauseProperty(t *testing.T) {
 	t.Parallel()
 
