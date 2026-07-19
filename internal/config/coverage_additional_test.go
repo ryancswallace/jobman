@@ -18,8 +18,8 @@ func TestSourceAndDiscoveryFailureContracts(t *testing.T) {
 	t.Parallel()
 
 	for name, source := range map[string]Source{
-		"unknown kind": {Kind: SourceKind("unknown"), Data: []byte("{}")},
-		"missing input": {Kind: SourceExplicit},
+		"unknown kind":    {Kind: SourceKind("unknown"), Data: []byte("{}")},
+		"missing input":   {Kind: SourceExplicit},
 		"ambiguous input": {Kind: SourceExplicit, Path: "config.yml", Data: []byte("{}")},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestRemainingReferenceAndUnionValidationBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := WaitCondition{
-		Type: string(model.WaitProbe),
+		Type:  string(model.WaitProbe),
 		Probe: &ProbeCondition{Command: nil, Timeout: oneSecond, PollInterval: oneSecond, OutputLimit: NewByteLimit(1)},
 	}
 	if err := validateWaitCondition(probe, configuration.Secrets); err == nil {
@@ -240,14 +240,14 @@ func TestScalarDecoderFailureBranches(t *testing.T) {
 	overflow := &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagInteger, Value: "18446744073709551616"}
 
 	operations := map[string]func() error{
-		"duration shape": func() error { return new(Duration).UnmarshalYAML(mapping) },
-		"duration value": func() error { return new(Duration).UnmarshalYAML(invalidDuration) },
-		"slot overflow": func() error { return new(SlotLimit).UnmarshalYAML(tooLargeSlot) },
+		"duration shape":       func() error { return new(Duration).UnmarshalYAML(mapping) },
+		"duration value":       func() error { return new(Duration).UnmarshalYAML(invalidDuration) },
+		"slot overflow":        func() error { return new(SlotLimit).UnmarshalYAML(tooLargeSlot) },
 		"duration limit shape": func() error { return new(DurationLimit).UnmarshalYAML(mapping) },
-		"byte limit shape": func() error { return new(ByteLimit).UnmarshalYAML(mapping) },
-		"byte limit integer": func() error { return new(ByteLimit).UnmarshalYAML(badInteger) },
-		"byte limit tag": func() error { return new(ByteLimit).UnmarshalYAML(boolean) },
-		"secret shape": func() error { return new(SecretRef).UnmarshalYAML(mapping) },
+		"byte limit shape":     func() error { return new(ByteLimit).UnmarshalYAML(mapping) },
+		"byte limit integer":   func() error { return new(ByteLimit).UnmarshalYAML(badInteger) },
+		"byte limit tag":       func() error { return new(ByteLimit).UnmarshalYAML(boolean) },
+		"secret shape":         func() error { return new(SecretRef).UnmarshalYAML(mapping) },
 		"integer shape": func() error {
 			_, _, err := parseIntegerLimit(mapping, true)
 			return err
