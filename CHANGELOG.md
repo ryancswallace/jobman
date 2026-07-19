@@ -8,6 +8,8 @@ semantic-release.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-19
+
 ## [0.8.0] - 2026-07-18
 
 ## [0.7.1] - 2026-07-16
@@ -153,7 +155,8 @@ semantic-release.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/ryancswallace/jobman/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ryancswallace/jobman/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ryancswallace/jobman/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ryancswallace/jobman/compare/v0.6.0...v0.7.0
