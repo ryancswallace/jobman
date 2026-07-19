@@ -159,8 +159,33 @@ func TestCopyAndPublishFailures(t *testing.T) {
 	if err := copyFile(source, blockedDestination); err == nil {
 		t.Fatal("copyFile(directory destination) error = nil")
 	}
+	blockedParent := filepath.Join(root, "blocked-parent")
+	if err := os.WriteFile(blockedParent, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFile(source, filepath.Join(blockedParent, "out")); err == nil {
+		t.Fatal("copyFile(blocked parent) error = nil")
+	}
 	if err := publishCanonicalPage(root, filepath.Join(root, "published"), publishedPage{source: "missing.md"}); err == nil {
 		t.Fatal("publishCanonicalPage(missing) error = nil")
+	}
+	canonical := filepath.Join(root, "canonical.md")
+	if err := os.WriteFile(canonical, []byte("body"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishCanonicalPage(root, blockedParent, publishedPage{
+		source: "canonical.md", destination: "nested/page.md",
+	}); err == nil {
+		t.Fatal("publishCanonicalPage(blocked parent) error = nil")
+	}
+	publishedRoot := filepath.Join(root, "published-write")
+	if err := os.MkdirAll(filepath.Join(publishedRoot, "nested", "page.md"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishCanonicalPage(root, publishedRoot, publishedPage{
+		source: "canonical.md", destination: "nested/page.md",
+	}); err == nil {
+		t.Fatal("publishCanonicalPage(directory destination) error = nil")
 	}
 	blockedOutput := filepath.Join(root, "command-output")
 	if err := os.WriteFile(blockedOutput, nil, 0o600); err != nil {
@@ -168,6 +193,13 @@ func TestCopyAndPublishFailures(t *testing.T) {
 	}
 	if err := generateCommandReference(blockedOutput); err == nil {
 		t.Fatal("generateCommandReference(blocked output) error = nil")
+	}
+	commandOutput := filepath.Join(root, "command-write")
+	if err := os.MkdirAll(filepath.Join(commandOutput, "index.md"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCommandPage(commandOutput, jobman.NewCommand(), 1); err == nil {
+		t.Fatal("writeCommandPage(directory destination) error = nil")
 	}
 }
 
@@ -220,6 +252,12 @@ func TestValidateSiteRejectsInvalidContent(t *testing.T) {
 		"missing required page": func(t *testing.T, root string) {
 			t.Helper()
 			if err := os.Remove(filepath.Join(root, "guides.md")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"missing required asset": func(t *testing.T, root string) {
+			t.Helper()
+			if err := os.Remove(filepath.Join(root, "assets", "images", "logo.png")); err != nil {
 				t.Fatal(err)
 			}
 		},
