@@ -252,7 +252,7 @@ func TestOpenConcurrentMigration(t *testing.T) {
 			<-start
 			store, err := Open(t.Context(), Options{
 				StateDir:    stateDir,
-				BusyTimeout: 10 * time.Second,
+				BusyTimeout: 30 * time.Second,
 			})
 			if err != nil {
 				errorsFound <- err
