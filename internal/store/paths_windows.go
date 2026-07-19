@@ -29,3 +29,14 @@ func hardenPath(path string) error {
 func validatePathSecurity(path string) error {
 	return winacl.Validate(path)
 }
+
+// hardenTrustedExistingDatabaseFile closes the creation-to-hardening window
+// between concurrent Open calls. The inherited ACL must already contain only
+// trusted principals before this process is allowed to protect it.
+func hardenTrustedExistingDatabaseFile(path string) error {
+	if err := winacl.ValidateInherited(path); err != nil {
+		return err
+	}
+
+	return winacl.Harden(path)
+}

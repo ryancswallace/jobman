@@ -96,6 +96,9 @@ func prepareDatabaseFile(path string) error {
 	if !errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("create database file: %w", err)
 	}
+	if err := hardenTrustedExistingDatabaseFile(path); err != nil {
+		return fmt.Errorf("restrict existing database file: %w", err)
+	}
 
 	return validateDatabaseFile(path)
 }

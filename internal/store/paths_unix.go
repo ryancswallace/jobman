@@ -59,6 +59,8 @@ func hardenPath(path string) error {
 
 func validatePathSecurity(string) error { return nil }
 
+func hardenTrustedExistingDatabaseFile(string) error { return nil }
+
 func errorsForUnexpectedFileInfo(info os.FileInfo) error {
 	return fmt.Errorf("unsupported file metadata for %q", info.Name())
 }
