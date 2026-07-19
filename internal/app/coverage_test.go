@@ -1044,3 +1044,187 @@ func TestInspectReportsComponentQueryFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmissionPolicyAndDependencyEdges(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	service.knownPools = map[string]struct{}{"build": {}}
+	unknownPoolPolicy := model.DefaultExecutionPolicy()
+	unknownPoolPolicy.Concurrency = model.ConcurrencyPolicy{Pool: "missing", Slots: 1}
+	if _, err := service.Submit(t.Context(), SubmitRequest{
+		Executable: "true", WorkingDirectory: t.TempDir(),
+		ExecutionPolicy: unknownPoolPolicy,
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Submit(unknown pool) error = %v", err)
+	}
+
+	dependency, err := service.Submit(t.Context(), SubmitRequest{Executable: "true", WorkingDirectory: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := SubmitRequest{
+		Executable: "true", WorkingDirectory: t.TempDir(),
+		Dependencies: []DependencyRequest{{Selector: dependency.ID.String(), Predicate: string(store.DependencySuccess)}},
+	}
+	duplicate := base
+	duplicate.Dependencies = append(append([]DependencyRequest(nil), base.Dependencies...), base.Dependencies[0])
+	if _, err := service.Submit(t.Context(), duplicate); err != nil {
+		t.Fatalf("Submit(duplicate dependency) error = %v", err)
+	}
+	contradictory := base
+	contradictory.Dependencies = append(append([]DependencyRequest(nil), base.Dependencies...),
+		DependencyRequest{Selector: dependency.ID.String(), Predicate: string(store.DependencyFailed)})
+	if _, err := service.Submit(t.Context(), contradictory); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Submit(contradictory dependency) error = %v", err)
+	}
+	invalid := base
+	invalid.Dependencies[0].Predicate = "unknown"
+	if _, err := service.Submit(t.Context(), invalid); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Submit(invalid predicate) error = %v", err)
+	}
+	missing := base
+	missing.Dependencies[0].Selector = "missing"
+	if _, err := service.Submit(t.Context(), missing); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Submit(missing dependency) error = %v", err)
+	}
+}
+
+func TestListJobsIncludesRunsAndReconcilesActiveRunLogs(t *testing.T) {
+	t.Parallel()
+
+	service, clock := newTestService(t)
+	job, err := service.Submit(t.Context(), SubmitRequest{Executable: "true", WorkingDirectory: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := service.ids.NewRunID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture, err := logstore.CreateRun(service.stateDir, job.ID.String(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := capture.Paths()
+	reservedAt := clock.now.Add(2 * time.Millisecond)
+	logs := model.LogMetadata{
+		StdoutPath: paths.Stdout, StderrPath: paths.Stderr, IndexPath: paths.Index,
+		IndexVersion: capture.IndexVersion(), Integrity: model.LogIntegrityPending,
+		RecordingHealth: model.RecordingHealthy,
+	}
+	if _, err := service.store.ReserveRun(t.Context(), job.ID, runID, 1, logs, reservedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := capture.Append(logstore.Stdout, []byte("partial"), reservedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
+	clock.now = clock.now.Add(time.Minute)
+	listed, err := service.ListJobs(t.Context(), ListRequest{Limit: 10, ShowRuns: true})
+	if err != nil {
+		t.Fatalf("ListJobs() error = %v", err)
+	}
+	if len(listed) != 1 || len(listed[0].Runs) != 1 || listed[0].Job.Outcome != model.JobOutcomeLost {
+		t.Fatalf("ListJobs() = %+v", listed)
+	}
+}
+
+func TestServiceIntermediatePersistenceFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pagination on closed store", func(t *testing.T) {
+		service, _ := newTestService(t)
+		if err := service.store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.reconcileActiveJobsAcrossPages(t.Context(), store.ListJobsOptions{}, 1); err == nil {
+			t.Fatal("reconcileActiveJobsAcrossPages() error = nil")
+		}
+		if _, err := service.listJobsAcrossPages(t.Context(), store.ListJobsOptions{}, 1); err == nil {
+			t.Fatal("listJobsAcrossPages() error = nil")
+		}
+	})
+
+	t.Run("active run unavailable", func(t *testing.T) {
+		service, _, job, _, _ := newLiveInputService(t)
+		raw := openAppRawDatabase(t, service)
+		if _, err := raw.ExecContext(t.Context(), `ALTER TABLE runs RENAME TO unavailable_runs`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.Pause(t.Context(), job.ID.String()); err == nil {
+			t.Fatal("Pause() error = nil")
+		}
+		if _, _, err := service.waitForInputTarget(t.Context(), job.ID); err == nil {
+			t.Fatal("waitForInputTarget() error = nil")
+		}
+	})
+
+	t.Run("supervisor unavailable", func(t *testing.T) {
+		service, _ := newTestService(t)
+		job, err := service.Submit(t.Context(), SubmitRequest{Executable: "true", WorkingDirectory: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw := openAppRawDatabase(t, service)
+		if _, err := raw.ExecContext(t.Context(), `ALTER TABLE supervisors RENAME TO unavailable_supervisors`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.reconcileStaleOwnership(t.Context(), job, nil); err == nil {
+			t.Fatal("reconcileStaleOwnership() error = nil")
+		}
+	})
+
+	t.Run("lost ownership update rejected", func(t *testing.T) {
+		service, clock := newTestService(t)
+		job, err := service.Submit(t.Context(), SubmitRequest{Executable: "true", WorkingDirectory: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		clock.now = clock.now.Add(time.Minute)
+		service.processAlive = func(platform.ProcessIdentity) (bool, error) { return false, nil }
+		raw := openAppRawDatabase(t, service)
+		if _, err := raw.ExecContext(t.Context(), `
+			CREATE TRIGGER fail_lost_ownership BEFORE UPDATE ON jobs
+			BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.reconcileStaleOwnership(t.Context(), job, nil); err == nil {
+			t.Fatal("reconcileStaleOwnership(rejected update) error = nil")
+		}
+	})
+
+	t.Run("completed run queries and files unavailable", func(t *testing.T) {
+		service, clock := newTestService(t)
+		job, run, paths := completeCapturedRun(t, service, clock)
+		if err := os.Remove(paths.Stdout); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.ReadRunLogs(t.Context(), job.ID.String(), LogStdout, run.Number); err == nil {
+			t.Fatal("ReadRunLogs(missing stdout) error = nil")
+		}
+		raw := openAppRawDatabase(t, service)
+		if _, err := raw.ExecContext(t.Context(), `ALTER TABLE runs RENAME TO unavailable_runs`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.ListJobs(t.Context(), ListRequest{Limit: 10, ShowRuns: true}); err == nil {
+			t.Fatal("ListJobs(unavailable runs) error = nil")
+		}
+		if _, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()}); err == nil {
+			t.Fatal("Clean(unavailable runs) error = nil")
+		}
+	})
+}
+
+func openAppRawDatabase(t *testing.T, service *Service) *sql.DB {
+	t.Helper()
+	database, err := sql.Open("sqlite", service.store.DatabasePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	return database
+}
