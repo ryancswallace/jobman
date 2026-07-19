@@ -924,24 +924,31 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 }
 
 func TestForegroundAttachmentFailureBoundaries(t *testing.T) {
-	command := &cobra.Command{}
-	command.SetContext(t.Context())
-	command.SetIn(strings.NewReader("input"))
-	command.SetOut(io.Discard)
-	command.SetErr(io.Discard)
-
-	backend := newFakeBackend(t)
-	backend.operationErr = errors.New("foreground backend failed")
-	if err := attachForeground(command, backend, backend.jobs[0]); err == nil {
-		t.Fatal("attachForeground() error = nil")
+	newCommand := func() *cobra.Command {
+		command := &cobra.Command{}
+		command.SetContext(t.Context())
+		command.SetIn(strings.NewReader("input"))
+		command.SetOut(io.Discard)
+		command.SetErr(io.Discard)
+		return command
 	}
 
-	backend = newFakeBackend(t)
-	backend.jobs[0].Phase = model.JobPhaseCompleted
-	backend.jobs[0].Outcome = model.JobOutcomeFailure
-	if err := attachForeground(command, backend, backend.jobs[0]); err == nil {
-		t.Fatal("attachForeground(failed job) error = nil")
-	}
+	t.Run("backend failure", func(t *testing.T) {
+		backend := newFakeBackend(t)
+		backend.operationErr = errors.New("foreground backend failed")
+		if err := attachForeground(newCommand(), backend, backend.jobs[0]); err == nil {
+			t.Fatal("attachForeground() error = nil")
+		}
+	})
+
+	t.Run("failed job", func(t *testing.T) {
+		backend := newFakeBackend(t)
+		backend.jobs[0].Phase = model.JobPhaseCompleted
+		backend.jobs[0].Outcome = model.JobOutcomeFailure
+		if err := attachForeground(newCommand(), backend, backend.jobs[0]); err == nil {
+			t.Fatal("attachForeground(failed job) error = nil")
+		}
+	})
 }
 
 func TestForegroundInputFailureBoundaries(t *testing.T) {
