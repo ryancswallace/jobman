@@ -9,6 +9,7 @@
         ".devcontainer/devcontainer-lock.json",
         ".git/**",
         ".vscode/**",
+        "assets/*.svg",
         "build/**",
         "cspell.json",
         "dist/**",

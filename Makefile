@@ -324,7 +324,10 @@ docs-check: ## Check Markdown whitespace and generated documentation assets.
 	@test -s $(COMPLETIONS_DIR)/powershell/$(PROJECT).ps1
 	@test -s $(SITE_BUILD_DIR)/reference/commands/run/index.md
 	@test -s $(SITE_BUILD_DIR)/assets/examples/jobman.yml
-	@test -s $(SITE_BUILD_DIR)/assets/images/logo.png
+	@test -s $(SITE_BUILD_DIR)/assets/images/logo.svg
+	@test -s $(SITE_BUILD_DIR)/assets/images/logo-dark.svg
+	@test -s $(SITE_BUILD_DIR)/assets/images/favicon.svg
+	@test -s $(SITE_BUILD_DIR)/assets/images/favicon-dark.svg
 
 .PHONY: spellcheck
 spellcheck: ## Spell-check the repository using cspell or its pinned container.

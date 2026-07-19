@@ -23,7 +23,10 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 	for _, relative := range []string{
 		"index.md",
 		"assets/examples/jobman.yml",
-		"assets/images/logo.png",
+		"assets/images/logo.svg",
+		"assets/images/logo-dark.svg",
+		"assets/images/favicon.svg",
+		"assets/images/favicon-dark.svg",
 		"guides/containers.md",
 		"reference/configuration.md",
 		"reference/commands/run/index.md",
@@ -54,7 +57,10 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 		for _, relative := range []string{
 			"index.md",
 			"assets/examples/jobman.yml",
-			"assets/images/logo.png",
+			"assets/images/logo.svg",
+			"assets/images/logo-dark.svg",
+			"assets/images/favicon.svg",
+			"assets/images/favicon-dark.svg",
 			"guides/containers.md",
 			"reference/commands/run/index.md",
 		} {
@@ -257,7 +263,7 @@ func TestValidateSiteRejectsInvalidContent(t *testing.T) {
 		},
 		"missing required asset": func(t *testing.T, root string) {
 			t.Helper()
-			if err := os.Remove(filepath.Join(root, "assets", "images", "logo.png")); err != nil {
+			if err := os.Remove(filepath.Join(root, "assets", "images", "favicon-dark.svg")); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -328,7 +334,9 @@ func newValidSiteFixture(t *testing.T) string {
 		writeSitePage(t, root, path, path, permalink)
 	}
 	writeTestFile(t, filepath.Join(root, "assets", "examples", "jobman.yml"), "schema_version: 1\n")
-	writeTestFile(t, filepath.Join(root, "assets", "images", "logo.png"), "logo")
+	for _, name := range []string{"logo.svg", "logo-dark.svg", "favicon.svg", "favicon-dark.svg"} {
+		writeTestFile(t, filepath.Join(root, "assets", "images", name), "<svg></svg>")
+	}
 
 	return root
 }

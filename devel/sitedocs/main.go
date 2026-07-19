@@ -93,11 +93,13 @@ func generateSite(repositoryRoot, outputRoot string) error {
 	); err != nil {
 		return fmt.Errorf("publish sample configuration: %w", err)
 	}
-	if err := copyFile(
-		filepath.Join(repositoryRoot, "assets", "logo.png"),
-		filepath.Join(outputRoot, "assets", "images", "logo.png"),
-	); err != nil {
-		return fmt.Errorf("publish site logo: %w", err)
+	for _, name := range []string{"logo.svg", "logo-dark.svg", "favicon.svg", "favicon-dark.svg"} {
+		if err := copyFile(
+			filepath.Join(repositoryRoot, "assets", name),
+			filepath.Join(outputRoot, "assets", "images", name),
+		); err != nil {
+			return fmt.Errorf("publish site image %s: %w", name, err)
+		}
 	}
 	if err := generateCommandReference(filepath.Join(outputRoot, "reference", "commands")); err != nil {
 		return err
@@ -404,7 +406,13 @@ func validateRequiredPages(siteRoot *os.Root, permalinks map[string]string) erro
 			return fmt.Errorf("required page %s is missing", required)
 		}
 	}
-	for _, asset := range []string{"assets/examples/jobman.yml", "assets/images/logo.png"} {
+	for _, asset := range []string{
+		"assets/examples/jobman.yml",
+		"assets/images/logo.svg",
+		"assets/images/logo-dark.svg",
+		"assets/images/favicon.svg",
+		"assets/images/favicon-dark.svg",
+	} {
 		if _, err := siteRoot.Stat(asset); err != nil {
 			return fmt.Errorf("required asset %s is missing: %w", asset, err)
 		}
