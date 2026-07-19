@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ryancswallace/jobman/internal/app"
 	"github.com/ryancswallace/jobman/internal/config"
 	"github.com/ryancswallace/jobman/internal/model"
@@ -481,6 +483,7 @@ func TestCommandOutputFailures(t *testing.T) {
 		{"config", "show"},
 		{"config", "paths"},
 		{"config", "validate"},
+		{"config", "apply"},
 	} {
 		t.Run(strings.Join(arguments, "_"), func(t *testing.T) {
 			backend := newFakeBackend(t)
@@ -495,6 +498,46 @@ func TestCommandOutputFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExplicitConfigPathOutputAndRedactionFailures(t *testing.T) {
+	t.Parallel()
+
+	configurationPath := filepath.Join(t.TempDir(), "jobman.yml")
+	if err := os.WriteFile(configurationPath, []byte("schema_version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend := newFakeBackend(t)
+	command := newRootCommand(dependenciesFor(backend))
+	command.SetArgs([]string{"--config", configurationPath, "config", "paths"})
+	command.SetOut(&failAfterWrites{allowed: 1})
+	command.SetErr(io.Discard)
+	if err := command.ExecuteContext(t.Context()); err == nil {
+		t.Fatal("config paths explicit output error = nil")
+	}
+
+	direct := &cobra.Command{}
+	direct.SetContext(t.Context())
+	if err := configureRedactor(direct, config.Config{Redaction: config.RedactionConfig{Patterns: []string{"["}}}); err == nil {
+		t.Fatal("configureRedactor(invalid pattern) error = nil")
+	}
+	if err := writeJSON(direct, make(chan int)); err == nil {
+		t.Fatal("writeJSON(unsupported value) error = nil")
+	}
+}
+
+type failAfterWrites struct {
+	allowed int
+	writes  int
+}
+
+func (writer *failAfterWrites) Write(payload []byte) (int, error) {
+	writer.writes++
+	if writer.writes > writer.allowed {
+		return 0, errors.New("output failed")
+	}
+
+	return len(payload), nil
 }
 
 type commandFailWriter struct{}
@@ -876,6 +919,232 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 		"--config", "one.yml", "config", "validate", "two.yml",
 	}); !errors.Is(err, ErrUsage) {
 		t.Fatalf("config validate conflicting paths error = %v", err)
+	}
+}
+
+func TestForegroundAttachmentFailureBoundaries(t *testing.T) {
+	command := &cobra.Command{}
+	command.SetContext(t.Context())
+	command.SetIn(strings.NewReader("input"))
+	command.SetOut(io.Discard)
+	command.SetErr(io.Discard)
+
+	backend := newFakeBackend(t)
+	backend.operationErr = errors.New("foreground backend failed")
+	if err := attachForeground(command, backend, backend.jobs[0]); err == nil {
+		t.Fatal("attachForeground() error = nil")
+	}
+
+	backend = newFakeBackend(t)
+	backend.jobs[0].Phase = model.JobPhaseCompleted
+	backend.jobs[0].Outcome = model.JobOutcomeFailure
+	if err := attachForeground(command, backend, backend.jobs[0]); err == nil {
+		t.Fatal("attachForeground(failed job) error = nil")
+	}
+}
+
+func TestForegroundInputFailureBoundaries(t *testing.T) {
+	backend := newFakeBackend(t)
+	backend.operationErr = errors.New("send failed")
+	if err := pumpForegroundInput(t.Context(), backend, testJobID, strings.NewReader("payload")); err == nil {
+		t.Fatal("pumpForegroundInput(send failure) error = nil")
+	}
+
+	backend = newFakeBackend(t)
+	if err := pumpForegroundInput(t.Context(), backend, testJobID, foregroundErrorReader{}); err == nil {
+		t.Fatal("pumpForegroundInput(read failure) error = nil")
+	}
+}
+
+type foregroundErrorReader struct{}
+
+func (foregroundErrorReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+func TestWaitForSubmittedJobFailureBoundaries(t *testing.T) {
+	if err := waitForSubmittedJob(t.Context(), &basicBackend{base: newFakeBackend(t)}, testJobID); err == nil {
+		t.Fatal("waitForSubmittedJob(unsupported) error = nil")
+	}
+	backend := newFakeBackend(t)
+	backend.operationErr = errors.New("wait failed")
+	if err := waitForSubmittedJob(t.Context(), backend, testJobID); err == nil {
+		t.Fatal("waitForSubmittedJob(wait failure) error = nil")
+	}
+	backend = newFakeBackend(t)
+	backend.jobs[0].Outcome = model.JobOutcomeFailure
+	if err := waitForSubmittedJob(t.Context(), backend, testJobID); err == nil {
+		t.Fatal("waitForSubmittedJob(failure outcome) error = nil")
+	}
+}
+
+func TestApplyRunOptionsInitializesSecretAndNotifierDefaults(t *testing.T) {
+	command := newRunCommand(dependencies{}, &rootOptions{})
+	for name, value := range map[string]string{
+		"secret-env": "TOKEN=shared",
+		"notify":     "operations",
+	} {
+		if err := command.Flags().Set(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := &runOptions{
+		secretEnvironment: []string{"TOKEN=shared"},
+		notifiers:         []string{"operations"},
+		slots:             1,
+	}
+	loaded, err := config.Load(config.BytesSource(config.SourceExplicit, "test", []byte(`
+secrets:
+  shared: env:JOBMAN_TOKEN
+notifiers:
+  operations:
+    type: command
+    events: [job_succeeded]
+    command:
+      command: [/bin/true]
+`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration := loaded.Config
+	configured, err := configuration.ResolveJobSpecWithCommand("", []string{"/bin/true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := submitRequestFromConfig(configuration, configured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyRunOptions(command, options, nil, configuration, &request); err != nil {
+		t.Fatalf("applyRunOptions() error = %v", err)
+	}
+	if request.ExecutionPolicy.SecretEnv["TOKEN"].Name != "JOBMAN_TOKEN" ||
+		len(request.ExecutionPolicy.Notifications) != 1 ||
+		len(request.ExecutionPolicy.Notifications[0].Events) != 1 {
+		t.Fatalf("request = %+v", request)
+	}
+}
+
+func TestLogRunSelectionAndValidationBranches(t *testing.T) {
+	backend := newFakeBackend(t)
+	backend.details.Runs = []model.RunState{{
+		ID: "01980f4c-7b2a-7a6f-8c10-0123456789ac", Number: 1,
+	}}
+	backend.logs = []byte("first\nsecond\n")
+	valid := [][]string{
+		{"logs", testJobID, "--run", "all"},
+		{"logs", testJobID, "--run", "1"},
+		{"logs", testJobID, "--lines", "0"},
+		{"show", "run", testJobID, "1"},
+	}
+	for _, arguments := range valid {
+		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err != nil {
+			t.Errorf("%v error = %v", arguments, err)
+		}
+		backend.closed = false
+	}
+	invalid := [][]string{
+		{"logs", testJobID, "--follow", "--all"},
+		{"logs", testJobID, "--run", "1", "--all"},
+		{"logs", testJobID, "--lines", "-2"},
+		{"logs", testJobID, "--run", "99"},
+		{"show", "run", testJobID, "99"},
+	}
+	for _, arguments := range invalid {
+		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err == nil {
+			t.Errorf("%v error = nil", arguments)
+		}
+		backend.closed = false
+	}
+}
+
+func TestOptionalCommandBackendAndOperationFailures(t *testing.T) {
+	backend := newFakeBackend(t)
+	backend.details.Runs = []model.RunState{{
+		ID: "01980f4c-7b2a-7a6f-8c10-0123456789ac", Number: 1,
+	}}
+	backend.operationErr = errors.New("operation failed")
+	for _, arguments := range [][]string{
+		{"cancel", "run", testJobID, "1"},
+		{"show", "run", testJobID, "1"},
+		{"logs", testJobID, "--run", "1"},
+		{"doctor"},
+	} {
+		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err == nil {
+			t.Errorf("%v error = nil", arguments)
+		}
+		backend.closed = false
+	}
+
+	basic := &basicBackend{base: newFakeBackend(t)}
+	dependencies := dependenciesFor(basic)
+	if output, err := executeCommand(t, dependencies, []string{"list"}); err != nil || output == "" {
+		t.Fatalf("fallback list = (%q, %v)", output, err)
+	}
+	basic.base.closed = false
+	for _, arguments := range [][]string{
+		{"doctor"},
+		{"logs", testJobID, "--all"},
+		{"logs", testJobID, "--run", "1"},
+	} {
+		if _, err := executeCommand(t, dependencies, arguments); err == nil {
+			t.Errorf("%v error = nil", arguments)
+		}
+		basic.base.closed = false
+	}
+}
+
+func TestCancelRunValidationBranches(t *testing.T) {
+	backend := newFakeBackend(t)
+	backend.details.Runs = []model.RunState{{
+		ID: "01980f4c-7b2a-7a6f-8c10-0123456789ac", Number: 1,
+	}}
+	backend.details.Job.ActiveRunID = ""
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "1"}); err == nil {
+		t.Fatal("cancel run accepted inactive run")
+	}
+	backend = newFakeBackend(t)
+	backend.details.Runs = []model.RunState{{
+		ID: "01980f4c-7b2a-7a6f-8c10-0123456789ac", Number: 1,
+	}}
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "99"}); err == nil {
+		t.Fatal("cancel run accepted unknown run")
+	}
+}
+
+func TestCommandAliasesFallbackErrorsAndNamedSpecification(t *testing.T) {
+	backend := newFakeBackend(t)
+	runID := model.RunID("01980f4c-7b2a-7a6f-8c10-0123456789ac")
+	backend.details.Runs = []model.RunState{{ID: runID, Number: 1}}
+	backend.details.Job.ActiveRunID = runID
+	for _, arguments := range [][]string{
+		{"cancel", "job", testJobID},
+		{"cancel", "run", testJobID, "1"},
+		{"config", "show", "--origins"},
+	} {
+		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err != nil {
+			t.Errorf("%v error = %v", arguments, err)
+		}
+		backend.closed = false
+	}
+
+	basic := &basicBackend{base: newFakeBackend(t)}
+	basic.base.operationErr = errors.New("list failed")
+	if _, err := executeCommand(t, dependenciesFor(basic), []string{"list"}); err == nil {
+		t.Fatal("fallback list failure error = nil")
+	}
+
+	configuration := filepath.Join(t.TempDir(), "jobman.yml")
+	if err := os.WriteFile(configuration, []byte(`
+job_specs:
+  named:
+    command: [/bin/true]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend = newFakeBackend(t)
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{
+		"--config", configuration, "run", "--job-spec", "named",
+	}); err != nil {
+		t.Fatalf("run named specification error = %v", err)
 	}
 }
 
