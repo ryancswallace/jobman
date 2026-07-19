@@ -18,8 +18,8 @@ func TestReleaseAbandonedRunDetectsMarkerMutation(t *testing.T) {
 	}
 	marker := run.Paths().Active
 	err = ReleaseAbandonedRun(t.Context(), stateDir, testJobID, 1, func(context.Context) (bool, error) {
-		if err := os.Remove(marker); err != nil {
-			t.Fatal(err)
+		if removeErr := os.Remove(marker); removeErr != nil {
+			t.Fatal(removeErr)
 		}
 		return true, nil
 	})
@@ -53,8 +53,8 @@ func TestCleanupRunDetectsDirectoryMutationAfterEligibility(t *testing.T) {
 				t.Fatal(err)
 			}
 			directory := run.Paths().Directory
-			if err := run.Close(); err != nil {
-				t.Fatal(err)
+			if closeErr := run.Close(); closeErr != nil {
+				t.Fatal(closeErr)
 			}
 			checks := 0
 			_, err = CleanupRun(t.Context(), stateDir, testJobID, 1, func(context.Context) (bool, error) {

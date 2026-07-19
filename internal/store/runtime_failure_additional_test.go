@@ -1,3 +1,4 @@
+//nolint:gosec // Corruption tests intentionally assemble SQL from fixed columns and bounded test indexes.
 package store
 
 import (
@@ -143,12 +144,12 @@ func TestDependencyEvaluationRejectsCorruptObservations(t *testing.T) {
 	})
 }
 
-func dependencyFixture(t *testing.T, prefix uint64) (*Store, model.JobID, model.JobID) {
+func dependencyFixture(t *testing.T, prefix uint64) (database *Store, jobID, dependencyID model.JobID) {
 	t.Helper()
-	database := openTestStore(t, "dependency-failure", newSequentialEventIDs(prefix))
+	database = openTestStore(t, "dependency-failure", newSequentialEventIDs(prefix))
 	now := storeTestTime()
-	jobID := mustJobID(t, prefix+1, 1)
-	dependencyID := mustJobID(t, prefix+1, 2)
+	jobID = mustJobID(t, prefix+1, 1)
+	dependencyID = mustJobID(t, prefix+1, 2)
 	submitRuntimeJob(t, database, jobID, now)
 	credential := submitRuntimeJob(t, database, dependencyID, now)
 	if err := database.SetDependencies(t.Context(), jobID, []Dependency{{

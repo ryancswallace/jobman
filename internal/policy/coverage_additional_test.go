@@ -94,6 +94,7 @@ func TestWaitDefensiveBranches(t *testing.T) {
 	if matchesFileKind(0, FileKind("unknown")) {
 		t.Fatal("matchesFileKind() accepted unknown kind")
 	}
+	//nolint:staticcheck // A nil context is deliberately supplied to verify the defensive API boundary.
 	if result := EvaluateProbe(nil, nil, ProbeSpec{}); !result.Fatal {
 		t.Fatal("EvaluateProbe(nil context) was not fatal")
 	}

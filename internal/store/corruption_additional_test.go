@@ -1,3 +1,4 @@
+//nolint:gosec // These corruption tests intentionally execute SQL assembled from fixed, test-owned identifiers.
 package store
 
 import (

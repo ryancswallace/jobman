@@ -3,6 +3,7 @@ package jobman
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -991,7 +992,8 @@ func TestApplyRunOptionsInitializesSecretAndNotifierDefaults(t *testing.T) {
 		notifiers:         []string{"operations"},
 		slots:             1,
 	}
-	loaded, err := config.Load(config.BytesSource(config.SourceExplicit, "test", []byte(`
+	notifierExecutable := filepath.Join(t.TempDir(), "notifier")
+	loaded, err := config.Load(config.BytesSource(config.SourceExplicit, "test", []byte(fmt.Sprintf(`
 secrets:
   shared: env:JOBMAN_TOKEN
 notifiers:
@@ -999,13 +1001,13 @@ notifiers:
     type: command
     events: [job_succeeded]
     command:
-      command: [/bin/true]
-`)))
+      command: [%q]
+`, notifierExecutable))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	configuration := loaded.Config
-	configured, err := configuration.ResolveJobSpecWithCommand("", []string{"/bin/true"})
+	configured, err := configuration.ResolveJobSpecWithCommand("", []string{notifierExecutable})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1075,8 +1077,8 @@ func TestOptionalCommandBackendAndOperationFailures(t *testing.T) {
 	}
 
 	basic := &basicBackend{base: newFakeBackend(t)}
-	dependencies := dependenciesFor(basic)
-	if output, err := executeCommand(t, dependencies, []string{"list"}); err != nil || output == "" {
+	backendDependencies := dependenciesFor(basic)
+	if output, err := executeCommand(t, backendDependencies, []string{"list"}); err != nil || output == "" {
 		t.Fatalf("fallback list = (%q, %v)", output, err)
 	}
 	basic.base.closed = false
@@ -1085,7 +1087,7 @@ func TestOptionalCommandBackendAndOperationFailures(t *testing.T) {
 		{"logs", testJobID, "--all"},
 		{"logs", testJobID, "--run", "1"},
 	} {
-		if _, err := executeCommand(t, dependencies, arguments); err == nil {
+		if _, err := executeCommand(t, backendDependencies, arguments); err == nil {
 			t.Errorf("%v error = nil", arguments)
 		}
 		basic.base.closed = false

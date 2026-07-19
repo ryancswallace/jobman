@@ -1,3 +1,4 @@
+//nolint:gosec // Failure-injection tests derive deterministic identifiers from bounded table indexes.
 package store
 
 import (

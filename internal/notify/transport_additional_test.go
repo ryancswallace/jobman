@@ -14,7 +14,7 @@ import (
 
 type deadlineFailureConn struct{ net.Conn }
 
-func (connection deadlineFailureConn) SetDeadline(time.Time) error {
+func (deadlineFailureConn) SetDeadline(time.Time) error {
 	return errors.New("deadline failed")
 }
 
@@ -44,7 +44,9 @@ func TestSMTPConnectionFailureBoundaries(t *testing.T) {
 
 	client, server = net.Pipe()
 	go func() {
-		_, _ = server.Write([]byte("not an SMTP greeting\r\n"))
+		if _, writeErr := server.Write([]byte("not an SMTP greeting\r\n")); writeErr != nil {
+			return
+		}
 		_ = server.Close()
 	}()
 	if _, err := connectSMTPWithDial(t.Context(), request, func(
@@ -87,7 +89,9 @@ func TestSMTPNegotiationFailureBoundaries(t *testing.T) {
 func serveSMTPNegotiationFailure(connection net.Conn, stage string) {
 	defer connection.Close()
 	reader := bufio.NewReader(connection)
-	_, _ = connection.Write([]byte("220 smtp.example.test ready\r\n"))
+	if !writeSMTPResponse(connection, "220 smtp.example.test ready\r\n") {
+		return
+	}
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -96,20 +100,31 @@ func serveSMTPNegotiationFailure(connection net.Conn, stage string) {
 		switch {
 		case strings.HasPrefix(line, "EHLO "):
 			if stage == "starttls" {
-				_, _ = connection.Write([]byte("250-smtp.example.test\r\n250 STARTTLS\r\n"))
+				if !writeSMTPResponse(connection, "250-smtp.example.test\r\n250 STARTTLS\r\n") {
+					return
+				}
 			} else {
-				_, _ = connection.Write([]byte("250-smtp.example.test\r\n250 AUTH PLAIN\r\n"))
+				if !writeSMTPResponse(connection, "250-smtp.example.test\r\n250 AUTH PLAIN\r\n") {
+					return
+				}
 			}
 		case line == "STARTTLS\r\n":
-			_, _ = connection.Write([]byte("454 TLS unavailable\r\n"))
+			writeSMTPResponse(connection, "454 TLS unavailable\r\n")
 			return
 		case strings.HasPrefix(line, "AUTH "):
-			_, _ = connection.Write([]byte("535 authentication rejected\r\n"))
+			if !writeSMTPResponse(connection, "535 authentication rejected\r\n") {
+				return
+			}
 		case line == "QUIT\r\n":
-			_, _ = connection.Write([]byte("221 goodbye\r\n"))
+			writeSMTPResponse(connection, "221 goodbye\r\n")
 			return
 		}
 	}
+}
+
+func writeSMTPResponse(connection net.Conn, response string) bool {
+	_, err := connection.Write([]byte(response))
+	return err == nil
 }
 
 func TestSMTPDialModeBranches(t *testing.T) {
@@ -176,7 +191,7 @@ func TestNotifierRemainingValidationBoundaries(t *testing.T) {
 	if _, err := (Webhook{NameValue: "hook", URL: "https://example.test", Timeout: -time.Second}).Deliver(t.Context(), testEvent()); err == nil {
 		t.Fatal("Webhook.Deliver() accepted a negative timeout")
 	}
-	request, err := http.NewRequest(http.MethodPost, "https://example.test", nil)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.test", http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}

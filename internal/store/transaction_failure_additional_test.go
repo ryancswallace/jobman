@@ -1,3 +1,4 @@
+//nolint:gosec // Failure-injection tests intentionally build SQL from fixed, test-owned identifiers and counters.
 package store
 
 import (
@@ -284,7 +285,6 @@ func TestSupervisorLookupFailuresPropagateFromTerminalTransitions(t *testing.T) 
 	}
 	index := uint64(0)
 	for name, operation := range tests {
-		name, operation := name, operation
 		index++
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

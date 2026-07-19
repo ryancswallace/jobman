@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -109,10 +110,20 @@ func TestPlatformDefaultFallbacksAndSecretBoundaries(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", t.TempDir())
-	if directory, err := defaultUserConfigDir(); err != nil || !strings.Contains(directory, ".config") {
+	configFragment := filepath.Join(".config", "jobman")
+	stateFragment := filepath.Join(".local", "state", "jobman")
+	switch runtime.GOOS {
+	case "darwin":
+		configFragment = filepath.Join("Library", "Application Support", "jobman")
+		stateFragment = configFragment
+	case "windows":
+		configFragment = filepath.Join("AppData", "Roaming", "Jobman")
+		stateFragment = filepath.Join("AppData", "Local", "Jobman")
+	}
+	if directory, err := defaultUserConfigDir(); err != nil || !strings.Contains(directory, configFragment) {
 		t.Fatalf("defaultUserConfigDir() = (%q, %v)", directory, err)
 	}
-	if directory, err := defaultStateDir(); err != nil || !strings.Contains(directory, filepath.Join(".local", "state")) {
+	if directory, err := defaultStateDir(); err != nil || !strings.Contains(directory, stateFragment) {
 		t.Fatalf("defaultStateDir() = (%q, %v)", directory, err)
 	}
 	if _, _, err := DefaultConfigPaths(); err != nil {

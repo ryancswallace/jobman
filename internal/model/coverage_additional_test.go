@@ -153,12 +153,12 @@ func TestJobSpecificationStrictJSONEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ParseJobSpecJSON(append(append([]byte(nil), canonical...), []byte(` {}`)...)); err == nil {
+	if _, parseErr := ParseJobSpecJSON(append(append([]byte(nil), canonical...), []byte(` {}`)...)); parseErr == nil {
 		t.Fatal("ParseJobSpecJSON() accepted trailing data")
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(canonical, &decoded); err != nil {
-		t.Fatal(err)
+	if unmarshalErr := json.Unmarshal(canonical, &decoded); unmarshalErr != nil {
+		t.Fatal(unmarshalErr)
 	}
 	delete(decoded, "execution_policy")
 	missingPolicy, err := json.Marshal(decoded)
@@ -316,9 +316,9 @@ func TestRemainingLifecycleTransitionContracts(t *testing.T) {
 	if err != nil || terminal.Job.Outcome != JobOutcomeSuccess {
 		t.Fatalf("CompleteRun(terminal) = (%+v, %v)", terminal, err)
 	}
-	if _, err := CompleteRun(job, run, RunOutcomeSuccess, exit, logs, "", completedAt, RunDisposition{
+	if _, completionErr := CompleteRun(job, run, RunOutcomeSuccess, exit, logs, "", completedAt, RunDisposition{
 		TerminalOutcome: JobOutcome("unknown"),
-	}); err == nil {
+	}); completionErr == nil {
 		t.Fatal("CompleteRun(invalid terminal outcome) error = nil")
 	}
 
@@ -332,22 +332,22 @@ func TestRemainingLifecycleTransitionContracts(t *testing.T) {
 	}
 	mismatchedRun := run
 	mismatchedRun.JobID = JobID(testEventID)
-	if _, err := RequestTimeout(job, &mismatchedRun, completedAt); err == nil {
+	if _, timeoutErr := RequestTimeout(job, &mismatchedRun, completedAt); timeoutErr == nil {
 		t.Fatal("RequestTimeout(mismatched run) error = nil")
 	}
-	if _, err := RequestRunTimeout(job, mismatchedRun, completedAt); err == nil {
+	if _, timeoutErr := RequestRunTimeout(job, mismatchedRun, completedAt); timeoutErr == nil {
 		t.Fatal("RequestRunTimeout(mismatched run) error = nil")
 	}
 
 	claimed, _ := claimedJob(t)
-	if _, err := CompleteWithoutRun(claimed, JobOutcomeSuccess, "invalid", completedAt); err == nil {
+	if _, completionErr := CompleteWithoutRun(claimed, JobOutcomeSuccess, "invalid", completedAt); completionErr == nil {
 		t.Fatal("CompleteWithoutRun(success) error = nil")
 	}
-	cancelled, err := RequestCancellation(claimed, nil, completedAt)
+	canceled, err := RequestCancellation(claimed, nil, completedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := FinalizeCancellationWithoutRun(cancelled.Job, completedAt.Add(-time.Second)); err == nil {
+	if _, err := FinalizeCancellationWithoutRun(canceled.Job, completedAt.Add(-time.Second)); err == nil {
 		t.Fatal("FinalizeCancellationWithoutRun(early) error = nil")
 	}
 	invalidJob := claimed
@@ -649,8 +649,8 @@ func TestJobSpecDefensiveParsingAndValidation(t *testing.T) {
 				return err
 			}
 			var wire map[string]any
-			if err = json.Unmarshal(encoded, &wire); err != nil {
-				return err
+			if unmarshalErr := json.Unmarshal(encoded, &wire); unmarshalErr != nil {
+				return unmarshalErr
 			}
 			delete(wire, "execution_policy")
 			encoded, err = json.Marshal(wire)
@@ -815,7 +815,7 @@ func TestNotifierDefinitionCloneAndValidationBranches(t *testing.T) {
 	if smtp.To == nil {
 		t.Fatalf("cloneSMTPNotifier() = %+v", smtp)
 	}
-	if validHTTPHeaderName("X-Tést") {
+	if validHTTPHeaderName("X-Test-Invalid-\u00e9") {
 		t.Fatal("validHTTPHeaderName() accepted non-ASCII name")
 	}
 	if optionalSecretReferenceToWire(nil) != nil || optionalSecretReferenceFromWire(nil) != nil {

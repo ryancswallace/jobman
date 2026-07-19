@@ -74,7 +74,7 @@ func TestIndexedCopyFailureBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer index.Close()
-	if _, err := reader.copyIndexedPrefix(io.Discard, index, 1, 0); err == nil {
+	if _, copyErr := reader.copyIndexedPrefix(io.Discard, index, 1, 0); copyErr == nil {
 		t.Fatal("copyIndexedPrefix(truncated index) error = nil")
 	}
 
@@ -85,8 +85,8 @@ func TestIndexedCopyFailureBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	skipped := filepath.Join(t.TempDir(), "skipped.idx")
-	if err := os.WriteFile(skipped, record[:], fileMode); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(skipped, record[:], fileMode); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	index, err = os.Open(skipped)
 	if err != nil {
@@ -138,8 +138,8 @@ func closedRunReader(t *testing.T) *Reader {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := run.Close(); err != nil {
-		t.Fatal(err)
+	if closeErr := run.Close(); closeErr != nil {
+		t.Fatal(closeErr)
 	}
 	reader, err := OpenRun(stateDir, testJobID, 1)
 	if err != nil {
