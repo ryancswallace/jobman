@@ -79,6 +79,70 @@ func TestCompleteRunWithDispositionSchedulesAnotherRun(t *testing.T) {
 	}
 }
 
+func TestTerminalCompletionSerializesWithLeaseRenewal(t *testing.T) {
+	t.Parallel()
+
+	database, jobID, runID, logs, now := runningRuntimeFixture(t, 0xa050)
+	job, err := database.GetJob(t.Context(), jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exitCode := 0
+	exit := &model.ExitInfo{ExitCode: &exitCode, ObservedAt: now.Add(5 * time.Second)}
+
+	database.supervisorLeaseMu.Lock()
+	locked := true
+	ctx := t.Context()
+	t.Cleanup(func() {
+		if locked {
+			database.supervisorLeaseMu.Unlock()
+		}
+	})
+
+	type operationResult struct {
+		name string
+		err  error
+	}
+	started := make(chan struct{}, 2)
+	results := make(chan operationResult, 2)
+	go func() {
+		started <- struct{}{}
+		_, renewErr := database.RenewLease(
+			ctx, job.SupervisorID, now.Add(4*time.Second), now.Add(time.Minute),
+		)
+		results <- operationResult{name: "renew", err: renewErr}
+	}()
+	go func() {
+		started <- struct{}{}
+		_, completionErr := database.CompleteRunWithDisposition(
+			ctx, jobID, runID, model.RunOutcomeSuccess, exit, logs, "", now.Add(5*time.Second),
+			model.RunDisposition{TerminalOutcome: model.JobOutcomeSuccess},
+		)
+		results <- operationResult{name: "complete", err: completionErr}
+	}()
+	<-started
+	<-started
+	timer := time.NewTimer(10 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case result := <-results:
+		t.Fatalf("%s operation bypassed supervisor lease serialization: %v", result.name, result.err)
+	case <-timer.C:
+	}
+
+	database.supervisorLeaseMu.Unlock()
+	locked = false
+	for range 2 {
+		result := <-results
+		if result.name == "complete" && result.err != nil {
+			t.Fatalf("terminal completion raced with lease renewal: %v", result.err)
+		}
+		if result.name == "renew" && result.err != nil && !model.IsConflict(result.err) && !errors.Is(result.err, ErrConflict) {
+			t.Fatalf("lease renewal error = %v", result.err)
+		}
+	}
+}
+
 func TestMarkOwnershipLostAtomicallyReleasesAdmissionAndCountsRun(t *testing.T) {
 	t.Parallel()
 

@@ -146,6 +146,9 @@ func (s *Store) MarkStartFailed(
 	diagnosticCode string,
 	failedAt time.Time,
 ) (model.TransitionResult, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	job, run, err := s.getJobRun(ctx, jobID, runID)
 	if err != nil {
 		return model.TransitionResult{}, err
@@ -174,6 +177,9 @@ func (s *Store) FinalizeRun(
 	logs model.LogMetadata,
 	completedAt time.Time,
 ) (model.TransitionResult, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	job, run, err := s.getJobRun(ctx, jobID, runID)
 	if err != nil {
 		return model.TransitionResult{}, err
@@ -232,6 +238,9 @@ func (s *Store) FinalizeCancellationWithoutRun(
 	jobID model.JobID,
 	completedAt time.Time,
 ) (model.TransitionResult, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	job, err := s.GetJob(ctx, jobID)
 	if err != nil {
 		return model.TransitionResult{}, err
@@ -280,6 +289,9 @@ func (s *Store) MarkOwnershipLost(
 	diagnosticCode string,
 	lostAt time.Time,
 ) (model.TransitionResult, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	job, err := s.GetJob(ctx, jobID)
 	if err != nil {
 		return model.TransitionResult{}, err
@@ -347,6 +359,9 @@ func (s *Store) RenewLease(
 	renewedAt time.Time,
 	expiresAt time.Time,
 ) (model.SupervisorState, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	current, err := s.GetSupervisor(ctx, supervisorID)
 	if err != nil {
 		return model.SupervisorState{}, err

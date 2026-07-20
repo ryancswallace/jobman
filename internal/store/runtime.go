@@ -417,6 +417,11 @@ func (s *Store) CompleteRunWithDisposition(
 	completedAt time.Time,
 	disposition model.RunDisposition,
 ) (model.TransitionResult, error) {
+	if disposition.TerminalOutcome != "" {
+		s.supervisorLeaseMu.Lock()
+		defer s.supervisorLeaseMu.Unlock()
+	}
+
 	job, run, err := s.getJobRun(ctx, jobID, runID)
 	if err != nil {
 		return model.TransitionResult{}, err
@@ -490,6 +495,9 @@ func (s *Store) CompleteWithoutRun(
 	diagnosticCode string,
 	completedAt time.Time,
 ) (model.TransitionResult, error) {
+	s.supervisorLeaseMu.Lock()
+	defer s.supervisorLeaseMu.Unlock()
+
 	job, err := s.GetJob(ctx, jobID)
 	if err != nil {
 		return model.TransitionResult{}, err

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"modernc.org/sqlite"
@@ -52,6 +53,9 @@ type Store struct {
 	jobmanVersion string
 	eventIDs      EventIDSource
 	lastBackup    string
+	// supervisorLeaseMu serializes this supervisor handle's lease renewal
+	// against terminal transitions that release the same supervisor revision.
+	supervisorLeaseMu sync.Mutex
 }
 
 // Open creates or validates a private state directory, opens its SQLite
