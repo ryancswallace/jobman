@@ -900,13 +900,13 @@ slsa-verifier verify-artifact --provenance-path jobman.intoto.jsonl \
 
 Use `shasum -a 256 -c` for the downloaded artifact on macOS if GNU
 `sha256sum` is unavailable. After extracting an archive, verify its executable,
-release-specific citation, generated help assets, and sample configuration:
+project citation, generated help assets, and sample configuration:
 
 ```sh
 mkdir -p "$CAMPAIGN/archive"
 tar -xzf "jobman_<version>_linux_amd64.tar.gz" -C "$CAMPAIGN/archive"
 "$CAMPAIGN/archive/jobman" --version
-grep -F 'version: <version>' "$CAMPAIGN/archive/CITATION.cff"
+grep -F 'title: Jobman' "$CAMPAIGN/archive/CITATION.cff"
 test -s "$CAMPAIGN/archive/docs/manpage/jobman.1"
 test -s "$CAMPAIGN/archive/docs/completions/bash/jobman"
 "$CAMPAIGN/archive/jobman" config validate \

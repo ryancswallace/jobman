@@ -62,5 +62,5 @@ jobs:
 
             - Synchronizes pinned Go version declarations.
             - Updates copyright years.
-            - Reconciles citation and changelog records after releases.
+            - Reconciles changelog records after releases.
             - Regenerates and validates documentation assets.

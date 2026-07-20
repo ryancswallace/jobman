@@ -149,24 +149,25 @@ locally because they need GitHub credentials and an Actions OIDC identity.
 Docker Buildx may create local platform-suffixed images during snapshot
 validation. `make snapshot` finishes by checking artifact counts, checksums,
 required archive contents, absence of repository scaffolding, executable
-version metadata, and release-specific `CITATION.cff` metadata. The release
+version metadata, and the project-level `CITATION.cff`. The release
 workflow repeats the same artifact check before generating attestations.
 
-`make release-check` also verifies that the tracked `CITATION.cff`, changelog
-section, and Unreleased comparison link match the latest published semantic
-version tag. After a successful Release workflow, repository maintenance runs
-automatically and opens a reviewed pull request that updates those records.
-Merge that pull request before preparing the next release candidate.
+`make release-check` validates the release configuration without requiring a
+post-release maintenance commit to have landed already. After a successful
+Release workflow, repository maintenance runs automatically, verifies the
+changelog section and Unreleased comparison link against the latest published
+semantic version tag, and opens a reviewed pull request that updates those
+records. Merge that pull request before preparing the next release candidate.
 
 Run every target in `.github/workflows/fuzz.yml` for 30 seconds and complete a
 race-enabled `make soaktest` run as recorded in the [dogfood runbook] before
 merging the v1 release commit. The scheduled workflows remain the authoritative
 long-running evidence for that exact commit.
 
-The GoReleaser pre-hook renders `.release/CITATION.cff` from the tracked
-template using the resolved release version and timestamp. Confirm the copy
-inside at least one archive has the release's version and date; the generated
-file is ignored and must not be committed.
+GoReleaser includes the tracked `CITATION.cff` directly. It intentionally
+describes the project rather than an individual release, so it does not contain
+error-prone version or release-date fields. Confirm the file is present inside
+at least one archive.
 
 Before merging a release-triggering change, also confirm that generated assets
 are non-empty and current:

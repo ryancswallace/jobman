@@ -22,8 +22,6 @@ check_metadata() {
 		die "latest release tag is not vMAJOR.MINOR.PATCH: $latest_tag"
 	release_date=$(git show -s --format=%cs "$latest_tag")
 
-	require_line CITATION.cff "version: $version"
-	require_line CITATION.cff "date-released: $release_date"
 	require_line CHANGELOG.md "## [$version] - $release_date"
 	require_line CHANGELOG.md \
 		"[Unreleased]: https://github.com/ryancswallace/jobman/compare/$latest_tag...HEAD"
@@ -83,7 +81,8 @@ check_artifacts() {
 			awk 'NR == 1 { print $2 }'
 	)
 	[ -n "$binary_version" ] || die 'could not read the packaged binary version'
-	require_line "$temporary/extract/CITATION.cff" "version: $binary_version"
+	require_line "$temporary/extract/CITATION.cff" 'cff-version: 1.2.0'
+	require_line "$temporary/extract/CITATION.cff" 'title: Jobman'
 
 	rm -rf "$temporary"
 	trap - EXIT HUP INT TERM

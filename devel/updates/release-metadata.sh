@@ -1,10 +1,10 @@
 #!/usr/bin/sh
 
-# Synchronize tracked release records with the newest reachable semantic tag.
+# Synchronize the tracked changelog with the newest reachable semantic tag.
 
 set -eu
 
-for command in awk git go grep mv
+for command in awk git grep mv
 do
     if ! command -v "$command" >/dev/null 2>&1
     then
@@ -41,15 +41,8 @@ else
     version_url="https://github.com/ryancswallace/jobman/releases/tag/${latest_tag}"
 fi
 
-citation_tmp=.CITATION.cff.tmp.$$
 changelog_tmp=.CHANGELOG.md.tmp.$$
-trap 'rm -f "$citation_tmp" "$changelog_tmp"' EXIT HUP INT TERM
-
-go run ./devel/releasemetadata \
-    -input=CITATION.cff \
-    -output="$citation_tmp" \
-    -version="$version" \
-    -date="$release_date"
+trap 'rm -f "$changelog_tmp"' EXIT HUP INT TERM
 
 if grep -Fqx "## [$version] - $release_date" CHANGELOG.md
 then
@@ -94,6 +87,5 @@ else
     }
 fi
 
-mv "$citation_tmp" CITATION.cff
 mv "$changelog_tmp" CHANGELOG.md
 trap - EXIT HUP INT TERM

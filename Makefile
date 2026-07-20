@@ -402,7 +402,7 @@ docker-run: docker-image ## Run the local image; pass jobman arguments with ARGS
 build-all: build docker-image ## Build the local binary and container image.
 
 .PHONY: release-metadata-check
-release-metadata-check: ## Verify citation and changelog records match the latest release tag.
+release-metadata-check: ## Verify changelog records match the latest release tag.
 	$(RELEASE_CHECK) metadata
 
 .PHONY: artifact-check
@@ -410,7 +410,7 @@ artifact-check: ## Verify the complete release artifact set already present in d
 	$(RELEASE_CHECK) artifacts $(DIST_DIR)
 
 .PHONY: release-check
-release-check: tool-goreleaser release-metadata-check ## Validate release configuration and tracked release records.
+release-check: tool-goreleaser ## Validate the release configuration.
 	$(GORELEASER) check
 
 .PHONY: release-build
