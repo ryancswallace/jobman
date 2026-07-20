@@ -326,6 +326,7 @@ docs-check: ## Check Markdown whitespace and generated documentation assets.
 	@test -s $(SITE_BUILD_DIR)/assets/examples/jobman.yml
 	@test -s $(SITE_BUILD_DIR)/assets/images/logo.svg
 	@test -s $(SITE_BUILD_DIR)/assets/images/logo-dark.svg
+	@test -s $(SITE_BUILD_DIR)/assets/images/logo-dark-transparent.svg
 	@test -s $(SITE_BUILD_DIR)/assets/images/favicon.svg
 	@test -s $(SITE_BUILD_DIR)/assets/images/favicon-dark.svg
 

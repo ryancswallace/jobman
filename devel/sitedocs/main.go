@@ -93,7 +93,7 @@ func generateSite(repositoryRoot, outputRoot string) error {
 	); err != nil {
 		return fmt.Errorf("publish sample configuration: %w", err)
 	}
-	for _, name := range []string{"logo.svg", "logo-dark.svg", "favicon.svg", "favicon-dark.svg"} {
+	for _, name := range []string{"logo.svg", "logo-dark.svg", "logo-dark-transparent.svg", "favicon.svg", "favicon-dark.svg"} {
 		if err := copyFile(
 			filepath.Join(repositoryRoot, "assets", name),
 			filepath.Join(outputRoot, "assets", "images", name),
@@ -410,6 +410,7 @@ func validateRequiredPages(siteRoot *os.Root, permalinks map[string]string) erro
 		"assets/examples/jobman.yml",
 		"assets/images/logo.svg",
 		"assets/images/logo-dark.svg",
+		"assets/images/logo-dark-transparent.svg",
 		"assets/images/favicon.svg",
 		"assets/images/favicon-dark.svg",
 	} {

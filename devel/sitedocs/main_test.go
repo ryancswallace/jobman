@@ -25,6 +25,7 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 		"assets/examples/jobman.yml",
 		"assets/images/logo.svg",
 		"assets/images/logo-dark.svg",
+		"assets/images/logo-dark-transparent.svg",
 		"assets/images/favicon.svg",
 		"assets/images/favicon-dark.svg",
 		"guides/containers.md",
@@ -334,7 +335,7 @@ func newValidSiteFixture(t *testing.T) string {
 		writeSitePage(t, root, path, path, permalink)
 	}
 	writeTestFile(t, filepath.Join(root, "assets", "examples", "jobman.yml"), "schema_version: 1\n")
-	for _, name := range []string{"logo.svg", "logo-dark.svg", "favicon.svg", "favicon-dark.svg"} {
+	for _, name := range []string{"logo.svg", "logo-dark.svg", "logo-dark-transparent.svg", "favicon.svg", "favicon-dark.svg"} {
 		writeTestFile(t, filepath.Join(root, "assets", "images", name), "<svg></svg>")
 	}
 

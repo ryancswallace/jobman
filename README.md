@@ -1,7 +1,7 @@
 # Jobman
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark-transparent.svg">
   <img alt="Jobman" src="assets/logo.svg" width="420">
 </picture>
 
