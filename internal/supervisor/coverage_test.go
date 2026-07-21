@@ -2711,6 +2711,7 @@ func TestWaitAndFinalizeRunClosedStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = capture.Close() })
 	paths := capture.Paths()
 	logs := model.LogMetadata{
 		StdoutPath: paths.Stdout, StderrPath: paths.Stderr, IndexPath: paths.Index,
@@ -2746,6 +2747,9 @@ func TestWaitAndFinalizeRunClosedStore(t *testing.T) {
 		platform.ProcessIdentity{}, group, errorsChannel, time.Now().UTC(), 0, jitter,
 	); err == nil {
 		t.Fatal("waitAndFinalizeRun(closed store) error = nil")
+	}
+	if _, err := capture.Append(logstore.Stdout, []byte("after close"), time.Now().UTC()); !errors.Is(err, logstore.ErrClosed) {
+		t.Fatalf("capture append after waitAndFinalizeRun error = %v, want closed", err)
 	}
 }
 

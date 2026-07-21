@@ -280,17 +280,21 @@ func TestWholeJobTimeoutBoundsNotificationRetrySchedule(t *testing.T) {
 	configuration.Notifications = []model.NotificationSubscription{{
 		Notifier: "slow-retry", Events: []string{"job_started"},
 	}}
-	fixture := submitSupervisorFixtureWithPolicy(t, true, false, configuration)
+	// A missing target keeps this test focused on notification scheduling.
+	// Starting the race-instrumented test binary can consume several seconds on
+	// Windows and is unrelated to whether a one-hour notification retry blocks.
+	fixture := submitSupervisorFixtureWithPolicy(t, false, false, configuration)
 
-	started := time.Now()
+	runCtx, cancelRun := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancelRun()
 	if runErr := Run(
-		t.Context(), fixture.stateDir, fixture.jobID.String(),
+		runCtx, fixture.stateDir, fixture.jobID.String(),
 		bytes.NewReader(fixture.credential), new(closingBuffer),
 	); runErr != nil {
 		t.Fatalf("Run() error = %v", runErr)
 	}
-	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("notification retry ignored whole-job timeout: %s", elapsed)
+	if contextErr := runCtx.Err(); contextErr != nil {
+		t.Fatalf("notification retry did not complete within test budget: %v", contextErr)
 	}
 	database := openSupervisorStore(t, fixture.stateDir)
 	defer closeSupervisorStore(t, database)
@@ -300,7 +304,7 @@ func TestWholeJobTimeoutBoundsNotificationRetrySchedule(t *testing.T) {
 	}
 	deliveries, deliveriesErr := database.ListNotificationDeliveries(t.Context(), fixture.jobID)
 	attempts, attemptsErr := database.ListNotificationAttempts(t.Context(), fixture.jobID)
-	if job.Outcome != model.JobOutcomeSuccess || deliveriesErr != nil || attemptsErr != nil ||
+	if job.Outcome != model.JobOutcomeFailure || deliveriesErr != nil || attemptsErr != nil ||
 		len(deliveries) != 1 || deliveries[0].Status != store.NotificationDeliveryFailed ||
 		len(attempts) != 1 || attempts[0].Retryable {
 		t.Fatalf(
@@ -627,25 +631,30 @@ func TestRetryableRunTimeoutsStopAtWholeJobTimeout(t *testing.T) {
 
 func TestWholeJobTimeoutBoundsRetryBackoff(t *testing.T) {
 	configuration := model.DefaultExecutionPolicy()
-	configuration.JobTimeout = 2 * time.Second
+	configuration.JobTimeout = 5 * time.Second
 	configuration.FailureDelay = policy.DelayPolicy{Base: time.Hour, Backoff: policy.BackoffConstant}
+	configuration.Classification.RetryStartFailure = true
 	two, err := policy.FiniteLimit(2)
 	if err != nil {
 		t.Fatalf("FiniteLimit() error = %v", err)
 	}
 	configuration.Completion.MaxRuns = two
 	configuration.Completion.FailureLimit = two
-	fixture := submitSupervisorFixtureWithPolicyAndExit(t, configuration, 1)
+	// Exercise retry backoff with a fast start failure. Re-executing the
+	// race-instrumented test binary on Windows can consume the whole job budget
+	// before the first run and does not contribute to this scheduler contract.
+	fixture := submitSupervisorFixtureWithPolicy(t, false, false, configuration)
 
-	started := time.Now()
+	runCtx, cancelRun := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancelRun()
 	if runErr := Run(
-		t.Context(), fixture.stateDir, fixture.jobID.String(),
+		runCtx, fixture.stateDir, fixture.jobID.String(),
 		bytes.NewReader(fixture.credential), new(closingBuffer),
 	); runErr != nil {
 		t.Fatalf("Run() error = %v", runErr)
 	}
-	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("whole-job timeout took %s during one-hour backoff", elapsed)
+	if contextErr := runCtx.Err(); contextErr != nil {
+		t.Fatalf("whole-job timeout did not bound one-hour backoff: %v", contextErr)
 	}
 	database := openSupervisorStore(t, fixture.stateDir)
 	defer closeSupervisorStore(t, database)
@@ -657,7 +666,8 @@ func TestWholeJobTimeoutBoundsRetryBackoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRuns() error = %v", err)
 	}
-	if job.Outcome != model.JobOutcomeTimedOut || len(runs) != 1 {
+	if job.Outcome != model.JobOutcomeTimedOut || len(runs) != 1 ||
+		runs[0].Outcome != model.RunOutcomeStartFailed {
 		t.Fatalf("backoff timeout job=%#v runs=%#v", job, runs)
 	}
 }
