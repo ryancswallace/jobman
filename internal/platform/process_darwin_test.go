@@ -11,32 +11,56 @@ import (
 	"time"
 )
 
-func TestDarwinOriginalProcessZombieValidation(t *testing.T) {
+func TestDarwinProcessIsExiting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state int8
+		flags int32
+		want  bool
+	}{
+		{name: "running", state: 2},
+		{name: "working on exit", state: 2, flags: darwinProcessFlagExiting, want: true},
+		{name: "zombie", state: darwinProcessStateZombie, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := darwinProcessIsExiting(test.state, test.flags); got != test.want {
+				t.Fatalf("darwinProcessIsExiting(%d, %#x) = %t, want %t", test.state, test.flags, got, test.want)
+			}
+		})
+	}
+}
+
+func TestDarwinOriginalProcessExitingValidation(t *testing.T) {
 	t.Parallel()
 
 	identity, err := Inspect(os.Getpid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	zombie, err := originalProcessZombie(identity)
-	if err != nil || zombie {
-		t.Fatalf("originalProcessZombie(current) = %t, %v", zombie, err)
+	exiting, err := originalProcessExiting(identity)
+	if err != nil || exiting {
+		t.Fatalf("originalProcessExiting(current) = %t, %v", exiting, err)
 	}
 
 	reused := identity
 	reused.Creation = "different process"
-	if _, err := originalProcessZombie(reused); !errors.Is(err, ErrIdentityMismatch) {
-		t.Fatalf("originalProcessZombie(reused PID) error = %v", err)
+	if _, err := originalProcessExiting(reused); !errors.Is(err, ErrIdentityMismatch) {
+		t.Fatalf("originalProcessExiting(reused PID) error = %v", err)
 	}
 
 	gone := ProcessIdentity{PID: 1 << 30, Creation: "missing", Boot: "missing"}
-	zombie, err = originalProcessZombie(gone)
-	if err != nil || zombie {
-		t.Fatalf("originalProcessZombie(missing) = %t, %v", zombie, err)
+	exiting, err = originalProcessExiting(gone)
+	if err != nil || exiting {
+		t.Fatalf("originalProcessExiting(missing) = %t, %v", exiting, err)
 	}
 }
 
-func TestDarwinOriginalProcessZombie(t *testing.T) {
+func TestDarwinOriginalProcessExiting(t *testing.T) {
 	t.Parallel()
 
 	command := exec.Command("/bin/sh", "-c", "read ignored || true")
@@ -67,21 +91,21 @@ func TestDarwinOriginalProcessZombie(t *testing.T) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		zombie, inspectErr := originalProcessZombie(identity)
+		exiting, inspectErr := originalProcessExiting(identity)
 		if inspectErr != nil {
 			t.Fatal(inspectErr)
 		}
-		if zombie {
+		if exiting {
 			break
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("helper process did not enter zombie state")
+			t.Fatal("helper process did not enter an exiting state")
 		case <-ticker.C:
 		}
 	}
 	if err := Terminate(identity, true); err != nil {
-		t.Fatalf("Terminate(zombie) error = %v", err)
+		t.Fatalf("Terminate(exiting) error = %v", err)
 	}
 	if err := command.Wait(); err != nil {
 		t.Fatal(err)

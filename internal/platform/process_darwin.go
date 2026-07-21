@@ -13,9 +13,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Darwin exposes these process states through extern_proc.P_stat but does not
-// publish the constants through x/sys/unix. SZOMB is 5 in <sys/proc.h>.
-const darwinProcessStateZombie int8 = 5
+// Darwin exposes these values through extern_proc but does not publish the
+// constants through x/sys/unix. They are SZOMB and P_WEXIT in <sys/proc.h>.
+const (
+	darwinProcessStateZombie int8  = 5
+	darwinProcessFlagExiting int32 = 0x00002000
+)
 
 func attachStartedTarget(pid int) (string, error) { return strconv.Itoa(pid), nil }
 
@@ -85,8 +88,8 @@ func signalProcessGroup(identity ProcessIdentity, signal syscall.Signal) error {
 		return nil
 	}
 	if errors.Is(err, syscall.EPERM) {
-		zombie, inspectErr := originalProcessZombie(identity)
-		if inspectErr == nil && zombie {
+		exiting, inspectErr := originalProcessExiting(identity)
+		if inspectErr == nil && exiting {
 			return nil
 		}
 	}
@@ -94,10 +97,11 @@ func signalProcessGroup(identity ProcessIdentity, signal syscall.Signal) error {
 	return err
 }
 
-// originalProcessZombie distinguishes Darwin's EPERM for an unsignalable
-// zombie process group from a genuine authorization failure. It also verifies
-// creation identity so PID reuse can never make an authorization error benign.
-func originalProcessZombie(identity ProcessIdentity) (bool, error) {
+// originalProcessExiting distinguishes Darwin's EPERM for an unsignalable
+// exiting or zombie process group from a genuine authorization failure. It
+// also verifies creation identity so PID reuse can never make an authorization
+// error benign.
+func originalProcessExiting(identity ProcessIdentity) (bool, error) {
 	info, err := unix.SysctlKinfoProc("kern.proc.pid", identity.PID)
 	if err != nil {
 		if isProcessGone(err) {
@@ -115,7 +119,11 @@ func originalProcessZombie(identity ProcessIdentity) (bool, error) {
 		return false, ErrIdentityMismatch
 	}
 
-	return info.Proc.P_stat == darwinProcessStateZombie, nil
+	return darwinProcessIsExiting(info.Proc.P_stat, info.Proc.P_flag), nil
+}
+
+func darwinProcessIsExiting(state int8, flags int32) bool {
+	return state == darwinProcessStateZombie || flags&darwinProcessFlagExiting != 0
 }
 
 func isProcessGone(err error) bool {
