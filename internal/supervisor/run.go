@@ -502,13 +502,13 @@ func waitAndFinalizeRun(
 		pausedBaseline,
 	)
 	defer releaseOperation()
-	if waitErr == nil && controlErr != nil {
-		return false, controlErr
-	}
 	close(captureErrors)
 	captureErr := collectCaptureErrors(captureErrors)
 	closeErr := capture.Close()
 	logs = completedLogMetadata(logs, captureErr, closeErr)
+	if waitErr == nil && controlErr != nil {
+		return false, errors.Join(controlErr, captureErr, closeErr)
+	}
 
 	latest, getErr := database.GetJob(operationCtx, jobID)
 	if getErr != nil {
