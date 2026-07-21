@@ -67,23 +67,27 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 		return nil, errors.New("open store: nil context")
 	}
 
-	stateDir, err := prepareStateDir(options.StateDir)
-	if err != nil {
-		return nil, fmt.Errorf("open store: %w", err)
-	}
-	if filesystemErr := validateStateFilesystem(stateDir); filesystemErr != nil {
-		return nil, fmt.Errorf("open store: %w", filesystemErr)
-	}
+	var stateDir, databasePath string
+	err := withStorePreparationLock(ctx, options.StateDir, func() error {
+		preparedStateDir, prepareErr := prepareStateDir(options.StateDir)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		stateDir = preparedStateDir
+		if filesystemErr := validateStateFilesystem(stateDir); filesystemErr != nil {
+			return filesystemErr
+		}
 
-	databasePath := filepath.Join(stateDir, DatabaseFilename)
-	err = prepareDatabaseFile(databasePath)
+		databasePath = filepath.Join(stateDir, DatabaseFilename)
+		if databaseErr := prepareDatabaseFile(databasePath); databaseErr != nil {
+			return databaseErr
+		}
+		// Validate existing journals before SQLite can read them. Journals created
+		// by this open are hardened immediately after initialization below.
+		return validateExistingDatabaseSidecars(databasePath)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
-	}
-	// Validate existing journals before SQLite can read them. Journals created
-	// by this open are hardened immediately after initialization below.
-	if sidecarErr := validateExistingDatabaseSidecars(databasePath); sidecarErr != nil {
-		return nil, fmt.Errorf("open store: %w", sidecarErr)
 	}
 
 	busyTimeout := options.BusyTimeout
@@ -134,29 +138,23 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 
 		return nil, err
 	}
-	if err := validateDatabaseFile(databasePath); err != nil {
-		closeErr := db.Close()
-		if closeErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))
+	securityErr := withStorePreparationLock(ctx, options.StateDir, func() error {
+		if validateErr := validateDatabaseFile(databasePath); validateErr != nil {
+			return validateErr
+		}
+		if hardenErr := hardenDatabaseSidecars(databasePath); hardenErr != nil {
+			return hardenErr
 		}
 
-		return nil, fmt.Errorf("open store: %w", err)
-	}
-	if err := hardenDatabaseSidecars(databasePath); err != nil {
+		return validateDatabaseSidecars(databasePath)
+	})
+	if securityErr != nil {
 		closeErr := db.Close()
 		if closeErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))
+			return nil, errors.Join(securityErr, fmt.Errorf("close unsafe store: %w", closeErr))
 		}
 
-		return nil, fmt.Errorf("open store: %w", err)
-	}
-	if err := validateDatabaseSidecars(databasePath); err != nil {
-		closeErr := db.Close()
-		if closeErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("close unsafe store: %w", closeErr))
-		}
-
-		return nil, fmt.Errorf("open store: %w", err)
+		return nil, fmt.Errorf("open store: %w", securityErr)
 	}
 
 	return store, nil

@@ -23,6 +23,10 @@ func validateSingleLink(_ os.FileInfo) error {
 }
 
 func hardenPath(path string) error {
+	if err := winacl.Validate(path); err == nil {
+		return nil
+	}
+
 	return winacl.Harden(path)
 }
 
@@ -34,6 +38,9 @@ func validatePathSecurity(path string) error {
 // between concurrent Open calls. The inherited ACL must already contain only
 // trusted principals before this process is allowed to protect it.
 func hardenTrustedExistingDatabaseFile(path string) error {
+	if err := winacl.Validate(path); err == nil {
+		return nil
+	}
 	if err := winacl.ValidateInherited(path); err != nil {
 		return err
 	}
