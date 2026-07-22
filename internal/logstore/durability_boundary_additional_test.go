@@ -1,6 +1,7 @@
 package logstore
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -114,17 +115,18 @@ func TestCapturePropagatesDurabilityBoundaryFailures(t *testing.T) {
 		t.Parallel()
 
 		run := newBoundaryRun(t, RunOptions{})
-		if err := run.stdout.Close(); err != nil {
-			t.Fatal(err)
+		wantErr := errors.New("raw stream sync failed")
+		run.appendSync = func(file *os.File) error {
+			if file == run.stdout {
+				return wantErr
+			}
+
+			return file.Sync()
 		}
-		reader, writer, err := os.Pipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
-		run.stdout = writer
-		if _, err := run.Append(Stdout, []byte("data"), time.Now().UTC()); err == nil {
-			t.Fatal("Append(pipe-backed stream) error = nil")
+		written, err := run.Append(Stdout, []byte("data"), time.Now().UTC())
+		if written != len("data") || !errors.Is(err, wantErr) {
+			t.Fatalf("Append(raw sync failure) = (%d, %v), want (%d, %v)",
+				written, err, len("data"), wantErr)
 		}
 	})
 
@@ -142,17 +144,18 @@ func TestCapturePropagatesDurabilityBoundaryFailures(t *testing.T) {
 		t.Parallel()
 
 		run := newBoundaryRun(t, RunOptions{})
-		if err := run.index.Close(); err != nil {
-			t.Fatal(err)
+		wantErr := errors.New("index sync failed")
+		run.appendSync = func(file *os.File) error {
+			if file == run.index {
+				return wantErr
+			}
+
+			return file.Sync()
 		}
-		reader, writer, err := os.Pipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
-		run.index = writer
-		if _, err := run.Append(Stdout, []byte("data"), time.Now().UTC()); err == nil {
-			t.Fatal("Append(pipe-backed index) error = nil")
+		written, err := run.Append(Stdout, []byte("data"), time.Now().UTC())
+		if written != len("data") || !errors.Is(err, wantErr) {
+			t.Fatalf("Append(index sync failure) = (%d, %v), want (%d, %v)",
+				written, err, len("data"), wantErr)
 		}
 	})
 

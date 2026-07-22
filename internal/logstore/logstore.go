@@ -106,6 +106,7 @@ type Run struct {
 	stderrSegment uint16
 	rotation      RotationPolicy
 	segmented     bool
+	appendSync    func(*os.File) error
 	writeErr      error
 	closed        bool
 }
@@ -275,7 +276,7 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	if err != nil {
 		return written, fmt.Errorf("append %s log: %w", stream, err)
 	}
-	if syncErr := file.Sync(); syncErr != nil {
+	if syncErr := run.syncAppendFile(file); syncErr != nil {
 		return written, fmt.Errorf("sync %s log: %w", stream, syncErr)
 	}
 	faultinject.Hit("log-raw-synced-before-index")
@@ -294,7 +295,7 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	if _, err := writeAll(run.index, encoded[:]); err != nil {
 		return written, fmt.Errorf("append log chunk index: %w", err)
 	}
-	if err := run.index.Sync(); err != nil {
+	if err := run.syncAppendFile(run.index); err != nil {
 		return written, fmt.Errorf("sync log chunk index: %w", err)
 	}
 	faultinject.Hit("log-index-synced")
@@ -302,6 +303,14 @@ func (run *Run) appendChunk(stream Stream, data []byte, observedAt time.Time) (i
 	run.nextSequence++
 
 	return written, nil
+}
+
+func (run *Run) syncAppendFile(file *os.File) error {
+	if run.appendSync != nil {
+		return run.appendSync(file)
+	}
+
+	return file.Sync()
 }
 
 func (run *Run) streamFileOffsetAndSegment(stream Stream) (file *os.File, offset uint64, segment uint16) {
