@@ -8,7 +8,8 @@ within their directories.
 
 Jobman is a daemonless command-line job manager written in Go. Its target
 capabilities include retries, timeouts, durable logs, delayed execution, and
-notifications. The implementation is still under active development.
+notifications. The v1 public contract is frozen and the implementation remains
+under active maintenance.
 
 Treat [docs/design/README.md](docs/design/README.md) as a target design and set
 of constraints, not proof that a feature already exists. Inspect the current

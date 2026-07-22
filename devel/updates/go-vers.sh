@@ -1,4 +1,4 @@
-#!/usr/bin/sh
+#!/bin/sh
 
 # Synchronize the version in go.version with every pinned Go declaration.
 
@@ -20,7 +20,7 @@ then
     exit "$EXIT_VAR_INVALID"
 fi
 
-for command in grep sed
+for command in cat grep mktemp rm sed
 do
     if ! command -v "$command" >/dev/null 2>&1
     then
@@ -29,23 +29,60 @@ do
     fi
 done
 
+temporary=
+trap 'rm -f "${temporary:-}"' EXIT HUP INT TERM
+
+replace() {
+    expression=$1
+    shift
+    for file
+    do
+        temporary=$(mktemp "${file}.tmp.XXXXXXXXXX") || {
+            echo "error: could not create a temporary file for $file" >&2
+            exit 1
+        }
+        sed "$expression" "$file" > "$temporary"
+        cat "$temporary" > "$file"
+        rm -f "$temporary"
+        temporary=
+    done
+}
+
+replace_extended() {
+    expression=$1
+    shift
+    for file
+    do
+        temporary=$(mktemp "${file}.tmp.XXXXXXXXXX") || {
+            echo "error: could not create a temporary file for $file" >&2
+            exit 1
+        }
+        sed -E "$expression" "$file" > "$temporary"
+        cat "$temporary" > "$file"
+        rm -f "$temporary"
+        temporary=
+    done
+}
+
 GO_LANG_VERSION=$(printf '%s\n' "$GO_VERS" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
 
 printf '%s\n' "$GO_VERS" > go.version
-sed -i "s/^go .*/go $GO_LANG_VERSION/" go.mod
-sed -i "s/^  go: \".*\"/  go: \"$GO_LANG_VERSION\"/" .golangci.yml
-sed -i "s/^ARG GO_VERSION=.*/ARG GO_VERSION=$GO_VERS/" Dockerfile .devcontainer/Dockerfile
-sed -i "s/^ARG GO_FEATURE_VERSION=.*/ARG GO_FEATURE_VERSION=$GO_LANG_VERSION/" \
+replace "s/^go .*/go $GO_LANG_VERSION/" go.mod
+replace "s/^  go: \".*\"/  go: \"$GO_LANG_VERSION\"/" .golangci.yml
+replace "s/^ARG GO_VERSION=.*/ARG GO_VERSION=$GO_VERS/" Dockerfile .devcontainer/Dockerfile
+replace "s/^ARG GO_FEATURE_VERSION=.*/ARG GO_FEATURE_VERSION=$GO_LANG_VERSION/" \
     .devcontainer/Dockerfile
-sed -i "s/\"GO_VERSION\": \"[^\"]*\"/\"GO_VERSION\": \"$GO_VERS\"/" \
+replace "s/\"GO_VERSION\": \"[^\"]*\"/\"GO_VERSION\": \"$GO_VERS\"/" \
     .devcontainer/devcontainer.json
-sed -i "s/go-version: \"[^\"]*\"/go-version: \"$GO_VERS\"/" \
+replace "s/go-version: \"[^\"]*\"/go-version: \"$GO_VERS\"/" \
     .github/workflows/*.yml
-sed -E -i "s/Go [0-9]+(\.[0-9]+){1,2}/Go $GO_VERS/g" \
+replace_extended "s/Go [0-9]+(\.[0-9]+){1,2}/Go $GO_VERS/g" \
     .devcontainer/README.md
-sed -E -i "s/Go](https:\/\/go.dev\/doc\/install) [0-9]+(\.[0-9]+){1,2}/Go](https:\/\/go.dev\/doc\/install) $GO_VERS/" \
+replace_extended "s/Go](https:\/\/go.dev\/doc\/install) [0-9]+(\.[0-9]+){1,2}/Go](https:\/\/go.dev\/doc\/install) $GO_VERS/" \
     README.md
-sed -E -i "s/Install Go [0-9]+(\.[0-9]+){1,2}/Install Go $GO_VERS/" \
+replace_extended "s/Install Go [0-9]+(\.[0-9]+){1,2}/Install Go $GO_VERS/" \
     RELEASE.md
-sed -E -i "s/requires Go [0-9]+(\.[0-9]+){1,2}/requires Go $GO_VERS/" \
-    site/index.md
+replace_extended "s/(requires|require) Go [0-9]+(\.[0-9]+){1,2}/\\1 Go $GO_VERS/" \
+    site/index.md site/getting-started/installation.md
+
+trap - EXIT HUP INT TERM

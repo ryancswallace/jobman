@@ -1,10 +1,10 @@
 # Build artifacts
 build/
 dist/
+.release-generated/
 .release/
 _site/
 site/_site/
-site/_includes/
 site-build/
 
 # Environment and secrets
