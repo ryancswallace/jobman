@@ -5,25 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/pages.yml"
-      - "assets/**"
-      - "CHANGELOG.md"
-      - "CODE_OF_CONDUCT.md"
-      - "CONTRIBUTING.md"
-      - "Dockerfile.pages"
-      - "Makefile"
-      - "RELEASE.md"
-      - "SECURITY.md"
-      - "SUPPORT.md"
-      - "devel/sitedocs/**"
-      - "docs/**"
-      - "etc/jobman/jobman.yml"
-      - "go.mod"
-      - "go.sum"
-      - "go.version"
-      - "jobman/**"
-      - "site/**"
   workflow_dispatch:
 
 permissions:

@@ -40,6 +40,7 @@ branches:
         # These are the check-run names produced for every pull request to main.
         contexts:
           - Analyze Go
+          - Dependency review
           - Documentation and release configuration
           - Lint
           - Test

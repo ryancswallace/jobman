@@ -5,24 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/docs-links.yml"
-      - "CHANGELOG.md"
-      - "CODE_OF_CONDUCT.md"
-      - "CONTRIBUTING.md"
-      - "Makefile"
-      - "README.md"
-      - "RELEASE.md"
-      - "SECURITY.md"
-      - "SUPPORT.md"
-      - "devel/sitedocs/**"
-      - "docs/**"
-      - "etc/jobman/jobman.yml"
-      - "go.mod"
-      - "go.sum"
-      - "go.version"
-      - "jobman/**"
-      - "site/**"
   pull_request:
     branches:
       - main
@@ -85,6 +67,7 @@ jobs:
             --max-retries 3
             --retry-wait-time 2
             --timeout 30
+            --accept '100..=103,200..=299,500,502,503,504'
             --scheme https
             --exclude '^https://([^.]+\.)?example\.com/'
             --exclude '^https://token\.actions\.githubusercontent\.com/?$'

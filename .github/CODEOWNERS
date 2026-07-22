@@ -1,0 +1,4 @@
+# The maintainer reviews every production, workflow, documentation, and
+# release change. Keep this default aligned with the code-owner review rule in
+# .github/settings.yml; add more owners before narrowing any path below.
+* @ryancswallace
