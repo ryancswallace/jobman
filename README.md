@@ -1,9 +1,11 @@
 # Jobman
 
+<!-- markdownlint-disable MD033 -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark-transparent.svg">
   <img alt="Jobman" src="assets/logo.svg" width="420">
 </picture>
+<!-- markdownlint-enable MD033 -->
 
 [![Test](https://github.com/ryancswallace/jobman/actions/workflows/test.yml/badge.svg)](https://github.com/ryancswallace/jobman/actions/workflows/test.yml)
 [![Codecov](https://codecov.io/gh/ryancswallace/jobman/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman)
@@ -142,7 +144,7 @@ job, and persist metadata and logs with a named volume:
 
 ```console
 docker run --rm \
-	--volume jobman-state:/home/jobman/.local/state/jobman \
+  --volume jobman-state:/home/jobman/.local/state/jobman \
   --volume "$PWD:/work" \
   ghcr.io/ryancswallace/jobman:vX.Y.Z \
   run --wait -- /work/bin/batch-job
@@ -218,6 +220,5 @@ Jobman is available under the [MIT License](LICENSE).
 [platform-capability record]: docs/design/PLATFORM_CAPABILITIES.md
 [configuration reference]: docs/CONFIGURATION.md
 [sample configuration]: etc/jobman/jobman.yml
-[compatibility contract]: docs/COMPATIBILITY.md
 [dogfood runbook]: docs/DOGFOOD.md
 [container contract]: docs/CONTAINERS.md
