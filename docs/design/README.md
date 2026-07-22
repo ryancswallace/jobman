@@ -1,10 +1,9 @@
 # Jobman design
 
-The [formal design specification](SPEC.md) records Jobman's target behavior,
+The [formal design specification](SPEC.md) records Jobman's v1 behavior,
 architecture, requirements, implementation milestones, and product decisions.
-It is the authoritative design contract, not a claim that every
-feature is implemented. This page is a short overview; if the two documents
-conflict, the formal specification controls.
+It is the authoritative design contract. This page is a short overview; if the
+two documents conflict, the formal specification controls.
 
 Implementation is guided by the
 [initial vertical-slice plan](IMPLEMENTATION_PLAN.md) and the indexed
@@ -14,11 +13,8 @@ The implementation's storage formats and measured portability are recorded
 separately in the [persisted-schema reference](PERSISTED_SCHEMA.md) and
 [platform capability record](PLATFORM_CAPABILITIES.md). The initial vertical
 slice and the subsequent v1 policy expansion are tracked in the
-[implementation plan](IMPLEMENTATION_PLAN.md). Those records describe current
-evidence and gaps; they do not imply stable cross-platform support.
-
-User-facing behavior should graduate into command help, tests, and published
-documentation as it becomes stable.
+[implementation plan](IMPLEMENTATION_PLAN.md). Those records distinguish the
+implemented contract from evidence that must be repeated for each release.
 
 ## Product model
 
@@ -162,9 +158,9 @@ paths follow platform conventions, with `XDG_CONFIG_HOME` honored on Unix-like
 systems. A schema change that cannot be interpreted compatibly requires release
 notes and a migration path.
 
-## Production acceptance criteria
+## Release acceptance criteria
 
-Before declaring the implementation stable:
+Every supported release retains these gates:
 
 - lifecycle transitions, retries, timeouts, and interruption recovery have
   deterministic unit and end-to-end coverage;

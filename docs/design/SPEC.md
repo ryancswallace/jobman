@@ -1,12 +1,13 @@
 # Jobman design specification
 
-Status: frozen v1 release-candidate design contract
-Target: v1.0
-Last updated: 2026-07-15
+Status: frozen v1 design contract
+Target: v1 release line
+Last updated: 2026-07-22
 
-This document defines the intended behavior and architecture of Jobman. It is a
-design contract, not a description of the current implementation. Requirements
-use **MUST**, **SHOULD**, and **MAY** in their usual normative senses.
+This document defines the supported v1 behavior and architecture of Jobman.
+The implementation, tests, and user documentation have been reconciled to this
+contract for the v1 release. Requirements use **MUST**, **SHOULD**, and **MAY**
+in their usual normative senses.
 
 ## 1. Product definition
 
@@ -42,7 +43,7 @@ Jobman MUST:
 
 ### 1.2 Non-goals
 
-The first stable release will not:
+The v1 release line does not:
 
 - provide cron-like schedules or automatically resume jobs after reboot;
 - distribute jobs across hosts;
@@ -62,10 +63,12 @@ their existing SSH or host-management channel.
 
 ### 1.3 Relationship to the prototype
 
-The Go source that predates this specification is an exploratory prototype and
-imposes no compatibility or architectural constraint. Implementations MAY
-replace its commands, packages, configuration handling, and tests completely.
-No behavior is stable merely because the prototype currently exhibits it.
+Jobman releases v0.1.0 through v0.5.0 were an exploratory prototype and impose
+no compatibility or architectural constraint on v1. Their state and
+configuration do not have a supported migration path. The durable
+implementation introduced in v0.6.0 is governed by the explicit versioned
+schema and upgrade contracts referenced by this specification; behavior is
+stable only when the v1 compatibility contract declares it so.
 
 ## 2. Terminology
 
@@ -102,7 +105,7 @@ within a job.
 $ jobman run --name backup -- ./backup.sh /srv/data
 01980f4c-7b2a-7a6f-8c10-0123456789ab
 $ jobman status 01980f4c
-backup  running  run=1  elapsed=2m14s
+01980f4c-7b2a-7a6f-8c10-0123456789ab  backup  running
 $ jobman logs --follow 01980f4c
 ...
 ```
@@ -179,19 +182,19 @@ requires a shared scheduler process.
 
 ### 4.2 Common flags
 
-All commands SHOULD support:
+The root command supports:
 
 | Flag | Meaning |
 | --- | --- |
 | `--config PATH` | Use an explicit configuration file. |
 | `--state-dir PATH` | Override the state directory for this invocation. |
-| `--json` | Emit the command's versioned JSON representation. |
-| `--quiet` | Suppress nonessential human output. |
-| `--verbose` | Increase diagnostic detail; repeat where useful. |
-| `--no-color` | Disable ANSI styling. |
 
-`--quiet` and `--verbose` are mutually exclusive. Application diagnostics use
-standard error and MUST NOT be mixed into command data on standard output.
+Inspection commands expose `--json` where they have a versioned machine
+representation: `list`, `status`, `show`, and `doctor`. `config show` emits a
+versioned JSON representation without an additional format flag. Jobman v1
+does not emit ANSI styling or progress decoration and therefore has no
+`--no-color`, `--quiet`, or `--verbose` global flags. Application diagnostics
+use standard error and MUST NOT be mixed into command data on standard output.
 
 ### 4.3 Job selectors
 
@@ -246,7 +249,7 @@ ID. It does not mutate or append runs to the historical job.
 `jobman rerun JOB` is the convenience spelling of `jobman run --rerun JOB` and
 has the same validation and configuration-authority behavior.
 
-Provisional convenience options include:
+The v1 convenience options include:
 
 | Flag | Semantics |
 | --- | --- |
@@ -294,10 +297,11 @@ jobman show job JOB
 jobman show run JOB RUN
 ```
 
-`show job` displays the effective specification, lifecycle, current outcome,
-run history, process identity, log locations, and notification summary.
-`show run` displays one run. A negative run number indexes backward from the
-latest run, so `-1` means the latest.
+The human `show job` view is a concise operational summary of the job,
+lifecycle, runs, log availability, and notification counts. `show job --json`
+exposes the complete effective specification, process identity, log locations,
+and notification record. `show run` displays one run. A negative run number
+indexes backward from the latest run, so `-1` means the latest.
 
 `jobman show JOB` MAY be shorthand for `jobman show job JOB`.
 
@@ -329,9 +333,8 @@ jobman cancel run JOB RUN
 ```
 
 Cancellation records intent durably before signaling. A job cancellation stops
-the active run and prevents future runs. A run cancellation stops that run;
-whether the job may retry it is controlled by the explicit cancellation
-policy, with no retry as the default.
+the active run and prevents future runs. In v1, cancelling a selected active
+run also cancels its owning job, so no retry follows.
 
 `cancel` is the only command name. Jobman does not provide a `kill` alias.
 
@@ -369,16 +372,16 @@ and shell history. `--eof` closes the target's input after all accepted bytes
 are delivered. Input is local-only, preserves bytes exactly, and reports
 partial delivery distinctly from complete delivery.
 
-This command is required near the end of v1 implementation. It is not terminal
-reattachment: Jobman does not reproduce terminal modes, signals, or a PTY.
+This v1 command is not terminal reattachment: Jobman does not reproduce
+terminal modes, signals, or a PTY.
 
 ### 4.12 `jobman clean`
 
 `clean` removes completed state and logs eligible under retention policy. It
-supports `--dry-run`, filters, and explicit selectors. It MUST NOT delete an
-active job, an active run, or a file currently owned by a supervisor. Explicit
-deletion of otherwise retained records requires confirmation on a terminal or
-`--force`.
+supports `--dry-run`, an optional job selector, and an `--older-than` override.
+It MUST NOT delete an active job, an active run, or a file currently owned by a
+supervisor. Any destructive invocation requires explicit `--force`; Jobman
+does not prompt when input may be non-interactive.
 
 ### 4.13 `jobman config`
 
@@ -523,10 +526,10 @@ user-only access, and removed after the claim.
 
 ### 6.2 Cleanup
 
-Clients perform bounded opportunistic cleanup after their primary operation.
-Cleanup MUST NOT delay an interactive command beyond a configurable budget.
-Large cleanup work is claimed transactionally and MAY continue in a detached
-one-shot reaper process. There is no periodic reaper daemon.
+Cleanup is an explicit `jobman clean` operation. It claims work
+transactionally, bounds each request, and can be previewed before deletion.
+Ordinary interactive commands do not perform hidden retention cleanup, and
+there is no periodic reaper daemon.
 
 ### 6.3 Internal package boundaries
 
@@ -583,8 +586,8 @@ All paths are per-user and overridable. Defaults follow platform conventions:
 
 - Linux and other XDG systems: `$XDG_STATE_HOME/jobman`, falling back to
   `~/.local/state/jobman`;
-- macOS: `~/Library/Application Support/jobman` for state and
-  `~/Library/Logs/jobman` for logs; and
+- macOS: `~/Library/Application Support/jobman`, with logs below its `logs`
+  directory; and
 - Windows: `%LOCALAPPDATA%\Jobman`.
 
 Configuration uses the corresponding config location rather than the state
@@ -664,12 +667,14 @@ streams bounded chunks through that endpoint. The endpoint and any capability
 material MUST be user-private, derived from canonical job identity rather than
 a display name, and removed when the run ends. No network listener is opened.
 
-Backpressure is explicit: clients wait only up to a configurable timeout and
-receive a partial-delivery error containing the accepted byte count. Concurrent
-input clients are serialized in admission order. Input is not persisted for
-later replay by default, and Jobman MUST NOT log input bytes or include them in
+Backpressure is explicit: v1 clients wait for at most 30 seconds and receive a
+partial-delivery error containing the accepted byte count. Concurrent input
+clients are serialized in admission order. Input is not persisted for later
+replay by default, and Jobman MUST NOT log input bytes or include them in
 notifications. EOF is durable intent and may be accepted at most once per run.
-Interactive terminal reattachment remains outside v1.
+Interactive terminal reattachment remains outside v1. A future release may
+make the bounded client timeout configurable without changing delivery
+semantics.
 
 ### 8.4 Process trees and signals
 
@@ -681,9 +686,11 @@ their parent. The default stop policy is:
 2. wait a configurable grace duration; and
 3. force termination if the exact process identity is still active.
 
-The requested graceful signal is configurable where the platform supports
-named signals. Unsupported signals fail validation; Jobman MUST NOT silently
-substitute one with different semantics.
+The graceful request is the platform adapter's fixed safe default: `SIGTERM`
+for Unix process groups and best-effort `CTRL_BREAK_EVENT` for Windows Job
+Objects. Users configure the grace duration and whether forceful termination
+follows, not a platform-specific signal name. Jobman MUST NOT silently claim a
+graceful request succeeded when the platform rejected it.
 
 Pause and resume operate on the verified process tree, not a bare PID. On
 platforms without a safe tree-wide suspension mechanism, pausing a running job
@@ -834,8 +841,8 @@ These limits support, among other combinations:
 
 At least one reachable terminal condition is strongly recommended. A policy
 with no finite limit is valid only when the user explicitly writes
-`unlimited`; Jobman MUST warn that it requires cancellation or an external
-termination event.
+`unlimited`; command help and policy documentation warn that such a job
+requires cancellation or an external termination event.
 
 After every run, Jobman evaluates terminal conditions in deterministic order:
 
@@ -917,16 +924,18 @@ durations in persisted schemas.
 By default, completed job metadata is retained indefinitely and completed-run
 logs are retained for 30 days. There is no default byte or job-count cap. The
 effective policy is shown by `config show`, and `list` and `doctor` report store
-usage. Cleanup marks pruned log ranges in retained metadata. Jobman MUST
-prominently document the 30-day log default and warn when cleanup repeatedly
-fails or available disk space approaches a critical threshold.
+usage so operators can monitor disk capacity. Cleanup marks pruned log ranges
+in retained metadata. Jobman MUST prominently document the 30-day log default
+and return a visible error when an explicit cleanup operation fails.
 
 ### 12.3 Following
 
-`logs --follow` uses filesystem notification where reliable and bounded polling
-as a fallback. It handles rotation, truncation performed by Jobman, supervisor
-exit, and client interruption. Slow readers do not block the target process;
-the supervisor writes to disk independently of readers.
+`logs --follow` uses bounded polling so behavior remains consistent across the
+three supported operating systems and filesystems. It handles rotation,
+truncation performed by Jobman, supervisor exit, and client interruption. Slow
+readers do not block the target process; the supervisor writes to disk
+independently of readers. A compatible future release may use native
+filesystem notification as an optimization without changing these semantics.
 
 ## 13. Notifications
 
@@ -978,7 +987,8 @@ Maps merge recursively. Scalars and lists replace lower-precedence values
 unless a field explicitly documents additive behavior. Unknown keys,
 duplicate keys, invalid types, contradictory settings, and unusable paths are
 errors. Environment variable mapping is documented and reversible; for
-example, `JOBMAN_RETRY_MAX_RUNS` maps to `retry.max_runs`.
+example, `JOBMAN_CONCURRENCY_MAX_ACTIVE_SLOTS` maps to
+`concurrency.max_active_slots`.
 
 Jobman never automatically trusts a project file merely because it exists in
 the current directory or an ancestor. A project configuration is loaded only
@@ -1151,8 +1161,8 @@ sleeps, but every test has a hard upper deadline.
 
 ## 20. Compatibility policy
 
-The planned v1 CLI and machine contracts are frozen in
-[`docs/COMPATIBILITY.md`](../COMPATIBILITY.md). Once v1.0 is published:
+The v1 CLI and machine contracts are frozen in
+[`docs/COMPATIBILITY.md`](../COMPATIBILITY.md). Throughout the v1 release line:
 
 - documented CLI flags and JSON fields follow semantic-versioning compatibility;
 - new JSON fields may be added in minor versions;
@@ -1246,8 +1256,8 @@ normative sections above:
     explicit success, failure, finish, or outcome predicates.
 13. Pause/resume is included as a platform-dependent best-effort capability;
     unsupported platforms report the limitation instead of fabricating state.
-14. Binary live input through a private local supervisor channel is delivered
-    near the end of v1 and does not provide PTY reattachment.
+14. Binary live input through a private local supervisor channel was delivered
+    in v1 and does not provide PTY reattachment.
 15. Jobman will not add a shared recovery daemon, automatic target adoption, or
     a remote-control listener. Existing SSH and host-management tools remain
     the remote access mechanism.

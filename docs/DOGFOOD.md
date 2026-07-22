@@ -866,8 +866,8 @@ instead of `sha256sum` on macOS.
 
 ## 8. Packaging and endurance
 
-Install and uninstall every applicable archive, native package, Homebrew Cask,
-and container image. Verify man pages, completions, sample configuration,
+Install and uninstall every applicable archive, native package, and container
+image. Verify man pages, completions, sample configuration,
 unprivileged container identity, signal handling, checksums, signatures, SBOMs,
 and that packaged defaults point to writable per-user state.
 
@@ -895,6 +895,7 @@ gh attestation verify --owner ryancswallace \
   "jobman_<version>_linux_amd64.tar.gz"
 slsa-verifier verify-artifact --provenance-path jobman.intoto.jsonl \
   --source-uri github.com/ryancswallace/jobman \
+  --source-branch main \
   "jobman_<version>_linux_amd64.tar.gz"
 ```
 
@@ -932,16 +933,10 @@ sudo apk del jobman
 
 Run only the block for the VM's native package manager. Confirm package removal
 does not delete user state and that `/etc/jobman/jobman.yml` follows the package
-manager's configuration-preservation semantics. On macOS, test the Cask after
-its generated pull request is merged:
-
-```sh
-brew tap ryancswallace/jobman https://github.com/ryancswallace/jobman
-brew install --cask jobman
-jobman --version
-man jobman
-brew uninstall --cask jobman
-```
+manager's configuration-preservation semantics. On macOS, install and remove
+the verified `darwin` archive manually. Jobman v1 intentionally has no
+Homebrew Cask until its macOS binaries are Apple Developer ID signed and
+notarized; do not treat an `xattr` quarantine bypass as package acceptance.
 
 On Windows, expand the ZIP with `Expand-Archive`, run `jobman.exe --version`,
 dot-source the packaged completion in a disposable PowerShell process, validate
@@ -951,10 +946,14 @@ portable rather than an MSI.
 
 Verify the signed runtime image by immutable version and run a foreground job
 with persistent state. The derived image proves users can add their own target
-commands:
+commands. First prove the public image can be pulled without saved registry
+credentials, then perform signature verification:
 
 ```sh
-docker pull "ghcr.io/ryancswallace/jobman:<version>"
+export ANONYMOUS_DOCKER_CONFIG="$CAMPAIGN/docker-anonymous"
+mkdir -m 700 "$ANONYMOUS_DOCKER_CONFIG"
+DOCKER_CONFIG="$ANONYMOUS_DOCKER_CONFIG" \
+  docker pull "ghcr.io/ryancswallace/jobman:<version>"
 cosign verify \
   --certificate-identity \
     'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \

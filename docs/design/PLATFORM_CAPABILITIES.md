@@ -1,14 +1,21 @@
 # Platform capability record
 
-Status: v1 adapters implemented; Linux evidence runs locally and native
-macOS/Windows evidence runs in GitHub Actions
-Recorded: 2026-07-15
+Status: v1 adapters implemented and release-candidate dogfood completed;
+native evidence is repeated in GitHub Actions for every release commit
+Recorded: 2026-07-22
 Specification: [Platform requirements](SPEC.md#17-platform-requirements)
 Decision: [ADR-0001](adr/0001-per-job-supervisor.md)
 
 This record distinguishes implementation from evidence. A release is supported
 on an operating system only after its native `Test` workflow job passes for the
 release commit; cross-compilation alone is never treated as acceptance.
+
+Jobman v1 inherits the [Go 1.26 minimum operating-system requirements]: Linux
+kernel 3.2 or later, macOS 12 Monterey or later, and Windows 10 or Windows
+Server 2016 or later. Current GitHub-hosted Linux, macOS, and Windows runners
+provide the native evidence; older supported OS versions inherit the same Go
+runtime contract but do not receive an identical native lifecycle run for each
+Jobman release.
 
 ## v1 matrix
 
@@ -69,8 +76,13 @@ does not infer success.
 ## Release gate
 
 Before publishing a supported release, confirm all three native workflow jobs
-and every declared architecture build passed on the exact release commit,
-review the scheduled soak result, and complete the manual scenarios in the
-[dogfood runbook](../DOGFOOD.md). A skipped native suite is a failed release
-gate, not equivalent evidence. The support window is defined in
+and every declared architecture build passed on the exact release commit and
+review the scheduled soak result. The v1 release-candidate manual campaign in
+the [dogfood runbook](../DOGFOOD.md) was accepted by the maintainer on
+2026-07-22; any subsequent change to process, storage, packaging, or other
+dogfood-covered behavior requires targeted repetition before publication. A
+skipped native suite is a failed release gate, not equivalent evidence. The
+support window is defined in
 [SECURITY.md](../../SECURITY.md) and [SUPPORT.md](../../SUPPORT.md).
+
+[Go 1.26 minimum operating-system requirements]: https://go.dev/wiki/MinimumRequirements

@@ -1,6 +1,6 @@
 # Persisted schema
 
-Status: implemented, frozen v1 release-candidate compatibility surface
+Status: implemented, frozen v1 compatibility surface
 Database schema version: 7
 Job specification schema version: 2
 Log index versions: 1 (unsegmented) and 2 (segmented)
@@ -72,6 +72,15 @@ and shared-memory behavior. Platform adapters reject known remote,
 distributed, and user-space filesystem types before SQLite opens. This is a
 fail-fast guard, not a promise that every third-party synchronization driver is
 detectable; operators must still choose an ordinary local state volume.
+
+Schema 1 is the oldest accepted intermediate database from development of the
+durable implementation. Tagged releases v0.6.0 through v0.9.0 create schema 7;
+no tagged release used schemas 1 through 6 as its final format. Schema 0
+denotes a new, uninitialized database rather than a released persisted format.
+Releases before v0.6.0 were an unrelated prototype and have no supported
+persisted-state migration. The migration suite upgrades schema 1 fixtures
+through every immutable intermediate migration and creates a private backup
+before changing an existing database.
 
 ### Migration 1: lifecycle snapshots and events
 
@@ -175,7 +184,8 @@ match the scheduler's prerequisite-eligibility ordering and deterministic
 tie-break rule.
 
 The exact columns, checks, indexes, trigger, and immutable migration text are
-defined by [`internal/store/migrations.go`](../../internal/store/migrations.go).
+defined by
+[`internal/store/migrations.go`](https://github.com/ryancswallace/jobman/blob/main/internal/store/migrations.go).
 Tests cover initialization, upgrades, concurrent initialization, application
 and version headers, checksums, rollback, compare-and-swap conflicts, capacity,
 fairness and deterministic tie-breaking, runtime-counter repair, pruning

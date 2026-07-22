@@ -11,6 +11,57 @@ releases preserve the CLI, JSON, configuration, and persisted-state contracts
 described in `docs/COMPATIBILITY.md`; release notes identify any newly added
 fields or migrations.
 
+Jobman v1.0 writes database schema 7 and directly upgrades intact existing
+schemas 1 through 6. Schema 0 represents a new, uninitialized database rather
+than a supported historical store. If `doctor` reports a foreign application
+ID, an unsupported schema, a migration checksum mismatch, or corruption, stop
+and preserve the state directory instead of forcing an upgrade.
+
+## Upgrade from v0.6.0 or later to v1.0
+
+The durable Jobman implementation and its versioned SQLite store were first
+released in v0.6.0. Tagged releases v0.6.0 through v0.9.0 create schema 7, which
+v1.0 opens without a schema conversion; follow this procedure to validate the
+stricter stable contract and preserve a rollback copy. Jobman also accepts
+intact intermediate schemas 1 through 6 created during development of the
+durable implementation, although no tagged release used one of those as its
+final schema.
+
+Releases v0.1.0 through v0.5.0 were an unrelated prototype and have no
+supported persisted-state or configuration migration to v1. Do not point a v1
+binary at prototype state. Preserve any data that matters as an offline
+archive, translate required command settings manually, and start v1 with a new
+state directory.
+
+The v1 configuration schema remains version 1, but parsing is strict and old
+experimental keys are not silently ignored. Stage the v1 binary under a
+different filename and validate configuration before it opens the existing
+state root:
+
+```console
+/path/to/jobman-v1 config validate
+/path/to/jobman-v1 config show --origins
+```
+
+Then use the installed v0.6.0-or-later binary to inspect and back up the store
+before replacement:
+
+```console
+jobman --state-dir "$STATE_DIR" doctor --json
+jobman --state-dir "$STATE_DIR" doctor \
+  --backup "$HOME/jobman-before-v1.db"
+```
+
+Stop other Jobman clients, supervisors, and targets associated with that state
+root before replacing the binary. Run the v1 binary's `doctor` command first;
+that open performs any required migration and creates an automatic backup only
+when a migration is needed. A schema-7 database from a tagged v0.6.0–v0.9.0
+release is opened without that additional backup. Complete the representative
+inspection and disposable-job checks below before resuming normal use. Keep the
+old binary, the operator-selected backup, and any automatic migration backup
+until the upgrade has been accepted, but do not run the old binary against a
+state root that v1 has migrated.
+
 ## Before upgrading
 
 1. Finish or cancel important active jobs.
@@ -26,8 +77,9 @@ fields or migrations.
 6. Inspect representative jobs and logs, then run one disposable managed job
    before returning the state root to normal use.
 
-The automatic migration backup path is reported by `doctor --json` during the
-opening process that performed the upgrade and remains visible on disk.
+When a migration is required, its automatic backup remains under
+`STATE_DIR/backups/`; retain the command output and record that path with the
+upgrade evidence.
 
 ## Offline restore
 
@@ -61,10 +113,10 @@ Moving state between Linux, macOS, and Windows is not a supported v1 migration
 because path syntax, process identity, ACLs, and local IPC differ. Preserve the
 source state as an offline archive and start with a new state root instead.
 
-## Release-candidate upgrade rehearsal
+## Validate an upgrade before rollout
 
-Before a v1 release, rehearse the oldest supported v1 schema-to-current upgrade
-on each supported operating system. Retain the pre-upgrade database digest,
-automatic migration backup, `doctor --json` before and after output, job/log
-spot checks, and an offline restore result with the release evidence. A
+Before an important rollout, rehearse the oldest schema in use against a copy
+of representative state on each deployed operating system. Retain the
+pre-upgrade database digest, automatic migration backup, `doctor --json` before
+and after output, job/log spot checks, and an offline restore result. A
 successful cross-compile is not upgrade evidence.
