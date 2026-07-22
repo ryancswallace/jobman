@@ -2,22 +2,36 @@
 .github
 .agents
 .codex
+.devcontainer
 .vscode
 AGENTS.md
+TODO.md
+*_WIP.*
 
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 bin
 build
 dist
+.release
+.release-generated
 _site
+site/_site
+site-build
 
 coverage.*
+.coverage-e2e
 *.coverprofile
 *.out
 *.test
+
+go.work
+go.work.sum
 
 .DS_Store
 Thumbs.db

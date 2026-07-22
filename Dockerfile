@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-# These defaults match go.version and the release image. Override them with
-# --build-arg when testing a toolchain or base-image upgrade.
+# These defaults match go.version and the release image. Base-image upgrades
+# must update each tag and its pinned digest together.
 ARG GO_VERSION=1.26.5
 ARG ALPINE_VERSION=3.24
 ARG VERSION=dev
@@ -17,7 +17,8 @@ ARG BUILD_DATE
 RUN apk add --no-cache ca-certificates git
 
 ENV CGO_ENABLED=0 \
-    GOTOOLCHAIN=local
+    GOTOOLCHAIN=local \
+    GOFLAGS=-mod=readonly
 
 WORKDIR /src
 
@@ -52,7 +53,7 @@ RUN apk add --no-cache bash ca-certificates tini tzdata \
     && addgroup -S -g 10001 jobman \
     && adduser -S -D -u 10001 -G jobman -h /home/jobman jobman \
     && mkdir -p /home/jobman/.config/jobman /home/jobman/.local/state/jobman /work \
-    && chmod 0700 /home/jobman/.local/state/jobman \
+    && chmod 0700 /home/jobman/.config/jobman /home/jobman/.local/state/jobman \
     && chown -R jobman:jobman /home/jobman /work
 
 ARG VERSION
@@ -68,6 +69,10 @@ LABEL org.opencontainers.image.title="jobman" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --from=build --chown=root:root /out/jobman /usr/local/bin/jobman
+COPY --from=build --chown=root:root \
+    /src/LICENSE \
+    /src/THIRD_PARTY_NOTICES.md \
+    /usr/share/licenses/jobman/
 
 ENV HOME=/home/jobman \
     XDG_CONFIG_HOME=/home/jobman/.config \

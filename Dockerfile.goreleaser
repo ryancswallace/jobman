@@ -5,11 +5,12 @@ RUN apk add --no-cache bash ca-certificates tini tzdata \
     && addgroup -S -g 10001 jobman \
     && adduser -S -D -u 10001 -G jobman -h /home/jobman jobman \
     && mkdir -p /home/jobman/.config/jobman /home/jobman/.local/state/jobman /work \
-    && chmod 0700 /home/jobman/.local/state/jobman \
+    && chmod 0700 /home/jobman/.config/jobman /home/jobman/.local/state/jobman \
     && chown -R jobman:jobman /home/jobman /work
 
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/jobman /usr/local/bin/jobman
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/jobman/
 
 ENV HOME=/home/jobman \
     XDG_CONFIG_HOME=/home/jobman/.config \
