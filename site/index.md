@@ -12,15 +12,17 @@ running shared daemon. It combines detached execution, retries, timeouts,
 dependencies, concurrency limits, retained logs, lifecycle controls, live
 input, and notifications in one local CLI.
 
-{: .warning }
-These pages document the current `main` branch and latest prerelease. Jobman is
-not a stable v1 release yet. Keep independent backups and a direct recovery
-path when evaluating it with important workloads.
+{: .important }
+These pages document the current `main` branch and the stable v1 contract.
+Compatible additions can appear here before the next tagged release; check the
+[release notes](https://github.com/ryancswallace/jobman/releases) and your
+installed command's `--help` when behavior differs. Jobman manages local
+per-user processes and state, so keep independent backups for important work.
 
 ## Get productive quickly
 
 - [Install Jobman]({{ site.baseurl }}/getting-started/installation/) from a
-  release, Homebrew, a container image, or source.
+  release archive, Linux package, container image, or source.
 - Follow [Your first job]({{ site.baseurl }}/getting-started/first-job/) to
   submit a command and inspect its result.
 - Read [Core concepts]({{ site.baseurl }}/getting-started/concepts/) to
@@ -40,8 +42,8 @@ path when evaluating it with important workloads.
   store-wide and named-pool concurrency limits.
 - **Observability:** durable state, raw stdout/stderr capture, log following,
   rotation, retention, versioned JSON, and health checks.
-- **Control:** wait, cancel, rerun, and best-effort pause/resume and live input
-  where the platform can implement them safely.
+- **Control:** wait, cancel, rerun, best-effort pause/resume, and private live
+  input using the native mechanism documented for each platform.
 - **Integration:** strict layered YAML, secret references, command callbacks,
   HTTPS webhooks, and SMTP notifications.
 
@@ -74,3 +76,5 @@ shell command.
 | Check platform behavior | [Platform support]({{ site.baseurl }}/reference/platforms/) |
 
 Jobman is available under the [MIT License](https://github.com/ryancswallace/jobman/blob/main/LICENSE).
+Release binaries also include the applicable
+[third-party notices](https://github.com/ryancswallace/jobman/blob/main/THIRD_PARTY_NOTICES.md).

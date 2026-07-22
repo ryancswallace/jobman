@@ -13,19 +13,18 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryancswallace/jobman/badge)](https://scorecard.dev/viewer/?uri=github.com/ryancswallace/jobman)
 [![Latest release](https://img.shields.io/github/v/release/ryancswallace/jobman?sort=semver)](https://github.com/ryancswallace/jobman/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/ryancswallace/jobman)](https://github.com/ryancswallace/jobman/blob/main/go.mod)
-[![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman/jobman)
 [![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue)](https://ryancswallace.github.io/jobman/)
 
-Jobman is a daemonless command-line job manager. It is being designed to run
-and monitor commands with retries, timeouts, durable logs, delayed execution,
-and success or failure notifications without requiring a resident service.
+Jobman is a daemonless command-line job manager. It runs and monitors commands
+with retries, timeouts, durable logs, delayed execution, and success or failure
+notifications without requiring a resident service.
 
-> [!WARNING]
-> Jobman remains a prerelease project. Its planned v1 public surface is frozen,
-> but the release candidate is not stable until all native race, architecture,
-> fuzz, performance, container, upgrade, and dogfood gates pass on the exact
-> release commit. Do not use prerelease builds as the sole manager for critical
-> workloads; retain independent backups and a direct recovery path.
+> [!IMPORTANT]
+> Jobman is a local, per-user process manager, not a distributed scheduler or a
+> backup system. Jobs can survive a closed terminal or SSH connection, but may
+> end with the operating-system user session. Keep independent backups of
+> important state and logs.
 
 ## Design goals
 
@@ -35,15 +34,16 @@ and success or failure notifications without requiring a resident service.
 - Make retry, timeout, waiting, and notification policies composable.
 - Remain useful as a native binary, package-manager installation, or container.
 
-The target command, state, and configuration model is documented in the
-[design specification](docs/design/SPEC.md). Generated man pages and shell
-completions are included in release archives.
+The v1 command, state, and configuration model is documented in the
+[design specification](docs/design/SPEC.md) and the supported public surface is
+defined by the [compatibility contract](docs/COMPATIBILITY.md). Generated man
+pages and shell completions are included in release archives.
 
-## Available today
+## v1 capabilities
 
-The current pre-1.0 implementation supports detached direct commands, durable
-inspection, repeated-run policies, prerequisites, local concurrency limits,
-timeouts, retained logs, lifecycle control, and notifications:
+Jobman v1 supports detached direct commands, durable inspection, repeated-run
+policies, prerequisites, local concurrency limits, timeouts, retained logs,
+lifecycle control, and notifications:
 
 ```console
 $ jobman run --name example --retries 2 --run-timeout 1m -- \
@@ -103,8 +103,15 @@ examples.
 Linux has assembled-binary lifecycle and crash-boundary coverage. Native
 macOS/Windows CI exercises detachment, process-tree cancellation, pause/resume,
 and private live input. The [platform-capability record] describes the native
-primitives and deliberate differences. Complete the [dogfood runbook] before a
-stable release.
+primitives, evidence, and deliberate differences.
+
+The v1 binaries inherit the [Go 1.26 minimum operating-system requirements]:
+Linux kernel 3.2 or later, macOS 12 Monterey or later, and Windows 10 or Windows
+Server 2016 or later. Release archives are built for Linux (`amd64`, `arm64`,
+`386`), macOS (`amd64`, `arm64`), and Windows (`amd64`, `arm64`, `386`). Every
+target is compiled in CI; native lifecycle and race evidence runs on the
+current hosted runner for each operating system, so a cross-compiled
+architecture does not receive identical native evidence.
 
 ## Installation
 
@@ -118,15 +125,26 @@ with `.apk`, `.deb`, or `.rpm` extensions.
 Verify downloaded artifacts using the checksum and Sigstore instructions in
 [RELEASE.md](RELEASE.md#verifying-a-release).
 
-### Homebrew
+Extract an archive into a temporary directory, then copy `jobman` (or
+`jobman.exe`) to a directory on `PATH`. Detailed copy-paste instructions for
+Linux, macOS, and Windows are in the [installation guide].
 
-The generated Cask lives in this repository, so add it as an explicit custom
-tap before installation:
+### macOS distribution
 
-```console
-brew tap ryancswallace/jobman https://github.com/ryancswallace/jobman
-brew install --cask jobman
-```
+Install the signed-checksum `darwin` archive using the copy-paste instructions
+in the [installation guide]. Jobman v1 does not publish a Homebrew Cask because
+its macOS binaries are not yet Apple Developer ID signed and notarized. The
+project will not automate removal of Gatekeeper quarantine as a substitute for
+platform signing; a verified archive may require Apple's explicit per-app
+**Open Anyway** approval described in the installation guide.
+
+### Windows distribution
+
+The portable Windows executable is not Authenticode signed. Signed checksums
+and provenance protect artifact integrity, but SmartScreen, Smart App Control,
+or enterprise policy may still warn or block execution because there is no
+Windows publisher signature. The installation guide documents this limitation;
+do not weaken managed-device policy to install Jobman.
 
 ### Container image
 
@@ -160,7 +178,8 @@ releases and is intended for interactive evaluation.
 
 ### Build from source
 
-Building Jobman requires [Go](https://go.dev/doc/install) 1.26.5.
+Building Jobman requires [Go](https://go.dev/doc/install) 1.26.5, the exact
+toolchain pinned for reproducible development and release checks.
 
 ```console
 git clone https://github.com/ryancswallace/jobman.git
@@ -190,7 +209,8 @@ make check
 
 `make check` verifies modules, formatting, lint, workflows, shell scripts,
 known vulnerabilities, tests, generated documentation, spelling, the local
-binary, the GoReleaser configuration, and every declared release build target.
+binary, the runtime container contract, the GoReleaser configuration, and
+every declared release build target.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and pull-request
 conventions.
 
@@ -202,7 +222,7 @@ conventions.
 - [Configuration reference](https://ryancswallace.github.io/jobman/reference/configuration/)
 - [Platform and compatibility reference](https://ryancswallace.github.io/jobman/reference/)
 - [Troubleshooting and recovery](https://ryancswallace.github.io/jobman/operations/)
-- [Dogfood and release-candidate runbook](https://ryancswallace.github.io/jobman/project/dogfood/)
+- [Release dogfood runbook](https://ryancswallace.github.io/jobman/project/dogfood/)
 - [Design documentation](docs/design/README.md)
 - [Release and artifact verification guide](RELEASE.md)
 - [Security and support policies](https://ryancswallace.github.io/jobman/operations/)
@@ -213,12 +233,15 @@ Report suspected vulnerabilities privately as described in the security policy.
 
 ## License
 
-Jobman is available under the [MIT License](LICENSE).
+Jobman is available under the [MIT License](LICENSE). Release binaries also
+incorporate the components and terms recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 [GitHub Releases page]: https://github.com/ryancswallace/jobman/releases
 [persisted-schema reference]: docs/design/PERSISTED_SCHEMA.md
 [platform-capability record]: docs/design/PLATFORM_CAPABILITIES.md
 [configuration reference]: docs/CONFIGURATION.md
 [sample configuration]: etc/jobman/jobman.yml
-[dogfood runbook]: docs/DOGFOOD.md
 [container contract]: docs/CONTAINERS.md
+[installation guide]: https://ryancswallace.github.io/jobman/getting-started/installation/
+[Go 1.26 minimum operating-system requirements]: https://go.dev/wiki/MinimumRequirements

@@ -407,6 +407,8 @@ func validateRequiredPages(siteRoot *os.Root, permalinks map[string]string) erro
 		}
 	}
 	for _, asset := range []string{
+		"_config.yml",
+		"_includes/head_custom.html",
 		"assets/examples/jobman.yml",
 		"assets/images/logo.svg",
 		"assets/images/logo-dark.svg",
@@ -416,6 +418,22 @@ func validateRequiredPages(siteRoot *os.Root, permalinks map[string]string) erro
 	} {
 		if _, err := siteRoot.Stat(asset); err != nil {
 			return fmt.Errorf("required asset %s is missing: %w", asset, err)
+		}
+	}
+	themeConfig, err := siteRoot.ReadFile("_config.yml")
+	if err != nil {
+		return fmt.Errorf("read site theme configuration: %w", err)
+	}
+	if !bytes.Contains(themeConfig, []byte("remote_theme: just-the-docs/just-the-docs@v")) {
+		return errors.New("site remote theme must be pinned to a release")
+	}
+	headInclude, err := siteRoot.ReadFile("_includes/head_custom.html")
+	if err != nil {
+		return fmt.Errorf("read site head include: %w", err)
+	}
+	for _, favicon := range []string{"/assets/images/favicon.svg", "/assets/images/favicon-dark.svg"} {
+		if !bytes.Contains(headInclude, []byte(favicon)) {
+			return fmt.Errorf("site head include does not reference %s", favicon)
 		}
 	}
 

@@ -2,19 +2,18 @@
 
 ## Supported versions
 
-Until v1.0, security fixes are provided for the latest prerelease and `main`;
-older prerelease lines are not backported. Starting with v1.0, the newest patch
-of the current stable minor line receives all security fixes. The immediately
-previous stable minor line receives Critical and High severity fixes for 90
-days after the next minor release. This limited overlap gives operators time to
-upgrade without creating an open-ended backport obligation for the maintainer.
+The newest patch of the current stable minor line receives all security fixes.
+The immediately previous stable minor line receives Critical and High severity
+fixes for 90 days after the next minor release. This limited overlap gives
+operators time to upgrade without creating an open-ended backport obligation
+for the maintainer.
 
 | Version | Supported |
 | --- | --- |
 | Latest stable minor, newest patch | Yes |
 | Previous stable minor | Critical/High for 90 days |
-| Latest prerelease before v1 | Best effort |
-| `main` | Yes |
+| Prereleases from a supported line | Best effort |
+| Unreleased `main` snapshots | Best effort; no release artifacts |
 | Older releases | No |
 
 Support means that a validated vulnerability can receive a private fix,

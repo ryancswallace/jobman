@@ -32,7 +32,7 @@ runs.
 ```console
 $ jobman run \
     --log-capture both \
-    --log-segment-bytes 16777216 \
+    --log-segment-bytes 16MiB \
     --log-segments 8 \
     --log-retention 14d \
     -- ./verbose-task

@@ -38,15 +38,16 @@ configuration, observable result, and relevant `doctor --json` output.
 
 A v1 release commit must:
 
-1. pass unit coverage, fuzz targets, assembled-binary end-to-end tests,
-   performance contracts, native race jobs, architecture builds, vulnerability
-   checks, documentation, container smoke tests, and release snapshot checks;
+1. pass the 95% aggregate coverage gate, pull-request dependency review, every
+   fuzz target, assembled-binary end-to-end tests, performance contracts,
+   native race jobs, architecture builds, vulnerability checks, documentation,
+   container smoke tests, and release snapshot checks;
 2. pass the native Linux, macOS, and Windows jobs on the exact commit;
 3. complete and retain evidence from `docs/DOGFOOD.md`;
 4. review `README.md`, `SECURITY.md`, `SUPPORT.md`,
    `docs/design/PLATFORM_CAPABILITIES.md`, `docs/UPGRADING.md`, and
    `CHANGELOG.md` in the release pull request; and
-5. verify generated citation metadata, archives, native packages, SBOMs,
+5. verify project citation metadata, archives, native packages, SBOMs,
    signatures, attestations, and workload-derived container behavior.
 
 The four fuzz jobs run on every pull request and every push to `main`, so the

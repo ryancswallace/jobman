@@ -40,7 +40,7 @@ $ jobman wait "$build"
 ```console
 $ jobman run \
     --log-capture both \
-    --log-segment-bytes 8388608 \
+    --log-segment-bytes 8MiB \
     --log-segments 4 \
     --log-retention 7d \
     -- ./verbose-task

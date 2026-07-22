@@ -43,7 +43,7 @@ proven becomes `lost`, never guessed successful.
 
 The [compatibility contract]({{ site.baseurl }}/reference/compatibility/)
 defines the CLI, JSON, configuration, notification, immutable specification,
-and forward schema surfaces planned for v1.
+and forward schema surfaces supported throughout v1.
 
 ## Security model
 

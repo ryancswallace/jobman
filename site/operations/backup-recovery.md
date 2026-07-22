@@ -64,7 +64,7 @@ $ jobman --state-dir NEW_STATE list --all
 
 Inspect representative job histories and logs before returning the store to
 normal use. The full [upgrade and restore runbook]({{ site.baseurl }}/operations/upgrading/)
-documents platform moves and release-candidate rehearsal.
+documents platform moves and migration rehearsal.
 
 {: .warning }
 Moving state between Linux, macOS, and Windows is not supported because path,

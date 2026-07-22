@@ -20,4 +20,4 @@ compatibility rule.
 - [Platform support]({{ site.baseurl }}/reference/platforms/) explains native
   process, input, storage, and evidence differences.
 - The [compatibility contract]({{ site.baseurl }}/reference/compatibility/)
-  defines the intended v1 stability boundary.
+  defines the v1 stability boundary.

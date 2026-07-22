@@ -8,11 +8,133 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Declared the v1 command, exit-status, JSON, configuration, notification,
+  immutable job-specification, and persisted-state compatibility contracts.
+- Added stable Linux, macOS, and Windows support with native race and assembled
+  lifecycle coverage, plus release builds for every documented architecture.
+- Added dependency-review, aggregate coverage, documentation, fuzz, CodeQL,
+  supply-chain provenance, signing, packaging, container, and release-preview
+  gates for the stable release line.
+- Added deterministic third-party license notices to archives, native packages,
+  and runtime containers.
+
+### Changed
+
+- Promoted Jobman from a prerelease project to its supported v1 release line.
+- Staged releases as drafts until archives, packages, SBOMs, checksums,
+  signatures, container images, and provenance have all published
+  successfully.
+- Froze intermediate schema 1 as the oldest directly upgradeable existing
+  database and schema 7, already written by tagged releases since v0.6.0, as
+  the initial v1 database schema. Earlier prototype state is unsupported;
+  eligible databases are backed up before an ordered forward migration, and
+  downgrades and cross-OS state moves are unsupported.
+- Documented the supported platform baseline, local-filesystem storage
+  requirement, 30-day default log retention, container lifecycle, upgrade and
+  recovery procedures, and signed-artifact verification workflow.
+- Documented the macOS notarization and Windows Authenticode limitations and
+  their platform-native first-run consequences without weakening OS security
+  controls.
+- Made the documented duration grammar consistent across configuration and the
+  CLI, including exact `d` and `w` units, and accepted decimal or IEC byte
+  sizes for `--log-segment-bytes`.
+- Expanded portable archives with the release/support/design documentation and
+  branding assets, and installed every generated subcommand man page in native
+  Linux packages.
+- `rerun JOB` now accepts `--wait`, matching `run --rerun JOB --wait`.
+
+### Removed
+
+- Removed the unsigned, unnotarized Homebrew Cask channel from v1. macOS users
+  install the signed-checksum archive until Apple Developer ID signing and
+  notarization can be provided without bypassing Gatekeeper.
+
+### Fixed
+
+- Report invalid configuration content and malformed run selectors with usage
+  status 2, while preserving status 1 for configuration I/O failures and
+  status 3 for valid but absent run selections.
+- Derive version, commit, and build-date information from Go module and VCS
+  metadata when Jobman is installed with `go install ...@version`, while
+  retaining explicit release linker metadata.
+- Reconciled the specification with the implemented cleanup, state-path,
+  live-input timeout, graceful-stop, retention, and environment-variable
+  contracts.
+
+### Security
+
+- Keep each GitHub release in draft and defer the mutable `latest` container
+  alias until its checksum signature and both GitHub and SLSA provenance are
+  available.
+- Added pull-request dependency review and retained digest-pinned, least-
+  privilege GitHub Actions release infrastructure.
+- Added repository-wide code ownership so protected-branch review policy has a
+  concrete owner.
+- Prevented nested developer environment files and ignored build state from
+  entering Docker build contexts.
+- Made release recovery reject published versions, verify GitHub's remote asset
+  digests against the signed manifest, and promote only a verified immutable
+  container digest.
+
 ## [0.9.0] - 2026-07-21
+
+### Added
+
+- Serialized Windows state-path setup so concurrent processes cannot race ACL
+  initialization.
+
+### Fixed
+
+- Recognized Darwin's exited process state during native identity checks,
+  preventing a completed process from being treated as still active.
+
+## [0.8.4] - 2026-07-20
+
+### Fixed
+
+- Closed log-capture resources when supervisor target-control setup fails.
+- Stabilized Windows supervisor deadline tests under race-detector load.
+
+## [0.8.3] - 2026-07-20
+
+### Fixed
+
+- Removed a store renewal race that could surface during concurrent lease
+  activity.
+- Removed a macOS process-cancellation race around exited targets.
+
+## [0.8.2] - 2026-07-20
+
+### Changed
+
+- Made `CITATION.cff` project-level metadata instead of rewriting a release
+  version and date on every publication.
+- Replaced the original bitmap branding with SVG wordmark and favicon assets.
+
+### Fixed
+
+- Protected Windows database ACL setup from inherited permissions and
+  concurrent initialization failures.
 
 ## [0.8.1] - 2026-07-19
 
+### Changed
+
+- Raised aggregate repository coverage to the release threshold and expanded
+  failure-boundary tests across every core package.
+
+### Fixed
+
+- Corrected Windows and macOS path handling and made Windows foreground-input
+  tests safe under the race detector.
+
 ## [0.8.0] - 2026-07-18
+
+### Changed
+
+- Refreshed the v1 release documentation and automated dogfood procedures.
 
 ## [0.7.1] - 2026-07-16
 
@@ -159,6 +281,9 @@ semantic-release.
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 [Unreleased]: https://github.com/ryancswallace/jobman/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/ryancswallace/jobman/compare/v0.8.4...v0.9.0
+[0.8.4]: https://github.com/ryancswallace/jobman/compare/v0.8.3...v0.8.4
+[0.8.3]: https://github.com/ryancswallace/jobman/compare/v0.8.2...v0.8.3
+[0.8.2]: https://github.com/ryancswallace/jobman/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/ryancswallace/jobman/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ryancswallace/jobman/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ryancswallace/jobman/compare/v0.7.0...v0.7.1

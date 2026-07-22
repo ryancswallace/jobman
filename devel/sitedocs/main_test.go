@@ -22,6 +22,8 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 	}
 	for _, relative := range []string{
 		"index.md",
+		"_config.yml",
+		"_includes/head_custom.html",
 		"assets/examples/jobman.yml",
 		"assets/images/logo.svg",
 		"assets/images/logo-dark.svg",
@@ -268,6 +270,20 @@ func TestValidateSiteRejectsInvalidContent(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
+		"missing required include": func(t *testing.T, root string) {
+			t.Helper()
+			if err := os.Remove(filepath.Join(root, "_includes", "head_custom.html")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"unpinned remote theme": func(t *testing.T, root string) {
+			t.Helper()
+			writeTestFile(t, filepath.Join(root, "_config.yml"), "remote_theme: just-the-docs/just-the-docs\n")
+		},
+		"incomplete favicon include": func(t *testing.T, root string) {
+			t.Helper()
+			writeTestFile(t, filepath.Join(root, "_includes", "head_custom.html"), "<link href=\"/assets/images/favicon.svg\">\n")
+		},
 		"legacy content": func(t *testing.T, root string) {
 			t.Helper()
 			writeSitePage(t, root, "legacy.md", "Legacy", "/legacy/")
@@ -335,6 +351,8 @@ func newValidSiteFixture(t *testing.T) string {
 		writeSitePage(t, root, path, path, permalink)
 	}
 	writeTestFile(t, filepath.Join(root, "assets", "examples", "jobman.yml"), "schema_version: 1\n")
+	writeTestFile(t, filepath.Join(root, "_config.yml"), "remote_theme: just-the-docs/just-the-docs@v0.12.0\n")
+	writeTestFile(t, filepath.Join(root, "_includes", "head_custom.html"), "<link href=\"/assets/images/favicon.svg\">\n<link href=\"/assets/images/favicon-dark.svg\">\n")
 	for _, name := range []string{"logo.svg", "logo-dark.svg", "logo-dark-transparent.svg", "favicon.svg", "favicon-dark.svg"} {
 		writeTestFile(t, filepath.Join(root, "assets", "images", name), "<svg></svg>")
 	}
