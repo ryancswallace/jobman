@@ -14,15 +14,28 @@ require_line() {
 }
 
 check_metadata() {
-	latest_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null) ||
-		die 'no semantic-version release tag is available'
-	version=${latest_tag#v}
-	printf '%s\n' "$version" |
-		grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' ||
-		die "latest release tag is not vMAJOR.MINOR.PATCH: $latest_tag"
-	release_date=$(git show -s --format=%cs "$latest_tag")
+	stable_tags=$(git tag --merged HEAD --list 'v*' --sort=v:refname |
+		grep -E '^v([1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|0\.[1-9][0-9]*\.(0|[1-9][0-9]*))$' || true)
+	[ -n "$stable_tags" ] || die 'no stable semantic-version release tag is available'
 
-	require_line CHANGELOG.md "## [$version] - $release_date"
+	previous_tag=
+	latest_tag=
+	for release_tag in $stable_tags; do
+		version=${release_tag#v}
+		grep -F "## [$version] - " CHANGELOG.md |
+			grep -Eq '^## \[[0-9]+\.[0-9]+\.[0-9]+\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$' ||
+			die "CHANGELOG.md is missing a dated $version heading"
+
+		if [ -n "$previous_tag" ]; then
+			version_url="https://github.com/ryancswallace/jobman/compare/$previous_tag...$release_tag"
+		else
+			version_url="https://github.com/ryancswallace/jobman/releases/tag/$release_tag"
+		fi
+		require_line CHANGELOG.md "[$version]: $version_url"
+		previous_tag=$release_tag
+		latest_tag=$release_tag
+	done
+
 	require_line CHANGELOG.md \
 		"[Unreleased]: https://github.com/ryancswallace/jobman/compare/$latest_tag...HEAD"
 }
@@ -34,6 +47,17 @@ count_files() {
 	got=$(find "$directory" -maxdepth 1 -type f -name "$pattern" | wc -l | tr -d ' ')
 	[ "$got" -eq "$want" ] ||
 		die "$directory contains $got files matching $pattern; expected $want"
+}
+
+verify_checksums() {
+	manifest=$1
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum --check "$manifest"
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 --check "$manifest"
+	else
+		die 'neither sha256sum nor shasum is available'
+	fi
 }
 
 check_artifacts() {
@@ -51,21 +75,35 @@ check_artifacts() {
 
 	set -- "$dist"/jobman_*_checksums.txt
 	checksum_file=$1
+	checksum_name=$(basename "$checksum_file")
+	release_version=${checksum_name#jobman_}
+	release_version=${release_version%_checksums.txt}
+	if [ -z "$release_version" ] || [ "$release_version" = "$checksum_name" ]; then
+		die "cannot determine release version from $checksum_name"
+	fi
 	(
 		cd "$dist"
-		sha256sum --check "$(basename "$checksum_file")"
+		verify_checksums "$checksum_name"
 	) >/dev/null || die 'artifact checksum verification failed'
 
 	set -- "$dist"/jobman_*_linux_amd64.tar.gz
 	archive=$1
-	temporary=${TMPDIR:-/tmp}/jobman-release-check.$$
+	[ "$(basename "$archive")" = "jobman_${release_version}_linux_amd64.tar.gz" ] ||
+		die 'archive and checksum manifest versions do not match'
+	temporary=$(mktemp -d \
+		"${TMPDIR:-/tmp}/jobman-release-check.XXXXXXXXXX") ||
+		die 'could not create a private release-check directory'
 	trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 	mkdir -p "$temporary/extract"
 	tar -tzf "$archive" >"$temporary/contents"
 
 	for required in \
-		jobman LICENSE README.md CHANGELOG.md CITATION.cff \
-		etc/jobman/jobman.yml docs/manpage/jobman.1 \
+		jobman LICENSE THIRD_PARTY_NOTICES.md README.md CHANGELOG.md CITATION.cff \
+		CODE_OF_CONDUCT.md CONTRIBUTING.md RELEASE.md SECURITY.md SUPPORT.md \
+		assets/logo.svg assets/logo-dark-transparent.svg \
+		etc/jobman/jobman.yml docs/COMPATIBILITY.md docs/CONFIGURATION.md \
+		docs/CONTAINERS.md docs/UPGRADING.md docs/design/SPEC.md \
+		docs/manpage/jobman.1 docs/manpage/jobman-run.1 \
 		docs/completions/bash/jobman docs/completions/zsh/_jobman \
 		docs/completions/powershell/jobman.ps1
 	do
@@ -75,14 +113,29 @@ check_artifacts() {
 		die 'portable archive contains repository-only completion scaffolding'
 	fi
 
-	tar -xzf "$archive" -C "$temporary/extract" jobman CITATION.cff
+	tar -xzf "$archive" -C "$temporary/extract" \
+		jobman CHANGELOG.md CITATION.cff THIRD_PARTY_NOTICES.md
 	binary_version=$(
 		"$temporary/extract/jobman" --version |
 			awk 'NR == 1 { print $2 }'
 	)
 	[ -n "$binary_version" ] || die 'could not read the packaged binary version'
+	[ "$binary_version" = "$release_version" ] ||
+		die "packaged binary reports $binary_version; expected $release_version"
+	if printf '%s\n' "$binary_version" |
+		grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+		grep -E "^## \[$binary_version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" \
+			"$temporary/extract/CHANGELOG.md" >/dev/null ||
+			die "packaged changelog has no dated $binary_version release section"
+		require_line "$temporary/extract/CHANGELOG.md" \
+			"[Unreleased]: https://github.com/ryancswallace/jobman/compare/v$binary_version...HEAD"
+	fi
 	require_line "$temporary/extract/CITATION.cff" 'cff-version: 1.2.0'
 	require_line "$temporary/extract/CITATION.cff" 'title: Jobman'
+	require_line "$temporary/extract/THIRD_PARTY_NOTICES.md" '# Third-Party Notices'
+	require_line "$temporary/extract/THIRD_PARTY_NOTICES.md" \
+		"## Go standard library go$(tr -d '[:space:]' <go.version)"
+	require_line "$temporary/extract/THIRD_PARTY_NOTICES.md" '### PATENTS'
 
 	rm -rf "$temporary"
 	trap - EXIT HUP INT TERM

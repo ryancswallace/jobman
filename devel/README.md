@@ -9,6 +9,10 @@ the shipped Jobman binary.
 - `manpages/` generates manual pages from the Cobra command tree.
 - `sitedocs/` stages the published manual, imports canonical contracts, checks
   internal links, and generates the web command reference from Cobra.
+- `thirdpartynotices/` generates the tracked license and patent notices for the
+  dependency closure of every supported release binary.
+- `container-smoke.sh` applies the same version, identity, license, derived
+  workload, and persistent-state contract to local and digest-pinned images.
 - `check-release.sh` verifies tracked release records and the contents,
   checksums, SBOM inventory, and embedded metadata of a built release snapshot.
 - `updates/` contains deterministic repository-maintenance scripts.

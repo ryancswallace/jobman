@@ -21,6 +21,9 @@ DOCS_DIR := docs
 MANPAGE_DIR := $(DOCS_DIR)/manpage
 COMPLETIONS_DIR := $(DOCS_DIR)/completions
 SITE_BUILD_DIR := site-build
+THIRD_PARTY_NOTICES := THIRD_PARTY_NOTICES.md
+RELEASE_METADATA_DIR := .release-generated
+RELEASE_CHANGELOG := $(RELEASE_METADATA_DIR)/CHANGELOG.md
 COVERAGE_FILE := coverage.txt
 COVERAGE_RAW := coverage.raw
 COVERAGE_E2E_DIR := .coverage-e2e
@@ -34,8 +37,10 @@ UNIT_COVERAGE_MIN ?= 90
 GEN_MANPAGE := ./devel/manpages/manpages.go
 GEN_COMPLETIONS := ./devel/autocomplete/autocomplete.go
 GEN_SITE := ./devel/sitedocs
+GEN_NOTICES := ./devel/thirdpartynotices
 UPDATE_SCRIPTS := ./devel/updates
 RELEASE_CHECK := ./devel/check-release.sh
+CONTAINER_SMOKE := ./devel/container-smoke.sh
 
 GO ?= go
 DOCKER ?= docker
@@ -262,7 +267,7 @@ fuzz: ## Fuzz a selected Go target (FUZZ_PACKAGE, FUZZ_TARGET, FUZZ_TIME, FUZZ_P
 		-fuzztime=$(FUZZ_TIME) $(FUZZ_PACKAGE)
 
 .PHONY: test
-test: unittest e2etest perftest ## Run unit, end-to-end, and performance tests.
+test: coverage perftest ## Run tests and enforce aggregate coverage thresholds.
 
 .PHONY: coverage
 coverage: UNIT_COVERAGE_MIN=0
@@ -305,11 +310,21 @@ gen-completions: ## Generate Bash, Zsh, and PowerShell completions.
 gen-site: ## Stage authored, canonical, and generated documentation-site sources.
 	$(GO) run $(GEN_SITE)
 	@test -s $(SITE_BUILD_DIR)/index.md
+	@test -s $(SITE_BUILD_DIR)/_includes/head_custom.html
 	@test -s $(SITE_BUILD_DIR)/reference/commands/run/index.md
 	@test -s $(SITE_BUILD_DIR)/reference/configuration.md
 
+.PHONY: gen-notices
+gen-notices: go-version-check ## Generate notices for modules linked into release binaries.
+	$(GO) run $(GEN_NOTICES) -output $(THIRD_PARTY_NOTICES)
+	@test -s $(THIRD_PARTY_NOTICES)
+
+.PHONY: notices-check
+notices-check: go-version-check ## Verify the tracked third-party notices match release dependencies.
+	$(GO) run $(GEN_NOTICES) -output $(THIRD_PARTY_NOTICES) -check
+
 .PHONY: gen-all generate
-gen-all: gen-manpage gen-completions gen-site ## Generate every derived documentation asset.
+gen-all: gen-manpage gen-completions gen-site gen-notices ## Generate every derived repository asset.
 generate: gen-all
 
 .PHONY: docs-check
@@ -352,7 +367,7 @@ docs-site-check: gen-site ## Build the staged GitHub Pages site with its product
 		--file Dockerfile.pages --output type=cacheonly .
 
 .PHONY: docs
-docs: gen-all docs-check spellcheck docs-site-check ## Generate and validate documentation.
+docs: gen-manpage gen-completions gen-site docs-check spellcheck docs-site-check ## Generate and validate documentation.
 
 .PHONY: build
 build: ## Build the jobman binary for the current platform.
@@ -382,18 +397,8 @@ docker-image: ## Build the local container image.
 
 .PHONY: docker-smoke
 docker-smoke: docker-image ## Verify foreground/wait, persistent state, and derived-image container contracts.
-	@set -eu; \
-	volume="jobman-smoke-$$$$"; \
-	derived='$(PROJECT)-derived-smoke:local'; \
-	trap '$(DOCKER) volume rm -f "$$volume" >/dev/null 2>&1 || true; \
-		$(DOCKER) image rm -f "$$derived" >/dev/null 2>&1 || true' EXIT; \
-	$(DOCKER) volume create "$$volume" >/dev/null; \
-	$(DOCKER) build --progress=$(DOCKER_PROGRESS) \
-		--build-arg BASE_IMAGE='$(IMAGE)' --tag "$$derived" tests/container; \
-	$(DOCKER) run --rm --volume "$$volume:/home/jobman/.local/state/jobman" \
-		"$$derived" run --wait -- /opt/jobman/bin/container-target; \
-	$(DOCKER) run --rm --volume "$$volume:/home/jobman/.local/state/jobman" \
-		"$$derived" list --completed --limit 1
+	DOCKER='$(DOCKER)' DOCKER_PROGRESS='$(DOCKER_PROGRESS)' \
+		$(CONTAINER_SMOKE) '$(IMAGE)' '$(VERSION)' '$(COMMIT)'
 
 .PHONY: docker-run
 docker-run: docker-image ## Run the local image; pass jobman arguments with ARGS='...'.
@@ -403,15 +408,20 @@ docker-run: docker-image ## Run the local image; pass jobman arguments with ARGS
 build-all: build docker-image ## Build the local binary and container image.
 
 .PHONY: release-metadata-check
-release-metadata-check: ## Verify changelog records match the latest release tag.
+release-metadata-check: ## Verify changelog records match every stable release tag.
 	$(RELEASE_CHECK) metadata
+
+.PHONY: release-changelog
+release-changelog: ## Render the tag-aware changelog embedded in release archives.
+	./devel/prepare-release-changelog.sh $(RELEASE_CHANGELOG)
+	@test -s $(RELEASE_CHANGELOG)
 
 .PHONY: artifact-check
 artifact-check: ## Verify the complete release artifact set already present in dist/.
 	$(RELEASE_CHECK) artifacts $(DIST_DIR)
 
 .PHONY: release-check
-release-check: tool-goreleaser ## Validate the release configuration.
+release-check: tool-goreleaser release-metadata-check notices-check ## Validate release configuration and metadata.
 	$(GORELEASER) check
 
 .PHONY: release-build
@@ -422,11 +432,11 @@ release-build: tool-goreleaser ## Compile every target declared in GoReleaser.
 snapshot: tool-goreleaser tool-syft ## Build a local release snapshot without publishing.
 	PATH='$(abspath $(BIN_DIR))':$$PATH \
 		$(GORELEASER) release --snapshot --clean --parallelism 2 \
-			--skip=sign,homebrew
+			--skip=sign
 	$(MAKE) --no-print-directory artifact-check
 
 .PHONY: check quick-check ci
-check: go-version-check mod-check format-check lint workflow-check shellcheck vulncheck test docs build release-check release-build ## Run all presubmission checks.
+check: go-version-check mod-check format-check lint workflow-check shellcheck vulncheck test notices-check docs build docker-smoke release-check release-build ## Run all presubmission checks.
 quick-check: go-version-check mod-check format-check lint unittest build ## Run the fast presubmission checks.
 ci: check ## Alias for the complete CI verification workflow.
 
@@ -452,6 +462,7 @@ clean-generated: ## Remove generated man pages and completion scripts.
 .PHONY: clean
 clean: clean-generated ## Remove build, release, and test artifacts.
 	$(RM) -r $(BIN_DIR) $(DIST_DIR)
+	$(RM) -r $(RELEASE_METADATA_DIR)
 	$(RM) -r $(COVERAGE_E2E_DIR)
 	$(RM) $(COVERAGE_FILE) $(COVERAGE_RAW) $(COVERAGE_E2E_FILE)
 	$(RM) $(COVERAGE_COMBINED_FILE) $(COVERAGE_HTML)

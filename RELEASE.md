@@ -8,15 +8,20 @@ builds, signs, and publishes the release artifacts.
 
 1. Merge a pull request into `main` using Conventional Commit messages.
 2. The `Test` workflow runs against the new `main` commit.
-3. After that workflow succeeds, the `Release` workflow runs semantic-release.
-4. If the commits since the previous tag require a release, semantic-release
-   creates the next tag and GitHub release notes.
-5. GoReleaser checks out that exact tag and publishes binaries, archives, native
-   Linux packages, SBOMs, checksums, a checksum signature, a multi-platform GHCR
-   image, and image signatures. It pushes the Homebrew Cask update to a
-   version-specific branch and opens a pull request against `main`.
+3. After that workflow succeeds, the `Release` workflow previews
+   semantic-release without entering the protected environment. If a release
+   is required, it waits for the Test, CodeQL, Fuzz, Docs site, Docs links, and
+   OpenSSF Scorecard workflows to succeed on that exact commit.
+4. After the `main` environment is approved, semantic-release creates the next
+   tag and a draft GitHub release.
+5. GoReleaser checks out that exact tag and stages binaries, archives, native
+   Linux packages, SBOMs, checksums, a checksum signature, and signed immutable
+   version tags for a multi-platform GHCR image.
 6. An isolated SLSA generator signs provenance for every checksummed artifact
-   and uploads `jobman.intoto.jsonl` to the GitHub release.
+   and uploads `jobman.intoto.jsonl` to the draft GitHub release. After the
+   remote checksum, signature, and provenance assets are verified, the workflow
+   publishes the GitHub release and then moves the stable `latest` container
+   alias to its already signed immutable image.
 7. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
@@ -51,7 +56,7 @@ Each GitHub release contains:
 - `amd64`, `arm64`, and supported `386` binaries;
 - `.deb`, `.rpm`, and `.apk` Linux packages;
 - generated man pages, Bash/Zsh completions, the sample configuration, license,
-  README, and changelog inside the portable archives;
+  third-party notices, README, and changelog inside the portable archives;
 - SPDX JSON SBOMs for archives and native packages;
 - a SHA-256 checksum manifest and a keyless Sigstore bundle for that manifest;
 - a keyless, verifiable SLSA provenance bundle named `jobman.intoto.jsonl` for
@@ -76,34 +81,37 @@ They are CLI runtimes, not persistent daemon containers: use `run --wait` or
 workload image containing target commands as described in
 [docs/CONTAINERS.md](docs/CONTAINERS.md).
 
-The Homebrew Cask is generated into `Casks/jobman.rb` in this repository. Since
-`main` requires pull requests and status checks, GoReleaser writes each update
-to `automation/homebrew-<version>` and opens a pull request. Review and merge
-that pull request after its required checks pass; the release artifacts remain
-published even while the Cask update is awaiting review.
+Immutable versioned image tags may become visible while the matching GitHub
+release is still a draft. Verify the published release's digest signature and
+attestation before use. The mutable `latest` alias is not moved during this
+staging interval and is intentionally promoted only after the GitHub release
+is public. If alias promotion then fails, the verified immutable release
+remains public while `latest` remains on the preceding stable version; run the
+**Repair stable container alias** workflow with the published tag to repair
+that channel without rebuilding public artifacts.
 
-GitHub may hold the bot-authored pull request's first workflow runs with an
-`action_required` conclusion. If that happens, use the pull request's **Approve
-and run workflows** prompt to authorize the unmodified automation branch. Do
-not approve a run until the pull request diff contains only the expected
-generated Cask update. This manual approval avoids storing a long-lived
-maintainer token solely to trigger checks.
+Jobman v1 does not publish a Homebrew Cask. Its portable macOS archives are
+covered by checksums, Sigstore, and provenance, but the executable is not Apple
+Developer ID signed or notarized. A Cask would therefore be unreliable under
+Gatekeeper unless it removed the quarantine attribute, which this project does
+not accept as a production signing substitute. The installation guide documents
+Apple's explicit per-application approval for users who accept that limitation.
+Add a macOS package-manager channel only after native signing, notarization, and
+install/uninstall evidence are automated.
 
-Because this repository does not use Homebrew's conventional
-`homebrew-<name>` repository name, users must add it with the explicit remote:
-
-```sh
-brew tap ryancswallace/jobman https://github.com/ryancswallace/jobman
-brew install --cask jobman
-```
+The portable Windows executables are likewise not Authenticode signed. Their
+checksums, Sigstore bundle, attestations, and provenance authenticate release
+bytes but are not a Windows publisher signature; SmartScreen, Smart App
+Control, or enterprise policy may warn or block them. Add Authenticode signing
+only with a protected signing identity, timestamping, signature verification,
+and native install evidence in the release workflow.
 
 ## Repository configuration
 
 The workflow uses GitHub's short-lived `GITHUB_TOKEN`; no repository PAT or GPG
 private key is required. Keep these workflow permissions enabled:
 
-- `contents: write` for tags, releases, assets, and the Homebrew Cask branch;
-- `pull-requests: write` for the Homebrew Cask update pull request;
+- `contents: write` for tags, releases, and assets;
 - `packages: write` for GHCR;
 - `id-token: write` for keyless Sigstore signing;
 - `attestations: write` and `artifact-metadata: write` for provenance.
@@ -115,14 +123,30 @@ commit-SHA reference. This is an intentional exception to the repository's
 normal action-pinning policy. Dependabot monitors the tag for updates.
 
 In **Settings → Actions → General → Workflow permissions**, enable **Allow
-GitHub Actions to create and approve pull requests**. The workflow grants its
-token only the explicit write permissions listed above. In the package settings,
-ensure this repository's workflow has write access to the `jobman` GHCR package.
-This is required even when the workflow has `packages: write`; an existing
-package can retain access settings from the repository or token that first
-created it. A `403 Forbidden` while pushing layers indicates package access,
-ownership, or organization-policy configuration rather than a GoReleaser build
-failure.
+GitHub Actions to create and approve pull requests** so the post-release and
+scheduled repository-maintenance workflow can open its reviewed metadata pull
+request. No workflow automatically approves or merges that pull request.
+
+The workflow grants its token only the explicit write permissions listed
+above. In the package settings, ensure this repository's workflow has write
+access to the `jobman` GHCR package. This is required even when the workflow has
+`packages: write`; an existing package can retain access settings from the
+repository or token that first created it. A `403 Forbidden` while pushing
+layers indicates package access, ownership, or organization-policy
+configuration rather than a GoReleaser build failure.
+
+Set the `jobman` GHCR package visibility to **Public**. Repository visibility
+does not automatically make a container package public. The release workflow
+runs its immutable-digest container smoke test with an empty Docker credential
+store and fails before publication if the advertised anonymous pull contract
+does not hold. To check the setting independently against an existing version:
+
+```sh
+anonymous_config=$(mktemp -d)
+DOCKER_CONFIG="$anonymous_config" \
+  docker pull ghcr.io/ryancswallace/jobman:v0.9.0
+rm -rf "$anonymous_config"
+```
 
 If tag protection rules cover `v*`, allow the GitHub Actions release identity to
 create those tags.
@@ -134,8 +158,9 @@ unless the workflow itself is dispatched from `main`.
 
 ## Local validation
 
-Install Go 1.26.5, GoReleaser 2.17, Syft, Cosign, Docker with Buildx, and QEMU/binfmt
-for multi-platform container tests. Then run:
+Install Go 1.26.5, GoReleaser 2.17, Syft, Cosign, SLSA verifier 2.7.1,
+Docker with Buildx, and QEMU/binfmt for multi-platform container tests. Then
+run:
 
 ```sh
 make check
@@ -144,13 +169,14 @@ make snapshot
 ```
 
 Snapshot mode writes artifacts to `dist/` and does not create a GitHub release.
-The Homebrew publisher and keyless checksum and container signing are skipped
-locally because they need GitHub credentials and an Actions OIDC identity.
+Keyless checksum and container signing are skipped locally because they need
+GitHub credentials and an Actions OIDC identity.
 Docker Buildx may create local platform-suffixed images during snapshot
 validation. `make snapshot` finishes by checking artifact counts, checksums,
 required archive contents, absence of repository scaffolding, executable
-version metadata, and the project-level `CITATION.cff`. The release
-workflow repeats the same artifact check before generating attestations.
+version metadata, a tag-versioned changelog, dependency notices, and the
+project-level `CITATION.cff`. The release workflow repeats the same artifact
+check before generating attestations.
 
 `make release-check` validates the release configuration without requiring a
 post-release maintenance commit to have landed already. After a successful
@@ -179,13 +205,12 @@ test -s docs/completions/bash/jobman
 test -s docs/completions/zsh/_jobman
 ```
 
-Before approving the `main` release environment, confirm that the exact commit
-shown by the pending Release workflow has successful Test, CodeQL, Docs site,
-Docs links, OpenSSF Scorecard, and all four Fuzz jobs. Run the Soak workflow on
-that commit with the duration required by the dogfood campaign, and attach the
-manual evidence described in `docs/DOGFOOD.md` to the release decision. The
-environment approval is the final human boundary; do not approve merely because
-semantic-release calculated `v1.0.0`.
+The Release workflow now verifies successful Test, CodeQL, Docs site, Docs
+links, OpenSSF Scorecard, and all four Fuzz jobs on the exact commit before it
+offers the `main` environment approval. Confirm that gate, review the Soak
+workflow result and the manual evidence described in `docs/DOGFOOD.md`, and
+verify the previewed version. The environment approval is the final human
+boundary; do not approve merely because semantic-release calculated `v1.0.0`.
 
 ## Verifying a release
 
@@ -209,7 +234,20 @@ gh attestation verify \
 slsa-verifier verify-artifact \
   --provenance-path jobman.intoto.jsonl \
   --source-uri github.com/ryancswallace/jobman \
+  --source-branch main \
   jobman_<version>_linux_amd64.tar.gz
+```
+
+The `sha256sum` command above is available on GNU/Linux. On stock macOS,
+download the one artifact you intend to verify and check only its signed
+manifest record with the system `shasum` utility:
+
+```sh
+artifact=jobman_<version>_darwin_arm64.tar.gz
+awk -v artifact="$artifact" \
+  '$2 == artifact { print; found = 1 } END { exit !found }' \
+  jobman_<version>_checksums.txt |
+  shasum -a 256 --check
 ```
 
 The GitHub attestation and downloadable SLSA bundle independently bind the
@@ -233,14 +271,47 @@ cosign verify \
 Do not delete and recreate tags as a first response. Open the `Release` workflow,
 select the `main` branch, choose **Run workflow**, and enter the existing tag
 (for example, `v1.2.3`). The workflow validates the tag, checks it out, rebuilds
-from that exact commit, and replaces same-named GitHub release artifacts.
+from that exact commit, and creates a missing draft or replaces artifacts in an
+existing draft. It rejects an already published release because build dates
+are embedded in binaries and image metadata: rebuilding one public tag would
+silently change its bytes, checksums, and signatures. Publish a new patch
+release to correct any artifact that has already become public.
+
+The recovery tag must identify the current `main` commit selected by the
+dispatch, its GitHub release must be absent or still a draft, and all required
+exact-commit workflow results must remain available and successful. This
+constraint keeps artifact attestations bound to the workflow's actual source
+commit, prevents an old recovery from moving `latest` backward, and prevents
+the input from publishing an arbitrary repository tag.
+
+This path also recovers the narrow failure window in which semantic-release
+successfully pushed the tag but did not create the draft GitHub release. If
+`main` has advanced since the tagged release attempt, do not use an old-tag
+workflow dispatch: publish a newly tested patch release instead.
+
+If no release exists yet, GoReleaser creates the draft; otherwise, recovery
+keeps the incomplete release private while replacing its asset set. Run it only
+while the tag is still at current `main`. Never undraft an incomplete
+replacement manually: first complete a successful retry and verify every
+checksummed asset, the checksum signature, and provenance.
+
+If the GitHub release is already public but only the mutable GHCR `latest`
+alias failed to move, do not rebuild or redraft the release. Run the **Repair
+stable container alias** workflow from `main` with the published tag. That
+workflow requires the tag to be GitHub's latest stable release, verifies the
+immutable image's release-workflow signature, promotes the alias, and confirms
+both names resolve to the same manifest digest. It then resumes the
+post-release repository-maintenance workflow that the failed publication job
+could not trigger.
+
+If GitHub has expired the tagged commit's workflow records, the automated
+recovery intentionally fails closed. Rebuild on an isolated host for diagnosis,
+then publish a new patch release from a newly tested `main` commit rather than
+bypassing provenance or exact-commit gates for the old tag.
 
 Before retrying, diagnose the failed publishing stage:
 
 - GHCR failures usually indicate missing package write access;
-- Homebrew branch failures usually indicate missing `contents: write` access;
-- Homebrew pull-request failures usually indicate missing `pull-requests: write`
-  access or a disabled Actions pull-request setting;
 - signing failures usually indicate missing `id-token: write` permission;
 - a missing `jobman.intoto.jsonl` asset usually indicates that the isolated
   provenance job could not read the release or obtain its OIDC identity;
@@ -264,8 +335,6 @@ Before relying on the first stable release:
 - verify the `main` environment's deployment protection rules;
 - confirm the `jobman` GHCR package grants this repository's Actions workflow
   write access, especially if the package already exists;
-- ensure the workflow identity can create the Homebrew update branch and pull
-  request, and merge that pull request after its checks pass;
 - review the generated GitHub release notes and all artifacts after publication;
 - install at least one archive or native package and run the versioned
   container;

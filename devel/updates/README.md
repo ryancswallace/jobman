@@ -16,8 +16,15 @@ maintenance cannot publish its branch.
 - `copyright-date.sh` updates copyright ranges in tracked files.
 - `go-vers.sh` synchronizes Go version declarations across tooling, containers,
   workflows, and documentation.
-- `release-metadata.sh` synchronizes the tracked changelog section with the
-  newest reachable semantic-version tag.
+- `release-metadata.sh` synchronizes the tracked changelog with every reachable
+  stable semantic-version tag. Merge each post-release metadata pull request
+  before publishing another stable release so every release receives the
+  intended `Unreleased` notes.
+
+GoReleaser runs `devel/prepare-release-changelog.sh` after the release tag is
+created. It applies the same synchronization to an ignored copy so the
+immutable archive contains a versioned section even though post-release
+maintenance updates the tracked changelog through a pull request.
 
 GoReleaser archives the stable, project-level `CITATION.cff` directly. Release
 versions and dates are intentionally omitted so post-release maintenance cannot
