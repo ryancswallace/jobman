@@ -1,6 +1,7 @@
 ---
 # Semantic-release owns version calculation, the v-prefixed Git tag, and the
-# GitHub release notes. GoReleaser subsequently adds artifacts to that release.
+# GitHub release notes. GoReleaser subsequently stages artifacts in that draft,
+# and the release workflow publishes it only after provenance succeeds.
 branches:
   - main
 
@@ -12,6 +13,8 @@ plugins:
   - "@semantic-release/commit-analyzer"
   - "@semantic-release/release-notes-generator"
   - - "@semantic-release/github"
-    - successComment: false
-      failComment: false
+    - draftRelease: true
+      releaseNameTemplate: "<%= nextRelease.gitTag %>"
+      successCommentCondition: false
+      failCommentCondition: false
       releasedLabels: false

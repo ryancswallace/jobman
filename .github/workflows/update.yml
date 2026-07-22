@@ -27,10 +27,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: write
       pull-requests: write
     steps:
+      - name: Select maintenance run
+        id: decision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [[ "${EVENT_NAME}" != "workflow_run" ]]; then
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          published=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100" \
+            --jq 'any(.jobs[]; .name == "Publish complete release" and .conclusion == "success")')
+          echo "run=${published}" >> "${GITHUB_OUTPUT}"
+          if [[ "${published}" != "true" ]]; then
+            echo "The completed Release run did not publish a release; maintenance is not required."
+          fi
+
       - name: Checkout
+        if: steps.decision.outputs.run == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Release metadata synchronization needs the complete semantic-tag
@@ -38,6 +60,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
+        if: steps.decision.outputs.run == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.version
@@ -45,12 +68,15 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Run repository maintenance
+        if: steps.decision.outputs.run == 'true'
         run: make update-all
 
       - name: Validate changes
-        run: make quick-check release-metadata-check
+        if: steps.decision.outputs.run == 'true'
+        run: make quick-check release-metadata-check notices-check
 
       - name: Create maintenance pull request
+        if: steps.decision.outputs.run == 'true'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: automation/repository-maintenance
@@ -63,4 +89,4 @@ jobs:
             - Synchronizes pinned Go version declarations.
             - Updates copyright years.
             - Reconciles changelog records after releases.
-            - Regenerates and validates documentation assets.
+            - Regenerates and validates documentation assets and dependency notices.

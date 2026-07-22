@@ -12,8 +12,9 @@ on:
     types:
       - completed
 
-  # Supplying an existing tag republishes/replaces its artifacts. Leaving the
-  # tag empty runs the normal semantic-release decision against main.
+  # Supplying a tag at the current main commit recovers an interrupted release
+  # after revalidating retained exact-commit CI evidence. Leaving the tag empty
+  # runs the normal semantic-release decision against main.
   workflow_dispatch:
     inputs:
       tag:
@@ -22,15 +23,17 @@ on:
         type: string
 
 concurrency:
-  group: release
+  # Use a repository-specific group. In particular, do not let an obsolete
+  # deployment that used the generic "release" group block this workflow.
+  group: jobman-release
   # Never terminate a release while it may be publishing artifacts.
   cancel-in-progress: false
 
 permissions: read-all
 
 jobs:
-  release:
-    name: Create and publish release
+  preview:
+    name: Determine whether a release is required
     if: >-
       (github.event_name == 'workflow_dispatch' &&
        github.ref == 'refs/heads/main') ||
@@ -39,21 +42,15 @@ jobs:
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     outputs:
-      base64_subjects: ${{ steps.provenance-subjects.outputs.base64_subjects }}
-      published: ${{ steps.provenance-subjects.outputs.published }}
-      release_tag: ${{ steps.release-tag.outputs.tag }}
+      release_required: ${{ steps.decision.outputs.release_required }}
+      release_tag: ${{ steps.decision.outputs.release_tag }}
+      source_commit: ${{ steps.source.outputs.source_commit }}
     permissions:
-      attestations: write
-      artifact-metadata: write
+      # semantic-release verifies that the selected commit could be tagged even
+      # in dry-run mode. The pinned action receives no publishing instruction.
       contents: write
-      id-token: write
-      packages: write
-      pull-requests: write
-    environment:
-      name: main
-      url: https://github.com/ryancswallace/jobman/releases
 
     steps:
       # Never pass workflow_run or workflow_dispatch data to actions/checkout.
@@ -65,8 +62,11 @@ jobs:
           fetch-depth: 0
 
       - name: Select release source
+        id: source
         env:
+          DISPATCHED_COMMIT: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
           TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: |
@@ -78,41 +78,168 @@ jobs:
 
             git fetch --force origin \
               "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
-            release_commit=$(git rev-parse --verify \
+            source_commit=$(git rev-parse --verify \
               "refs/tags/${RELEASE_TAG}^{commit}")
-            git checkout --detach "${release_commit}"
-          elif [[ "${EVENT_NAME}" == "workflow_run" ]]; then
-            if [[ ! "${TESTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "The completed Test workflow did not provide a valid commit." >&2
+            if [[ "${source_commit}" != "${DISPATCHED_COMMIT}" ]]; then
+              echo "Recovery tag ${RELEASE_TAG} does not identify the dispatched commit." >&2
               exit 1
             fi
-            if ! git merge-base --is-ancestor "${TESTED_COMMIT}" origin/main; then
-              echo "The tested commit is not reachable from main." >&2
+            if [[ "${source_commit}" != "$(git rev-parse origin/main)" ]]; then
+              echo "Recovery tag ${RELEASE_TAG} does not identify current main." >&2
+              exit 1
+            fi
+            release_state=$(gh api graphql \
+              -f query="query(\$owner:String!,\$name:String!,\$tag:String!){repository(owner:\$owner,name:\$name){release(tagName:\$tag){isDraft}}}" \
+              -F owner="${GITHUB_REPOSITORY_OWNER}" \
+              -F name="${GITHUB_REPOSITORY#*/}" \
+              -F tag="${RELEASE_TAG}" \
+              --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" else "published" end')
+            if [[ "${release_state}" == "published" ]]; then
+              echo "Published release ${RELEASE_TAG} is immutable; publish a patch release instead." >&2
+              exit 1
+            fi
+            git checkout --detach "${source_commit}"
+            echo "current=true" >> "${GITHUB_OUTPUT}"
+          else
+            source_commit="${DISPATCHED_COMMIT}"
+            if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+              source_commit="${TESTED_COMMIT}"
+            fi
+            if [[ ! "${source_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "The release event did not provide a valid commit." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "${source_commit}" origin/main; then
+              echo "The selected commit is not reachable from main." >&2
               exit 1
             fi
 
-            git checkout --detach "${TESTED_COMMIT}"
+            git checkout --detach "${source_commit}"
+            if [[ "${source_commit}" == "$(git rev-parse origin/main)" ]]; then
+              echo "current=true" >> "${GITHUB_OUTPUT}"
+            else
+              # A newer main commit has superseded this completed test run.
+              # Its own Test workflow will make the release decision.
+              echo "current=false" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+          echo "source_commit=${source_commit}" >> "${GITHUB_OUTPUT}"
+
+      - name: Preview semantic release
+        id: semantic
+        if: inputs.tag == '' && steps.source.outputs.current == 'true'
+        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
+        with:
+          dry_run: true
+          semantic_version: 25.0.8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record release decision
+        id: decision
+        env:
+          EXISTING_TAG: ${{ inputs.tag }}
+          NEW_RELEASE: ${{ steps.semantic.outputs.new_release_published }}
+          NEW_TAG: ${{ steps.semantic.outputs.new_release_git_tag }}
+        run: |
+          if [[ -n "${EXISTING_TAG}" ]]; then
+            echo "release_required=true" >> "${GITHUB_OUTPUT}"
+            echo "release_tag=${EXISTING_TAG}" >> "${GITHUB_OUTPUT}"
+          elif [[ "${NEW_RELEASE}" == "true" ]]; then
+            if [[ ! "${NEW_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Release preview produced an invalid tag: ${NEW_TAG}" >&2
+              exit 1
+            fi
+            echo "release_required=true" >> "${GITHUB_OUTPUT}"
+            echo "release_tag=${NEW_TAG}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "release_required=false" >> "${GITHUB_OUTPUT}"
+            echo "release_tag=" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Determine version and create GitHub release
+      - name: No release required
+        if: steps.decision.outputs.release_required != 'true'
+        run: echo "No releasable commits were found at the current main commit."
+
+  release:
+    name: Build and stage release
+    needs:
+      - candidate-gates
+      - preview
+    if: needs.preview.outputs.release_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      base64_subjects: ${{ steps.provenance-subjects.outputs.base64_subjects }}
+      image_digest: ${{ steps.container-image.outputs.digest }}
+      release_tag: ${{ steps.release-tag.outputs.tag }}
+      source_commit: ${{ needs.preview.outputs.source_commit }}
+    permissions:
+      attestations: write
+      artifact-metadata: write
+      contents: write
+      id-token: write
+      issues: read
+      packages: write
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/jobman/releases
+
+    steps:
+      - name: Checkout release repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Restore approved release source
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ needs.preview.outputs.source_commit }}
+        run: |
+          if [[ -n "${RELEASE_TAG}" ]]; then
+            git fetch --force origin \
+              "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            release_commit=$(git rev-parse --verify \
+              "refs/tags/${RELEASE_TAG}^{commit}")
+            if [[ "${release_commit}" != "${SOURCE_COMMIT}" ]]; then
+              echo "The recovery tag changed after release approval." >&2
+              exit 1
+            fi
+            if [[ "${release_commit}" != "$(git rev-parse origin/main)" ]]; then
+              echo "Main changed after recovery approval; publish a newly tested release." >&2
+              exit 1
+            fi
+          else
+            release_commit="${SOURCE_COMMIT}"
+            if [[ "${release_commit}" != "$(git rev-parse origin/main)" ]]; then
+              echo "Main changed after release approval; wait for its Test workflow." >&2
+              exit 1
+            fi
+          fi
+          git checkout --detach "${release_commit}"
+
+      - name: Create draft GitHub release
         id: semantic
         if: inputs.tag == ''
         uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         with:
-          semantic_version: 25
+          semantic_version: 25.0.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout release tag
         id: release-tag
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         env:
+          EXPECTED_COMMIT: ${{ needs.preview.outputs.source_commit }}
+          EXPECTED_TAG: ${{ needs.preview.outputs.release_tag }}
           RELEASE_TAG: ${{ inputs.tag || steps.semantic.outputs.new_release_git_tag }}
         run: |
           if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Release tooling produced an invalid tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          if [[ "${RELEASE_TAG}" != "${EXPECTED_TAG}" ]]; then
+            echo "Release changed from ${EXPECTED_TAG} to ${RELEASE_TAG} after approval." >&2
             exit 1
           fi
 
@@ -120,13 +247,30 @@ jobs:
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           release_commit=$(git rev-parse --verify \
             "refs/tags/${RELEASE_TAG}^{commit}")
+          if [[ "${release_commit}" != "${EXPECTED_COMMIT}" ]]; then
+            echo "Release tag ${RELEASE_TAG} does not identify the approved commit." >&2
+            exit 1
+          fi
           git checkout --detach "${release_commit}"
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
+      - name: Verify draft for artifact upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          release_state=$(gh api graphql \
+            -f query="query(\$owner:String!,\$name:String!,\$tag:String!){repository(owner:\$owner,name:\$name){release(tagName:\$tag){isDraft}}}" \
+            -F owner="${GITHUB_REPOSITORY_OWNER}" \
+            -F name="${GITHUB_REPOSITORY#*/}" \
+            -F tag="${RELEASE_TAG}" \
+            --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" else "published" end')
+          if [[ "${release_state}" == "published" ]]; then
+            echo "Published release ${RELEASE_TAG} cannot be rebuilt in place." >&2
+            exit 1
+          fi
+
       - name: Set up Go
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.5"
@@ -134,21 +278,18 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Set up QEMU
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: >-
+            tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - name: Set up Docker Buildx
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: >-
+            image=moby/buildkit@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
 
       - name: Log in to GitHub Container Registry
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
@@ -156,40 +297,58 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Syft
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.46.0
 
       - name: Install Cosign
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Build and publish artifacts
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
+      - name: Build and upload artifacts to draft
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> v2.17"
+          version: v2.17.0
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify published artifact set
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
+      - name: Verify signed immutable container image
+        id: container-image
+        env:
+          RELEASE_COMMIT: ${{ needs.preview.outputs.source_commit }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          image=ghcr.io/ryancswallace/jobman
+          image_digest=$(docker buildx imagetools inspect \
+            "${image}:${RELEASE_TAG}" --format '{{.Manifest.Digest}}')
+          if [[ ! "${image_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Could not resolve the immutable release manifest digest." >&2
+            exit 1
+          fi
+          if ! grep -Fq "${image_digest#sha256:}" dist/digests.txt; then
+            echo "The tested image digest is absent from the attestation input." >&2
+            exit 1
+          fi
+
+          cosign verify \
+            --certificate-identity \
+              'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${image}@${image_digest}"
+          anonymous_config=$(mktemp -d)
+          trap 'rm -rf "${anonymous_config}"' EXIT
+          DOCKER_CONFIG="${anonymous_config}" ./devel/container-smoke.sh \
+            "${image}@${image_digest}" "${RELEASE_TAG#v}" "${RELEASE_COMMIT}"
+          rm -rf "${anonymous_config}"
+          trap - EXIT
+          echo "digest=${image_digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify staged artifact set
         run: make artifact-check
 
       - name: Prepare artifact attestation input
         id: provenance-subjects
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         run: |
           checksum_files=(dist/jobman_*_checksums.txt)
           if [[ ${#checksum_files[@]} -ne 1 || ! -f "${checksum_files[0]}" ]]; then
@@ -199,34 +358,97 @@ jobs:
           cp "${checksum_files[0]}" dist/attestation-checksums.txt
           echo "base64_subjects=$(base64 -w 0 "${checksum_files[0]}")" \
             >> "${GITHUB_OUTPUT}"
-          echo "published=true" >> "${GITHUB_OUTPUT}"
 
       - name: Attest release artifacts
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: dist/attestation-checksums.txt
 
       - name: Attest container images
-        if: >-
-          inputs.tag != '' ||
-          steps.semantic.outputs.new_release_published == 'true'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: dist/digests.txt
 
-      - name: No release required
-        if: >-
-          inputs.tag == '' &&
-          steps.semantic.outputs.new_release_published != 'true'
-        run: echo "No releasable commits were found since the previous tag."
+  candidate-gates:
+    name: Verify exact release-candidate workflows
+    needs: preview
+    if: needs.preview.outputs.release_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Wait for exact-commit quality and security workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_COMMIT: ${{ needs.preview.outputs.source_commit }}
+        run: |
+          required_workflows=(
+            "Test"
+            "CodeQL"
+            "Fuzz"
+            "Docs site"
+            "Docs links"
+            "OpenSSF Scorecard"
+          )
+          deadline=$((SECONDS + 1800))
+
+          while true; do
+            mapfile -t runs < <(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_COMMIT}&event=push&per_page=100" \
+                --jq '.workflow_runs[] | [.name, .status, (.conclusion // "")] | @tsv'
+            )
+            waiting=false
+
+            for expected in "${required_workflows[@]}"; do
+              found=false
+              succeeded=false
+              active=false
+              conclusions=()
+              for run in "${runs[@]}"; do
+                IFS=$'\t' read -r name status conclusion <<< "${run}"
+                if [[ "${name}" != "${expected}" ]]; then
+                  continue
+                fi
+                found=true
+                conclusions+=("${status}/${conclusion:-pending}")
+                if [[ "${status}" == "completed" && "${conclusion}" == "success" ]]; then
+                  succeeded=true
+                elif [[ "${status}" != "completed" ]]; then
+                  active=true
+                fi
+              done
+
+              if [[ "${succeeded}" == "true" ]]; then
+                continue
+              fi
+              if [[ "${found}" == "false" || "${active}" == "true" ]]; then
+                echo "Waiting for ${expected} on ${SOURCE_COMMIT}."
+                waiting=true
+                continue
+              fi
+
+              echo "${expected} has no successful run on ${SOURCE_COMMIT}: ${conclusions[*]}" >&2
+              exit 1
+            done
+
+            if [[ "${waiting}" == "false" ]]; then
+              echo "All exact-commit release workflows succeeded."
+              break
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for exact-commit release workflows." >&2
+              exit 1
+            fi
+            sleep 15
+          done
 
   provenance:
-    name: Generate and publish SLSA provenance
+    name: Generate and stage SLSA provenance
     needs: release
-    if: needs.release.outputs.published == 'true'
     permissions:
       actions: read
       contents: write
@@ -237,6 +459,199 @@ jobs:
       slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.release.outputs.base64_subjects }}
+      draft-release: "true"
       provenance-name: jobman.intoto.jsonl
       upload-assets: true
       upload-tag-name: ${{ needs.release.outputs.release_tag }}
+
+  publish:
+    name: Publish complete release
+    needs:
+      - release
+      - provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx for stable alias promotion
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: >-
+            image=moby/buildkit@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign for staged signature verification
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install SLSA verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
+
+      - name: Verify remote assets and publish release
+        env:
+          EXPECTED_IMAGE_DIGEST: ${{ needs.release.outputs.image_digest }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.release.outputs.source_commit }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+        run: |
+          release_id=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            --jq .id)
+          if [[ ! "${release_id}" =~ ^[0-9]+$ ]]; then
+            echo "Could not resolve draft ${RELEASE_TAG}." >&2
+            exit 1
+          fi
+          asset_records=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?per_page=100" \
+            --jq '.[] | [.name, (.digest // "")] | @tsv')
+          asset_list=$(printf '%s\n' "${asset_records}" | awk -F '\t' '{ print $1 }')
+          version=${RELEASE_TAG#v}
+          checksum_name="jobman_${version}_checksums.txt"
+          signature_name="${checksum_name}.sigstore.json"
+
+          for required in \
+            "${checksum_name}" \
+            "${signature_name}" \
+            jobman.intoto.jsonl; do
+            if ! grep -Fqx "${required}" <<< "${asset_list}"; then
+              echo "Draft ${RELEASE_TAG} is missing ${required}" >&2
+              exit 1
+            fi
+          done
+
+          download_dir="${RUNNER_TEMP}/jobman-release-assets"
+          mkdir -p "${download_dir}"
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir "${download_dir}"
+          test -s "${download_dir}/${checksum_name}"
+          test -s "${download_dir}/${signature_name}"
+          test -s "${download_dir}/jobman.intoto.jsonl"
+
+          expected_assets="${RUNNER_TEMP}/jobman-expected-assets.txt"
+          actual_assets="${RUNNER_TEMP}/jobman-actual-assets.txt"
+          awk '{ print $2 }' "${download_dir}/${checksum_name}" > "${expected_assets}"
+          printf '%s\n' \
+            "${checksum_name}" \
+            "${signature_name}" \
+            jobman.intoto.jsonl >> "${expected_assets}"
+          LC_ALL=C sort -u -o "${expected_assets}" "${expected_assets}"
+          printf '%s\n' "${asset_list}" | LC_ALL=C sort > "${actual_assets}"
+          if [[ -n "$(uniq -d "${actual_assets}")" ]]; then
+            echo "Draft ${RELEASE_TAG} contains duplicate asset names." >&2
+            exit 1
+          fi
+          if ! diff -u "${expected_assets}" "${actual_assets}"; then
+            echo "Draft ${RELEASE_TAG} contains an incomplete or unchecksummed asset set." >&2
+            exit 1
+          fi
+
+          artifact_paths=()
+          while read -r digest artifact; do
+            if [[ ! "${digest}" =~ ^[0-9a-f]{64}$ || \
+                  ! "${artifact}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+              echo "Invalid checksum-manifest record: ${digest} ${artifact}" >&2
+              exit 1
+            fi
+            remote_digest=$(awk -F '\t' -v artifact="${artifact}" '
+              $1 == artifact { value = $2; matches++ }
+              END {
+                if (matches != 1) exit 1
+                print value
+              }
+            ' <<< "${asset_records}") || {
+              echo "Draft ${RELEASE_TAG} is missing checksummed asset ${artifact}" >&2
+              exit 1
+            }
+            if [[ "${remote_digest}" != "sha256:${digest}" ]]; then
+              echo "Remote digest for ${artifact} is ${remote_digest}; expected sha256:${digest}" >&2
+              exit 1
+            fi
+            test -s "${download_dir}/${artifact}"
+            artifact_paths+=("${download_dir}/${artifact}")
+          done < "${download_dir}/${checksum_name}"
+
+          if [[ ${#artifact_paths[@]} -eq 0 ]]; then
+            echo "The release checksum manifest contains no artifacts." >&2
+            exit 1
+          fi
+
+          cosign verify-blob \
+            --bundle "${download_dir}/${signature_name}" \
+            --certificate-identity \
+              'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${download_dir}/${checksum_name}"
+          (
+            cd "${download_dir}"
+            sha256sum --check "${checksum_name}"
+          )
+          slsa-verifier verify-artifact \
+            "${artifact_paths[@]}" \
+            --provenance-path "${download_dir}/jobman.intoto.jsonl" \
+            --source-uri github.com/ryancswallace/jobman \
+            --source-branch main
+
+          provenance_source=$(jq -er \
+            '.dsseEnvelope.payload | @base64d | fromjson |
+             .predicate.invocation.configSource.uri' \
+            "${download_dir}/jobman.intoto.jsonl")
+          provenance_commit=$(jq -er \
+            '.dsseEnvelope.payload | @base64d | fromjson |
+             .predicate.invocation.configSource.digest.sha1' \
+            "${download_dir}/jobman.intoto.jsonl")
+          expected_source='git+https://github.com/ryancswallace/jobman@refs/heads/main'
+          if [[ "${provenance_source}" != "${expected_source}" || \
+                "${provenance_commit}" != "${EXPECTED_SOURCE_COMMIT}" ]]; then
+            echo "SLSA provenance does not identify the approved source commit." >&2
+            exit 1
+          fi
+
+          image=ghcr.io/ryancswallace/jobman
+          for image_tag in "${RELEASE_TAG}" "${RELEASE_TAG#v}"; do
+            current_image_digest=$(docker buildx imagetools inspect \
+              "${image}:${image_tag}" --format '{{.Manifest.Digest}}')
+            if [[ "${current_image_digest}" != "${EXPECTED_IMAGE_DIGEST}" ]]; then
+              echo "Release image ${image_tag} changed after verification: ${current_image_digest}" >&2
+              exit 1
+            fi
+          done
+          cosign verify \
+            --certificate-identity \
+              'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${image}@${EXPECTED_IMAGE_DIGEST}"
+
+          if [[ "${RELEASE_TAG}" == *-* ]]; then
+            gh release edit "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft=false \
+              --latest=false \
+              --prerelease
+          else
+            # The immutable version tags are uploaded and signed during the
+            # draft stage. Publish the verified release before moving the
+            # mutable alias; a failed alias update leaves only `latest` stale.
+            gh release edit "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft=false \
+              --latest \
+              --prerelease=false
+            docker buildx imagetools create \
+              --tag "${image}:latest" \
+              "${image}@${EXPECTED_IMAGE_DIGEST}"
+            latest_digest=$(docker buildx imagetools inspect \
+              "${image}:latest" --format '{{.Manifest.Digest}}')
+            if [[ "${latest_digest}" != "${EXPECTED_IMAGE_DIGEST}" ]]; then
+              echo "latest does not resolve to the verified release digest." >&2
+              exit 1
+            fi
+          fi
