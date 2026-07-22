@@ -10,6 +10,18 @@ semantic-release.
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [1.0.0] - 2026-07-22
+
+### Added
+
 - Declared the v1 command, exit-status, JSON, configuration, notification,
   immutable job-specification, and persisted-state compatibility contracts.
 - Added stable Linux, macOS, and Windows support with native race and assembled
@@ -203,6 +215,7 @@ semantic-release.
 - Added a v1 container contract, maintenance/support policy, compatibility and
   upgrade runbooks, release health checks, migration backups, conservative
   recovery, and automatic release-specific citation metadata.
+
 ### Changed
 
 - Modernized repository automation, dependency management, documentation, and

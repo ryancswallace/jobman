@@ -1,9 +1,9 @@
 # v1 compatibility contract
 
-This document freezes the compatibility surface planned for Jobman v1.0. It
-applies once v1.0 is published; prerelease builds may still correct a contract
-defect, but such a correction must update this file, the specification, help,
-and contract fixtures together.
+This document defines the compatibility surface for the Jobman v1 release
+line. Changes to this contract follow the deprecation and versioning rules
+below and must update this file, the specification, command help, and contract
+fixtures together.
 
 ## Supported public surfaces
 
@@ -70,10 +70,17 @@ secret-free.
 ## State and upgrades
 
 Jobman migrates supported older schemas forward and never silently downgrades.
-Opening a noncurrent supported schema first creates a private, consistent
-backup under `STATE_DIR/backups/`; migration aborts if backup creation fails.
-The release notes state the oldest directly supported schema. Restore is an
-explicit offline operator action described in [UPGRADING.md](UPGRADING.md).
+Jobman v1.0 writes database schema 7 and directly upgrades intact existing
+schemas 1 through 6 from development of the durable implementation. Tagged
+releases v0.6.0 through v0.9.0 create schema 7, so their intact databases do
+not require a schema conversion when first opened by v1. Schema 0 represents a
+new, uninitialized database rather than a supported historical store. Releases
+before v0.6.0 were an unrelated prototype and have no supported persisted-state
+migration. Opening a noncurrent supported schema first creates a private,
+consistent backup under `STATE_DIR/backups/`; migration aborts if backup
+creation fails. Later release notes state any change to the oldest directly
+supported schema. Restore is an explicit offline operator action described in
+[UPGRADING.md](UPGRADING.md).
 
 State roots must be local filesystems with working SQLite WAL locking. Known
 network/distributed filesystems are rejected. Cross-host state sharing is not a

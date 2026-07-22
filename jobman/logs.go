@@ -54,7 +54,7 @@ func newLogsCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 					}
 					resolved, resolveErr := resolveRunSelection(runSelection, details)
 					if resolveErr != nil {
-						return usageError(resolveErr)
+						return resolveErr
 					}
 					runNumber = resolved
 				}
@@ -155,7 +155,9 @@ func lastLines(content []byte, count uint64) []byte {
 func resolveRunSelection(selection string, details app.JobDetails) (uint64, error) {
 	value, err := strconv.ParseInt(selection, 10, 64)
 	if err != nil || value == 0 {
-		return 0, fmt.Errorf("invalid --run %q: expected a nonzero integer or %s", selection, allRunsSelection)
+		return 0, usageError(
+			fmt.Errorf("invalid --run %q: expected a nonzero integer or %s", selection, allRunsSelection),
+		)
 	}
 	if value > 0 {
 		for _, run := range details.Runs {
@@ -163,11 +165,11 @@ func resolveRunSelection(selection string, details app.JobDetails) (uint64, erro
 				return run.Number, nil
 			}
 		}
-		return 0, fmt.Errorf("run %d does not exist", value)
+		return 0, fmt.Errorf("logs run %d: %w", value, app.ErrNotFound)
 	}
 	index := int64(len(details.Runs)) + value
 	if index < 0 || index >= int64(len(details.Runs)) {
-		return 0, fmt.Errorf("run index %d is out of range", value)
+		return 0, fmt.Errorf("logs run index %d: %w", value, app.ErrNotFound)
 	}
 
 	return details.Runs[index].Number, nil

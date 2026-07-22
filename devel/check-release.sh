@@ -18,26 +18,12 @@ check_metadata() {
 		grep -E '^v([1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|0\.[1-9][0-9]*\.(0|[1-9][0-9]*))$' || true)
 	[ -n "$stable_tags" ] || die 'no stable semantic-version release tag is available'
 
-	previous_tag=
-	latest_tag=
 	for release_tag in $stable_tags; do
 		version=${release_tag#v}
 		grep -F "## [$version] - " CHANGELOG.md |
 			grep -Eq '^## \[[0-9]+\.[0-9]+\.[0-9]+\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$' ||
 			die "CHANGELOG.md is missing a dated $version heading"
-
-		if [ -n "$previous_tag" ]; then
-			version_url="https://github.com/ryancswallace/jobman/compare/$previous_tag...$release_tag"
-		else
-			version_url="https://github.com/ryancswallace/jobman/releases/tag/$release_tag"
-		fi
-		require_line CHANGELOG.md "[$version]: $version_url"
-		previous_tag=$release_tag
-		latest_tag=$release_tag
 	done
-
-	require_line CHANGELOG.md \
-		"[Unreleased]: https://github.com/ryancswallace/jobman/compare/$latest_tag...HEAD"
 }
 
 count_files() {

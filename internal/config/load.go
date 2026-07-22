@@ -178,13 +178,13 @@ func Load(sources ...Source) (Loaded, error) {
 		label := sourceLabel(source)
 		node, err := decodeYAML(data, label)
 		if err != nil {
-			return Loaded{}, fmt.Errorf("decode %s: %w", label, err)
+			return Loaded{}, invalidError(fmt.Errorf("decode %s: %w", label, err))
 		}
 		if err := validateSourcePolicy(source, node.Content[0]); err != nil {
-			return Loaded{}, fmt.Errorf("validate %s: %w", label, err)
+			return Loaded{}, invalidError(fmt.Errorf("validate %s: %w", label, err))
 		}
 		if err := validateSourceSchema(node.Content[0]); err != nil {
-			return Loaded{}, fmt.Errorf("validate %s: %w", label, err)
+			return Loaded{}, invalidError(fmt.Errorf("validate %s: %w", label, err))
 		}
 
 		info := SourceInfo{Kind: source.Kind, Name: source.Name, Path: source.Path}
@@ -197,11 +197,11 @@ func Load(sources ...Source) (Loaded, error) {
 
 	configuration, err := decodeConfig(root)
 	if err != nil {
-		return Loaded{}, err
+		return Loaded{}, invalidError(err)
 	}
 	normalize(&configuration)
 	if err := configuration.Validate(); err != nil {
-		return Loaded{}, fmt.Errorf("validate effective configuration: %w", err)
+		return Loaded{}, invalidError(fmt.Errorf("validate effective configuration: %w", err))
 	}
 	loaded.Config = configuration
 
@@ -227,7 +227,9 @@ func validateSource(source Source) error {
 func readSource(source Source) (data []byte, skipped bool, returnedErr error) {
 	if source.Data != nil {
 		if len(source.Data) > maxConfigBytes {
-			return nil, false, fmt.Errorf("read %s: configuration exceeds %d bytes", sourceLabel(source), maxConfigBytes)
+			return nil, false, invalidError(
+				fmt.Errorf("read %s: configuration exceeds %d bytes", sourceLabel(source), maxConfigBytes),
+			)
 		}
 
 		return append([]byte(nil), source.Data...), false, nil
@@ -261,7 +263,9 @@ func readSource(source Source) (data []byte, skipped bool, returnedErr error) {
 		return nil, false, fmt.Errorf("read %s: %w", sourceLabel(source), err)
 	}
 	if len(data) > maxConfigBytes {
-		return nil, false, fmt.Errorf("read %s: configuration exceeds %d bytes", sourceLabel(source), maxConfigBytes)
+		return nil, false, invalidError(
+			fmt.Errorf("read %s: configuration exceeds %d bytes", sourceLabel(source), maxConfigBytes),
+		)
 	}
 
 	return data, false, nil

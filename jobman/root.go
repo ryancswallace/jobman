@@ -107,7 +107,9 @@ func ExitCode(err error) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, ErrUsage):
+	case errors.Is(err, errUsage):
+		return 2
+	case errors.Is(err, config.ErrInvalid):
 		return 2
 	case errors.Is(err, app.ErrNotFound):
 		return 3

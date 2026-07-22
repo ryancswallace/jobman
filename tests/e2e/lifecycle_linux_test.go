@@ -641,6 +641,36 @@ while :; do "$1" 1; done`
 		rerun := submitRun(t, binary, stateDir, "--rerun", source)
 		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, rerun), "success")
 		assertLogs(t, binary, stateDir, rerun, "stdout", "rerun-output")
+
+		waited := invokeWithTimeout(t, binary, stateDir, "rerun", "--wait", source)
+		if waited.err != nil {
+			t.Fatalf("standalone rerun --wait: %v: %s", waited.err, waited.stderr)
+		}
+		waitedID := strings.TrimSpace(waited.stdout)
+		assertJobAndRunOutcome(t, showJob(t, binary, stateDir, waitedID), "success")
+	})
+
+	t.Run("configuration and run selection use stable exit statuses", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		brokenConfig := writeConfiguration(t, "not: [valid\n")
+		invalid := invokeWithTimeout(
+			t, binary, stateDir, "--config", brokenConfig, "config", "validate",
+		)
+		assertCommandExitCode(t, invalid, 2)
+
+		missingConfig := filepath.Join(t.TempDir(), "missing.yml")
+		missing := invokeWithTimeout(
+			t, binary, stateDir, "--config", missingConfig, "config", "validate",
+		)
+		assertCommandExitCode(t, missing, 1)
+
+		printf := requireExecutable(t, "printf")
+		jobID := submit(t, binary, stateDir, printf, "selection")
+		assertJobAndRunOutcome(t, waitForCompletedJob(t, binary, stateDir, jobID), "success")
+		invalidRun := invokeWithTimeout(t, binary, stateDir, "logs", "--run", "bad", jobID)
+		assertCommandExitCode(t, invalidRun, 2)
+		missingRun := invokeWithTimeout(t, binary, stateDir, "logs", "--run", "2", jobID)
+		assertCommandExitCode(t, missingRun, 3)
 	})
 
 	t.Run("stale killed supervisor reconciles to lost", func(t *testing.T) {
@@ -1687,6 +1717,18 @@ func assertJobAndRunOutcome(t *testing.T, detail jobDetail, outcome string) {
 	}
 	if detail.Runs[0].Phase != "completed" || detail.Runs[0].Outcome != outcome {
 		t.Fatalf("run phase/outcome = %q/%q, want completed/%s", detail.Runs[0].Phase, detail.Runs[0].Outcome, outcome)
+	}
+}
+
+func assertCommandExitCode(t *testing.T, result commandResult, want int) {
+	t.Helper()
+
+	var exitErr *exec.ExitError
+	if !errors.As(result.err, &exitErr) {
+		t.Fatalf("command error = %v, want exit status %d; stderr: %s", result.err, want, result.stderr)
+	}
+	if got := exitErr.ExitCode(); got != want {
+		t.Fatalf("command exit status = %d, want %d; stderr: %s", got, want, result.stderr)
 	}
 }
 

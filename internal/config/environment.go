@@ -68,12 +68,12 @@ func EnvironmentSource(environ []string) (Source, bool, error) {
 			continue
 		}
 		if _, duplicate := seen[name]; duplicate {
-			return Source{}, false, fmt.Errorf("environment contains duplicate %s", name)
+			return Source{}, false, invalidError(fmt.Errorf("environment contains duplicate %s", name))
 		}
 		seen[name] = struct{}{}
 		node, err := environmentScalar(value, binding.kind)
 		if err != nil {
-			return Source{}, false, fmt.Errorf("%s: %w", name, err)
+			return Source{}, false, invalidError(fmt.Errorf("%s: %w", name, err))
 		}
 		setYAMLPath(root, strings.Split(binding.path, "."), node)
 		configured = true
@@ -111,7 +111,7 @@ func environmentScalar(value string, kind environmentValueKind) (*yaml.Node, err
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagInteger, Value: value}, nil
 	case environmentDurationLimit:
-		if _, err := parseDuration(value); err != nil {
+		if _, err := ParseDuration(value); err != nil {
 			return nil, err
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagString, Value: value}, nil
@@ -122,7 +122,7 @@ func environmentScalar(value string, kind environmentValueKind) (*yaml.Node, err
 			}
 			return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagInteger, Value: value}, nil
 		}
-		if _, err := parseByteSize(value); err != nil {
+		if _, err := ParseByteSize(value); err != nil {
 			return nil, err
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagString, Value: value}, nil

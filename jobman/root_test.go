@@ -39,6 +39,7 @@ type fakeBackend struct {
 	inputEOFSignal  chan struct{}
 	waitForInputEOF bool
 	followed        atomic.Int64
+	waited          atomic.Int64
 	cleanRequest    *app.CleanRequest
 	closed          bool
 	operationErr    error
@@ -162,6 +163,7 @@ func (backend *fakeBackend) Wait(ctx context.Context, _ string) (model.JobState,
 		case <-backend.inputEOFSignal:
 		}
 	}
+	backend.waited.Add(1)
 	return backend.jobs[0], nil
 }
 
@@ -341,6 +343,25 @@ func TestEmergencyAndInspectionCommandsIgnoreMalformedConfiguration(t *testing.T
 	}
 }
 
+func TestConfigurationExitStatusDistinguishesInvalidContentFromIO(t *testing.T) {
+	t.Parallel()
+
+	configuration := filepath.Join(t.TempDir(), "broken.yml")
+	if err := os.WriteFile(configuration, []byte("not: [valid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := executeCommand(t, dependencies{}, []string{"--config", configuration, "config", "validate"})
+	if !errors.Is(err, config.ErrInvalid) || ExitCode(err) != 2 {
+		t.Fatalf("malformed configuration error/code = %v/%d, want invalid/2", err, ExitCode(err))
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.yml")
+	_, err = executeCommand(t, dependencies{}, []string{"--config", missing, "config", "validate"})
+	if err == nil || errors.Is(err, config.ErrInvalid) || !errors.Is(err, os.ErrNotExist) || ExitCode(err) != 1 {
+		t.Fatalf("missing configuration error/code = %v/%d, want filesystem/1", err, ExitCode(err))
+	}
+}
+
 func TestConfiguredRedactionAppliesToOutputAndWrappedErrors(t *testing.T) {
 	t.Parallel()
 
@@ -451,7 +472,7 @@ func TestRunRequiresArgumentBoundary(t *testing.T) {
 
 	backend := newFakeBackend(t)
 	_, err := executeCommand(t, dependenciesFor(backend), []string{"run", "printf", "hello"})
-	if !errors.Is(err, ErrUsage) || ExitCode(err) != 2 {
+	if !errors.Is(err, errUsage) || ExitCode(err) != 2 {
 		t.Fatalf("run without -- error/code = %v/%d, want usage/2", err, ExitCode(err))
 	}
 	if backend.submitRequest != nil {
@@ -460,7 +481,7 @@ func TestRunRequiresArgumentBoundary(t *testing.T) {
 
 	backend = newFakeBackend(t)
 	_, err = executeCommand(t, dependenciesFor(backend), []string{"run", "--stdin", "invalid", "--", "true"})
-	if !errors.Is(err, ErrUsage) || backend.appliedConfig != 0 || backend.submitRequest != nil {
+	if !errors.Is(err, errUsage) || backend.appliedConfig != 0 || backend.submitRequest != nil {
 		t.Fatalf("invalid run policy = error %v applied %d request %+v", err, backend.appliedConfig, backend.submitRequest)
 	}
 }
@@ -529,7 +550,7 @@ func TestRunRerunSourceIsCanonicalAndRejectsPolicyOverrides(t *testing.T) {
 	_, err = executeCommand(t, dependenciesFor(backend), []string{
 		"run", "--rerun", testJobID, "--slots", "2",
 	})
-	if !errors.Is(err, ErrUsage) || backend.rerunRequest != nil {
+	if !errors.Is(err, errUsage) || backend.rerunRequest != nil {
 		t.Fatalf("run --rerun with override error/request = %v/%+v, want usage/no rerun", err, backend.rerunRequest)
 	}
 	if backend.appliedConfig != 1 {
@@ -543,6 +564,15 @@ func TestRunRerunSourceIsCanonicalAndRejectsPolicyOverrides(t *testing.T) {
 	if standalone.appliedConfig != 1 || standalone.configured != 1 {
 		t.Fatalf("standalone rerun configuration calls = applied %d configured %d, want one each",
 			standalone.appliedConfig, standalone.configured)
+	}
+
+	waiting := newFakeBackend(t)
+	waiting.jobs[0].Outcome = model.JobOutcomeSuccess
+	if _, err := executeCommand(t, dependenciesFor(waiting), []string{"rerun", "--wait", testJobID}); err != nil {
+		t.Fatalf("standalone rerun --wait error = %v", err)
+	}
+	if waiting.waited.Load() != 1 {
+		t.Fatalf("standalone rerun --wait Wait calls = %d, want 1", waiting.waited.Load())
 	}
 }
 
@@ -572,7 +602,7 @@ func TestLifecycleAndInputCommandsUseTypedBackends(t *testing.T) {
 		t.Fatalf("input/eof = %q/%t", backend.input, backend.inputEOF.Load())
 	}
 	_, err := executeCommand(t, dependenciesFor(backend), []string{"input", testJobID, "secret-on-argv"})
-	if !errors.Is(err, ErrUsage) {
+	if !errors.Is(err, errUsage) {
 		t.Fatalf("positional input error = %v, want usage", err)
 	}
 }
@@ -622,6 +652,32 @@ func TestLogsPreserveBinaryBytes(t *testing.T) {
 	}
 	if !bytes.Equal([]byte(stdout), backend.logs) {
 		t.Fatalf("logs output = %v, want %v", []byte(stdout), backend.logs)
+	}
+}
+
+func TestLogsRunSelectionUsesStableErrorCategories(t *testing.T) {
+	t.Parallel()
+
+	backend := newFakeBackend(t)
+	backend.details.Runs = []model.RunState{{Number: 1}}
+	for _, test := range []struct {
+		selection string
+		wantCode  int
+	}{
+		{selection: "invalid", wantCode: 2},
+		{selection: "0", wantCode: 2},
+		{selection: "2", wantCode: 3},
+		{selection: "-2", wantCode: 3},
+	} {
+		_, err := executeCommand(
+			t,
+			dependenciesFor(backend),
+			[]string{"logs", "--run", test.selection, testJobID},
+		)
+		if got := ExitCode(err); got != test.wantCode {
+			t.Errorf("logs --run %q error/code = %v/%d, want %d", test.selection, err, got, test.wantCode)
+		}
+		backend.closed = false
 	}
 }
 
@@ -716,7 +772,7 @@ func TestListOptionValidationAndAllLimit(t *testing.T) {
 		{"list", "--submitted-after", "bad"},
 		{"list", "--submitted-before", "bad"},
 	} {
-		if _, err := executeCommand(t, dependenciesFor(newFakeBackend(t)), arguments); !errors.Is(err, ErrUsage) {
+		if _, err := executeCommand(t, dependenciesFor(newFakeBackend(t)), arguments); !errors.Is(err, errUsage) {
 			t.Errorf("%v error = %v, want usage", arguments, err)
 		}
 	}
@@ -752,7 +808,7 @@ func TestSelectRunValidation(t *testing.T) {
 	t.Parallel()
 	runs := []model.RunState{{Number: 1}, {Number: 2}}
 	for _, selector := range []string{"", "0", "bad"} {
-		if _, err := selectRun(runs, selector); !errors.Is(err, ErrUsage) {
+		if _, err := selectRun(runs, selector); !errors.Is(err, errUsage) {
 			t.Errorf("selectRun(%q) error = %v, want usage", selector, err)
 		}
 	}
@@ -775,7 +831,8 @@ func TestExitCode(t *testing.T) {
 		want int
 	}{
 		{err: nil, want: 0},
-		{err: ErrUsage, want: 2},
+		{err: errUsage, want: 2},
+		{err: config.ErrInvalid, want: 2},
 		{err: app.ErrNotFound, want: 3},
 		{err: app.ErrAmbiguous, want: 4},
 		{err: app.ErrConflict, want: 5},

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -286,11 +287,12 @@ func TestEnvironmentScalarAndSourceErrors(t *testing.T) {
 	if _, _, err := EnvironmentSource([]string{
 		"JOBMAN_RETENTION_MAX_JOBS=1",
 		"JOBMAN_RETENTION_MAX_JOBS=2",
-	}); err == nil {
-		t.Fatal("EnvironmentSource(duplicate) error = nil")
+	}); err == nil || !errors.Is(err, ErrInvalid) {
+		t.Fatalf("EnvironmentSource(duplicate) error = %v, want invalid configuration", err)
 	}
-	if _, _, err := EnvironmentSource([]string{"JOBMAN_RETENTION_MAX_JOBS=bad"}); err == nil {
-		t.Fatal("EnvironmentSource(invalid) error = nil")
+	if _, _, err := EnvironmentSource([]string{"JOBMAN_RETENTION_MAX_JOBS=bad"}); err == nil ||
+		!errors.Is(err, ErrInvalid) {
+		t.Fatalf("EnvironmentSource(invalid) error = %v, want invalid configuration", err)
 	}
 	if source, found, err := EnvironmentSource([]string{"IGNORED=value", "malformed"}); err != nil || found || source.Kind != "" {
 		t.Fatalf("EnvironmentSource(ignored) = %#v, %t, %v", source, found, err)
@@ -314,8 +316,8 @@ func TestParseRejectsMalformedYAML(t *testing.T) {
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := Parse([]byte(input)); err == nil {
-				t.Fatalf("Parse(%q) succeeded", input)
+			if _, err := Parse([]byte(input)); err == nil || !errors.Is(err, ErrInvalid) {
+				t.Fatalf("Parse(%q) error = %v, want invalid configuration", input, err)
 			}
 		})
 	}
@@ -334,19 +336,24 @@ func TestLoadSourcePolicyAndFileHandling(t *testing.T) {
 		t.Fatalf("len(Sources) = %d, want 1", len(loaded.Sources))
 	}
 
-	if _, err := Load(BytesSource(SourceSystem, "system", []byte("trusted_project_roots: [/tmp]\n"))); err == nil {
-		t.Fatal("system source set trusted_project_roots")
+	if _, err := Load(BytesSource(SourceSystem, "system", []byte("trusted_project_roots: [/tmp]\n"))); err == nil ||
+		!errors.Is(err, ErrInvalid) {
+		t.Fatalf("system source policy error = %v, want invalid configuration", err)
 	}
 	if _, err := Parse(nil); err != nil {
 		t.Fatalf("Parse(empty) error = %v", err)
 	}
-	if _, err := Load(FileSource(SourceExplicit, root)); err == nil {
-		t.Fatal("directory source loaded successfully")
+	if _, err := Load(FileSource(SourceExplicit, root)); err == nil || errors.Is(err, ErrInvalid) {
+		t.Fatalf("directory source error = %v, want non-validation failure", err)
 	}
 
 	large := make([]byte, maxConfigBytes+1)
-	if _, err := Load(BytesSource(SourceExplicit, "large", large)); err == nil {
-		t.Fatal("oversize source loaded successfully")
+	if _, err := Load(BytesSource(SourceExplicit, "large", large)); err == nil || !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversize source error = %v, want invalid configuration", err)
+	}
+	if _, err := Load(FileSource(SourceExplicit, filepath.Join(root, "missing.yml"))); err == nil ||
+		errors.Is(err, ErrInvalid) || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing source error = %v, want filesystem not-exist failure", err)
 	}
 }
 

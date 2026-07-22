@@ -89,9 +89,14 @@ func TestLogAndRunSelectionHelpers(t *testing.T) {
 			t.Errorf("resolveRunSelection(%q) = (%d, %v), want %d", selection, got, err, want)
 		}
 	}
-	for _, selection := range []string{"0", "bad", "1", "-3"} {
-		if _, err := resolveRunSelection(selection, details); err == nil {
-			t.Errorf("resolveRunSelection(%q) error = nil", selection)
+	for _, selection := range []string{"0", "bad"} {
+		if _, err := resolveRunSelection(selection, details); !errors.Is(err, errUsage) {
+			t.Errorf("resolveRunSelection(%q) error = %v, want usage", selection, err)
+		}
+	}
+	for _, selection := range []string{"1", "-3"} {
+		if _, err := resolveRunSelection(selection, details); !errors.Is(err, app.ErrNotFound) {
+			t.Errorf("resolveRunSelection(%q) error = %v, want not found", selection, err)
 		}
 	}
 }
@@ -308,8 +313,8 @@ func TestHiddenSupervisorCommandAndDefaultDependencies(t *testing.T) {
 	if defaults.OpenBackend == nil || defaults.Supervise == nil {
 		t.Fatal("defaultDependencies() returned nil runtime functions")
 	}
-	if !errors.Is(usageError(errors.New("bad")), ErrUsage) {
-		t.Fatal("usageError() did not wrap ErrUsage")
+	if !errors.Is(usageError(errors.New("bad")), errUsage) {
+		t.Fatal("usageError() did not wrap errUsage")
 	}
 }
 
@@ -918,7 +923,7 @@ func TestCommandsRejectBackendsWithoutOptionalCapabilities(t *testing.T) {
 	}
 	if _, err := executeCommand(t, dependencies{}, []string{
 		"--config", "one.yml", "config", "validate", "two.yml",
-	}); !errors.Is(err, ErrUsage) {
+	}); !errors.Is(err, errUsage) {
 		t.Fatalf("config validate conflicting paths error = %v", err)
 	}
 }

@@ -109,6 +109,7 @@ func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 
 func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var name string
+	var waitForCompletion bool
 	command := &cobra.Command{
 		Use:   "rerun JOB",
 		Short: "Submit a new job from an existing specification",
@@ -123,12 +124,19 @@ func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 				if err != nil {
 					return err
 				}
-				_, err = fmt.Fprintln(command.OutOrStdout(), job.ID)
-				return err
+				if _, err = fmt.Fprintln(command.OutOrStdout(), job.ID); err != nil {
+					return fmt.Errorf("write rerun job ID: %w", err)
+				}
+				if waitForCompletion {
+					return waitForSubmittedJob(command.Context(), backend, job.ID.String())
+				}
+
+				return nil
 			})
 		},
 	}
 	command.Flags().StringVar(&name, "name", "", "override the new job's display name")
+	command.Flags().BoolVar(&waitForCompletion, "wait", false, "wait for the terminal job outcome")
 
 	return command
 }
@@ -186,7 +194,7 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 			return withBackend(command, dependencies, root, clean)
 		},
 	}
-	command.Flags().DurationVar(&olderThan, "older-than", 0, "select logs completed at least this long ago")
+	durationFlag(command.Flags(), &olderThan, "older-than", "select logs completed at least this long ago")
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "report eligible logs without removing them")
 	command.Flags().BoolVar(&force, "force", false, "confirm cleanup when --dry-run=false")
 

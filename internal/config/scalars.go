@@ -22,7 +22,7 @@ func (duration *Duration) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	parsed, err := parseDuration(value)
+	parsed, err := ParseDuration(value)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (limit *DurationLimit) UnmarshalYAML(node *yaml.Node) error {
 
 		return nil
 	}
-	parsed, err := parseDuration(value)
+	parsed, err := ParseDuration(value)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func (limit *ByteLimit) UnmarshalYAML(node *yaml.Node) error {
 
 		return nil
 	}
-	value, err := parseByteSize(node.Value)
+	value, err := ParseByteSize(node.Value)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,10 @@ func parseSecretReference(value string) (SecretRef, error) {
 	return SecretRef{provider: provider, locator: locator}, nil
 }
 
-func parseDuration(value string) (time.Duration, error) {
+// ParseDuration parses the duration grammar shared by configuration and CLI
+// values. In addition to Go duration units, d is exactly 24 hours and w is
+// exactly seven days. Negative and empty durations are rejected.
+func ParseDuration(value string) (time.Duration, error) {
 	if value == "" || strings.HasPrefix(value, "-") {
 		return 0, errors.New("duration must be nonnegative and nonempty")
 	}
@@ -304,7 +307,14 @@ func parseDecimalUint(value, description string) (uint64, error) {
 	return parsed, nil
 }
 
-func parseByteSize(value string) (uint64, error) {
+// ParseByteSize parses the byte-size grammar shared by configuration and CLI
+// values. Values may be decimal bytes or an integer followed by an IEC suffix
+// from B through EiB.
+func ParseByteSize(value string) (uint64, error) {
+	if value != "" && strings.Trim(value, "0123456789") == "" {
+		return parseDecimalUint(value, "byte size")
+	}
+
 	units := []struct {
 		suffix     string
 		multiplier uint64
@@ -333,7 +343,7 @@ func parseByteSize(value string) (uint64, error) {
 		return parsed * unit.multiplier, nil
 	}
 
-	return 0, fmt.Errorf("byte size %q must use an IEC suffix", value)
+	return 0, fmt.Errorf("byte size %q must be decimal bytes or use an IEC suffix", value)
 }
 
 func scalarString(node *yaml.Node, description string) (string, error) {

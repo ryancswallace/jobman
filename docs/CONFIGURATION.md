@@ -1,6 +1,6 @@
 # Configuration reference
 
-Status: frozen v1 release-candidate schema
+Status: stable v1 schema
 Configuration schema: 1
 
 Jobman uses strict, versioned YAML. Unknown or duplicate keys, invalid scalar
@@ -46,7 +46,7 @@ file does not require a trust entry.
 
 ## Scalar forms and defaults
 
-- Durations use Go duration syntax. YAML durations additionally accept `d` as
+- Durations in configuration and CLI flags use Go duration syntax plus `d` as
   exactly 24 hours and `w` as exactly 7 days; calendar months are unsupported.
 - Slot and completion limits use a positive decimal integer; retention counts
   also accept zero. The string `unlimited` is accepted where allowed.

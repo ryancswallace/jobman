@@ -22,17 +22,17 @@ func TestDurationParsing(t *testing.T) {
 		"2h45m30s": 2*time.Hour + 45*time.Minute + 30*time.Second,
 	}
 	for input, want := range tests {
-		got, err := parseDuration(input)
+		got, err := ParseDuration(input)
 		if err != nil {
-			t.Fatalf("parseDuration(%q) error = %v", input, err)
+			t.Fatalf("ParseDuration(%q) error = %v", input, err)
 		}
 		if got != want {
-			t.Fatalf("parseDuration(%q) = %v, want %v", input, got, want)
+			t.Fatalf("ParseDuration(%q) = %v, want %v", input, got, want)
 		}
 	}
-	for _, input := range []string{"", "-1s", "1", "tomorrow", "1M"} {
-		if _, err := parseDuration(input); err == nil {
-			t.Fatalf("parseDuration(%q) succeeded", input)
+	for _, input := range []string{"", "-1s", "1", "tomorrow", "1M", "1mo", "999999999999999999999999d"} {
+		if _, err := ParseDuration(input); err == nil {
+			t.Fatalf("ParseDuration(%q) succeeded", input)
 		}
 	}
 }
@@ -41,6 +41,8 @@ func TestByteSizeParsing(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]uint64{
+		"0":    0,
+		"42":   42,
 		"0B":   0,
 		"1KiB": 1 << 10,
 		"2MiB": 2 << 20,
@@ -48,17 +50,20 @@ func TestByteSizeParsing(t *testing.T) {
 		"1TiB": 1 << 40,
 	}
 	for input, want := range tests {
-		got, err := parseByteSize(input)
+		got, err := ParseByteSize(input)
 		if err != nil {
-			t.Fatalf("parseByteSize(%q) error = %v", input, err)
+			t.Fatalf("ParseByteSize(%q) error = %v", input, err)
 		}
 		if got != want {
-			t.Fatalf("parseByteSize(%q) = %d, want %d", input, got, want)
+			t.Fatalf("ParseByteSize(%q) = %d, want %d", input, got, want)
 		}
 	}
-	for _, input := range []string{"1KB", "1.5MiB", "-1B", "18446744073709551615EiB"} {
-		if _, err := parseByteSize(input); err == nil {
-			t.Fatalf("parseByteSize(%q) succeeded", input)
+	for _, input := range []string{
+		"", "1KB", "1.5MiB", "-1", "-1B", "0x10", "18446744073709551616",
+		"18446744073709551615EiB",
+	} {
+		if _, err := ParseByteSize(input); err == nil {
+			t.Fatalf("ParseByteSize(%q) succeeded", input)
 		}
 	}
 }

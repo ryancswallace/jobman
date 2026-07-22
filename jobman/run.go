@@ -100,7 +100,7 @@ func newRunCommand(dependencies dependencies, root *rootOptions) *cobra.Command 
 	flags.StringArrayVar(&options.profiles, "profile", nil, "apply a named profile in argument order")
 	flags.StringVar(&options.stdin, "stdin", "", "select null or live standard input")
 	flags.StringVar(&options.stdinFile, "stdin-file", "", "read target standard input from a file")
-	flags.DurationVar(&options.stopGrace, "stop-grace", 0, "wait this long before forced termination")
+	durationFlag(flags, &options.stopGrace, "stop-grace", "wait this long before forced termination")
 	flags.BoolVar(&options.forceAfterGrace, "force-after-grace", true, "force termination after the grace period")
 	flags.Uint64Var(&options.retries, "retries", 0, "permit N retries after the initial run")
 	flags.StringVar(&options.maxRuns, "max-runs", "", "set a positive run limit or unlimited")
@@ -110,14 +110,14 @@ func newRunCommand(dependencies dependencies, root *rootOptions) *cobra.Command 
 	flags.IntSliceVar(&options.retryableExitCodes, "retryable-exit-code", nil, "classify an exit code as retryable")
 	flags.BoolVar(&options.retryTimeouts, "retry-timeouts", false, "permit retry after a run timeout")
 	flags.BoolVar(&options.retryStartFailures, "retry-start-failures", false, "permit retry after process start failure")
-	flags.DurationVar(&options.retryDelay, "retry-delay", 0, "set the base failed-run delay")
-	flags.DurationVar(&options.repeatDelay, "repeat-delay", 0, "set the base successful-run delay")
+	durationFlag(flags, &options.retryDelay, "retry-delay", "set the base failed-run delay")
+	durationFlag(flags, &options.repeatDelay, "repeat-delay", "set the base successful-run delay")
 	flags.StringVar(&options.retryBackoff, "retry-backoff", "", "select constant, linear, or exponential backoff")
-	flags.DurationVar(&options.retryJitter, "retry-jitter", 0, "set the full width of bounded delay jitter")
-	flags.DurationVar(&options.retryMaxDelay, "retry-max-delay", 0, "cap retry and repetition delay")
+	durationFlag(flags, &options.retryJitter, "retry-jitter", "set the full width of bounded delay jitter")
+	durationFlag(flags, &options.retryMaxDelay, "retry-max-delay", "cap retry and repetition delay")
 	flags.StringVar(&options.retryAbortAt, "retry-abort-at", "", "prevent a run after this RFC3339 timestamp")
-	flags.DurationVar(&options.runTimeout, "run-timeout", 0, "limit each target-command run")
-	flags.DurationVar(&options.jobTimeout, "job-timeout", 0, "limit the entire job")
+	durationFlag(flags, &options.runTimeout, "run-timeout", "limit each target-command run")
+	durationFlag(flags, &options.jobTimeout, "job-timeout", "limit the entire job")
 	flags.StringArrayVar(&options.afterSuccess, "after-success", nil, "require another job to succeed first")
 	flags.StringArrayVar(&options.afterFinish, "after-finish", nil, "require another job to finish first")
 	flags.StringArrayVar(&options.afterFailed, "after-failed", nil, "require another job to fail first")
@@ -130,8 +130,8 @@ func newRunCommand(dependencies dependencies, root *rootOptions) *cobra.Command 
 	flags.StringArrayVar(&options.waitFile, "wait-file", nil, "wait for a path to exist")
 	flags.StringVar(&options.waitMode, "wait-mode", "", "combine wait conditions with all or any")
 	flags.StringVar(&options.waitAbortAt, "wait-abort-at", "", "abort waits at this RFC3339 timestamp")
-	flags.DurationVar(&options.waitPoll, "wait-poll", 0, "set the wait-condition polling interval")
-	flags.Uint64Var(&options.logSegmentBytes, "log-segment-bytes", 0, "rotate streams after this many bytes")
+	durationFlag(flags, &options.waitPoll, "wait-poll", "set the wait-condition polling interval")
+	byteSizeFlag(flags, &options.logSegmentBytes, "log-segment-bytes", "rotate streams after this many bytes")
 	flags.Uint64Var(&options.logSegments, "log-segments", 0, "cap captured segments per stream")
 	flags.StringVar(&options.logCapture, "log-capture", "", "capture both, stdout, stderr, or none")
 	flags.StringVar(&options.logRetention, "log-retention", "", "retain logs for a duration or unlimited")
@@ -476,7 +476,7 @@ func applyRunOptions(
 		})
 	}
 	for _, encoded := range options.waitDelay {
-		delay, parseErr := time.ParseDuration(encoded)
+		delay, parseErr := config.ParseDuration(encoded)
 		if parseErr != nil || delay < 0 {
 			return fmt.Errorf("invalid --wait-delay %q: expected nonnegative duration", encoded)
 		}
@@ -512,7 +512,7 @@ func applyRunOptions(
 		request.ExecutionPolicy.LogRetentionMaxAge = 0
 		request.ExecutionPolicy.LogRetentionUnlimited = options.logRetention == config.Unlimited
 		if !request.ExecutionPolicy.LogRetentionUnlimited {
-			retention, parseErr := time.ParseDuration(options.logRetention)
+			retention, parseErr := config.ParseDuration(options.logRetention)
 			if parseErr != nil || retention < 0 {
 				return fmt.Errorf("--log-retention must be a nonnegative duration or %q", config.Unlimited)
 			}

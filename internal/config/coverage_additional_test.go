@@ -280,11 +280,11 @@ func TestScalarDecoderFailureBranches(t *testing.T) {
 	if _, err := parseDecimalUint(strings.Repeat("9", 64), "test"); err == nil {
 		t.Fatal("parseDecimalUint(overflow) error = nil")
 	}
-	if _, err := parseByteSize(strings.Repeat("9", 64) + "EiB"); err == nil {
-		t.Fatal("parseByteSize(overflow) error = nil")
+	if _, err := ParseByteSize(strings.Repeat("9", 64) + "EiB"); err == nil {
+		t.Fatal("ParseByteSize(overflow) error = nil")
 	}
-	if _, err := parseByteSize(strings.Repeat("9", 64) + "B"); err == nil {
-		t.Fatal("parseByteSize(decimal overflow) error = nil")
+	if _, err := ParseByteSize(strings.Repeat("9", 64) + "B"); err == nil {
+		t.Fatal("ParseByteSize(decimal overflow) error = nil")
 	}
 }
 
