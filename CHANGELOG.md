@@ -17,6 +17,8 @@ semantic-release.
 
 - Made `clean --force` apply the selected cleanup plan instead of remaining in
   the default dry-run mode.
+- Prevented `input --eof` from waiting indefinitely for input when invoked from
+  an interactive terminal.
 
 ## [1.0.0] - 2026-07-24
 

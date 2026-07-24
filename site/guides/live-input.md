@@ -36,8 +36,10 @@ $ jobman input --eof consumer
 ```
 
 `jobman input JOB` copies stdin bytes to the active target. `--eof` closes the
-target's input after any supplied bytes. The request is bound to the active run
-identity so bytes cannot be redirected to a later retry accidentally.
+target's input after any piped or redirected bytes. When stdin is an
+interactive terminal, `--eof` closes the target immediately instead of waiting
+for terminal input. The request is bound to the active run identity so bytes
+cannot be redirected to a later retry accidentally.
 
 Input bytes are not persisted, replayed, or included in logs. A partial write
 uses a distinct process exit status so automation can detect that the target

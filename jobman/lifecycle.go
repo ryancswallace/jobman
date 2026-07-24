@@ -3,6 +3,9 @@ package jobman
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -87,7 +90,10 @@ func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 		Short: "Send bytes to a live-input job",
 		Args:  usageArgs(cobra.ExactArgs(1)),
 		RunE: func(command *cobra.Command, arguments []string) error {
-			source := command.InOrStdin()
+			source, err := liveInputSource(command.InOrStdin(), sendEOF)
+			if err != nil {
+				return err
+			}
 			return withBackend(command, dependencies, root, func(backend app.Backend) error {
 				inputBackend, ok := backend.(app.InputBackend)
 				if !ok {
@@ -105,6 +111,30 @@ func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 	command.Flags().BoolVar(&sendEOF, "eof", false, "close the target's standard input")
 
 	return command
+}
+
+type inputStatReader interface {
+	io.Reader
+	Stat() (os.FileInfo, error)
+}
+
+func liveInputSource(source io.Reader, sendEOF bool) (io.Reader, error) {
+	if !sendEOF {
+		return source, nil
+	}
+	statReader, ok := source.(inputStatReader)
+	if !ok {
+		return source, nil
+	}
+	information, err := statReader.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect live-input source: %w", err)
+	}
+	if information.Mode()&os.ModeCharDevice != 0 {
+		return strings.NewReader(""), nil
+	}
+
+	return source, nil
 }
 
 func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Command {

@@ -607,6 +607,50 @@ func TestLifecycleAndInputCommandsUseTypedBackends(t *testing.T) {
 	}
 }
 
+func TestInputEOFDoesNotReadInteractiveTerminal(t *testing.T) {
+	t.Parallel()
+
+	backend := newFakeBackend(t)
+	terminal := &terminalInput{}
+	command := newRootCommand(dependenciesFor(backend))
+	command.SetArgs([]string{"input", "--eof", testJobID})
+	command.SetIn(terminal)
+	command.SetOut(io.Discard)
+	command.SetErr(io.Discard)
+
+	if err := command.ExecuteContext(t.Context()); err != nil {
+		t.Fatalf("input --eof error = %v", err)
+	}
+	if terminal.read {
+		t.Fatal("input --eof read from the interactive terminal")
+	}
+	if len(backend.input) != 0 || !backend.inputEOF.Load() {
+		t.Fatalf("input/eof = %q/%t, want empty input and EOF", backend.input, backend.inputEOF.Load())
+	}
+}
+
+type terminalInput struct {
+	read bool
+}
+
+func (input *terminalInput) Read([]byte) (int, error) {
+	input.read = true
+	return 0, errors.New("interactive terminal read would block")
+}
+
+func (*terminalInput) Stat() (os.FileInfo, error) {
+	return terminalFileInfo{}, nil
+}
+
+type terminalFileInfo struct{}
+
+func (terminalFileInfo) Name() string       { return "terminal" }
+func (terminalFileInfo) Size() int64        { return 0 }
+func (terminalFileInfo) Mode() os.FileMode  { return os.ModeCharDevice }
+func (terminalFileInfo) ModTime() time.Time { return time.Time{} }
+func (terminalFileInfo) IsDir() bool        { return false }
+func (terminalFileInfo) Sys() any           { return nil }
+
 func TestListJSONUsesVersionedEnvelope(t *testing.T) {
 	t.Parallel()
 

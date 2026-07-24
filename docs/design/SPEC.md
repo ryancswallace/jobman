@@ -369,8 +369,11 @@ jobman input [--eof] JOB
 bounded supervisor-owned input channel. It does not accept input text as a
 positional argument, because arguments are commonly exposed in process lists
 and shell history. `--eof` closes the target's input after all accepted bytes
-are delivered. Input is local-only, preserves bytes exactly, and reports
-partial delivery distinctly from complete delivery.
+are delivered. When client stdin is an interactive terminal, `--eof` MUST NOT
+wait for terminal input; it delivers no bytes and closes the target input
+immediately. Piped and redirected bytes are still delivered before EOF. Input
+is local-only, preserves bytes exactly, and reports partial delivery distinctly
+from complete delivery.
 
 This v1 command is not terminal reattachment: Jobman does not reproduce
 terminal modes, signals, or a PTY.
