@@ -18,7 +18,7 @@ semantic-release.
 
 ### Security
 
-## [1.0.0] - 2026-07-22
+## [0.9.1] - 2026-07-22
 
 ### Added
 

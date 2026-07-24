@@ -20,12 +20,6 @@ Jobman is a daemonless command-line job manager. It runs and monitors commands
 with retries, timeouts, durable logs, delayed execution, and success or failure
 notifications without requiring a resident service.
 
-> [!IMPORTANT]
-> Jobman is a local, per-user process manager, not a distributed scheduler or a
-> backup system. Jobs can survive a closed terminal or SSH connection, but may
-> end with the operating-system user session. Keep independent backups of
-> important state and logs.
-
 ## Design goals
 
 - Work without a system daemon or privileged installation.
@@ -38,6 +32,12 @@ The v1 command, state, and configuration model is documented in the
 [design specification](docs/design/SPEC.md) and the supported public surface is
 defined by the [compatibility contract](docs/COMPATIBILITY.md). Generated man
 pages and shell completions are included in release archives.
+
+> [!NOTE]
+> Jobman is a local, per-user process manager, not a distributed scheduler or a
+> backup system. Jobs can survive a closed terminal or SSH connection, but may
+> end with the operating-system user session. Keep independent backups of
+> important state and logs.
 
 ## v1 capabilities
 
