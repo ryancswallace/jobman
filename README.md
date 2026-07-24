@@ -15,11 +15,11 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman/jobman)
 [![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue)](https://ryancswallace.github.io/jobman/)
 
-**Jobman** is a daemonless CLI for running and managing local background jobs. It
+Jobman is a daemonless CLI for running and managing local background jobs. It
 adds retries, timeouts, durable logs, dependencies, concurrency controls, and
 notifications without a resident service.
 
-## Basic demo
+**Basic Demo:**
 
 <!-- markdownlint-disable MD033 -->
 <p align="center">
