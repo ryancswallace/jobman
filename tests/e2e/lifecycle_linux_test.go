@@ -1178,6 +1178,14 @@ notifiers:
 		if len(detail.Runs) != 1 || detail.Runs[0].Logs.Available || detail.Runs[0].Logs.PrunedAt == nil {
 			t.Fatalf("pruned logs = %+v", detail.Runs)
 		}
+		purged := invokeWithTimeout(t, binary, stateDir, "clean", "--all", "--force")
+		if purged.err != nil || !strings.Contains(purged.stdout, "1 jobs") {
+			t.Fatalf("purge completed metadata = %q/%v: %s", purged.stdout, purged.err, purged.stderr)
+		}
+		listed := invokeWithTimeout(t, binary, stateDir, "list")
+		if listed.err != nil || strings.Contains(listed.stdout, jobID) {
+			t.Fatalf("list after metadata purge = %q/%v: %s", listed.stdout, listed.err, listed.stderr)
+		}
 	})
 }
 

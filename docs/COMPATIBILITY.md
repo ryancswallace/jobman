@@ -36,6 +36,9 @@ forward migrations for the SQLite state schema.
 - Read/inspection and emergency operations do not require valid configuration
   and never apply store-wide settings. `config apply`, `run`, `rerun`, and
   policy-based `clean` are the explicit configuration-authority paths.
+- `clean` is a dry run unless `--force` is present. `clean --all` selects every
+  completed job and its logs independently of retention policy, while retaining
+  dependency, notification, admission, and active-state safety checks.
 - `doctor` is configuration-independent. `--repair` authorizes WAL checkpoint,
   stale lifecycle reconciliation, and due-notification recovery; `--backup`
   writes a new consistent SQLite snapshot.

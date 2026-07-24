@@ -338,6 +338,8 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 		{arguments: []string{"logs", testJobID, "--all"}, contains: "==> run 1 <=="},
 		{arguments: []string{"logs", testJobID, "--follow"}, contains: "one"},
 		{arguments: []string{"clean", testJobID, "--dry-run"}, contains: "would remove 1 runs"},
+		{arguments: []string{"clean", "--force"}, contains: "removed 1 runs"},
+		{arguments: []string{"clean", "--all", "--force"}, contains: "removed 1 runs"},
 		{arguments: []string{"clean", testJobID, "--dry-run=false", "--force", "--older-than", "1h"}, contains: "removed 1 runs"},
 	} {
 		stdout, err := executeCommand(t, dependenciesFor(backend), test.arguments)
@@ -349,8 +351,8 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 	if backend.cleanRequest == nil || backend.cleanRequest.OlderThan != time.Hour || backend.cleanRequest.UsePolicy {
 		t.Fatalf("Clean request = %+v", backend.cleanRequest)
 	}
-	if backend.appliedConfig != 1 || backend.configured != 1 {
-		t.Fatalf("cleanup configuration calls = applied %d configured %d, want policy cleanup only",
+	if backend.appliedConfig != 2 || backend.configured != 2 {
+		t.Fatalf("cleanup configuration calls = applied %d configured %d, want two policy cleanups",
 			backend.appliedConfig, backend.configured)
 	}
 	for _, arguments := range [][]string{
@@ -358,6 +360,8 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 		{"logs", testJobID, "--follow", "--all"},
 		{"logs", testJobID, "--lines", "-2"},
 		{"clean", testJobID, "--dry-run=false"},
+		{"clean", testJobID, "--all", "--force"},
+		{"clean", "--all", "--older-than", "1h", "--force"},
 	} {
 		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err == nil {
 			t.Errorf("%v error = nil", arguments)
@@ -369,6 +373,22 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 	stdout, err := executeCommand(t, dependenciesFor(backend), []string{"run", "--foreground", "--", "true"})
 	if err != nil || backend.followed.Load() < 2 || !backend.inputEOF.Load() || !strings.Contains(stdout, testJobID) {
 		t.Fatalf("foreground run = (%q, %v), followed %d, EOF %t", stdout, err, backend.followed.Load(), backend.inputEOF.Load())
+	}
+}
+
+func TestCleanForceHonorsExplicitDryRun(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+
+	stdout, err := executeCommand(t, dependenciesFor(backend), []string{"clean", "--force", "--dry-run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.cleanRequest == nil || !backend.cleanRequest.DryRun {
+		t.Fatalf("Clean request = %+v, want explicit dry run", backend.cleanRequest)
+	}
+	if !strings.Contains(stdout, "would remove 1 runs") {
+		t.Fatalf("clean output = %q, want dry-run result", stdout)
 	}
 }
 

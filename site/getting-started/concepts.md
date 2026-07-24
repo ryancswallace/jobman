@@ -88,8 +88,8 @@ This boundary prevents quoting ambiguities and accidental command injection.
 Configuration is layered and strict, but not every command is allowed to
 change durable scheduler settings. `run`, `rerun`, `config apply`, and
 policy-based `clean` are configuration-authority paths. Inspection,
-lifecycle-emergency commands, `doctor`, and explicit age-based cleanup remain
-usable even when configuration is malformed.
+lifecycle-emergency commands, `doctor`, `clean --all`, and explicit age-based
+cleanup remain usable even when configuration is malformed.
 
 Read the [configuration guide]({{ site.baseurl }}/guides/configuration/) before
 introducing named job specs, profiles, pools, secrets, or notifiers.

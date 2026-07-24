@@ -167,12 +167,14 @@ type RerunRequest struct {
 }
 
 // CleanRequest selects completed log sets. A zero OlderThan includes every
-// completed run. DryRun performs no filesystem mutation.
+// completed run. All selects all completed logs and eligible metadata,
+// independent of retention policy. DryRun performs no mutation.
 type CleanRequest struct {
 	Selector  string
 	OlderThan time.Duration
 	DryRun    bool
 	UsePolicy bool
+	All       bool
 }
 
 // CleanResult summarizes deterministic cleanup work.

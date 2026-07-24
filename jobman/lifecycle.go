@@ -143,6 +143,7 @@ func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 
 func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
 	var olderThan time.Duration
+	var all bool
 	var dryRun bool
 	var force bool
 	command := &cobra.Command{
@@ -150,28 +151,21 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 		Short: "Safely remove completed logs and eligible metadata",
 		Args:  usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(command *cobra.Command, arguments []string) error {
-			if !dryRun && !force {
-				return usageError(errors.New("destructive cleanup requires --force or use --dry-run"))
+			request, err := cleanRequest(command, arguments, olderThan, all, dryRun, force)
+			if err != nil {
+				return err
 			}
-			selector := ""
-			if len(arguments) == 1 {
-				selector = arguments[0]
-			}
-			usePolicy := !command.Flags().Changed("older-than")
 			clean := func(backend app.Backend) error {
 				cleaner, ok := backend.(app.CleanupBackend)
 				if !ok {
 					return errors.New("application backend does not support cleanup")
 				}
-				result, err := cleaner.Clean(command.Context(), app.CleanRequest{
-					Selector: selector, OlderThan: olderThan, DryRun: dryRun,
-					UsePolicy: usePolicy,
-				})
+				result, err := cleaner.Clean(command.Context(), request)
 				if err != nil {
 					return err
 				}
 				mode := "removed"
-				if dryRun {
+				if request.DryRun {
 					mode = "would remove"
 				}
 				_, err = fmt.Fprintf(
@@ -185,7 +179,7 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 				)
 				return err
 			}
-			if usePolicy {
+			if request.UsePolicy {
 				return withConfiguredBackend(command, dependencies, root, func(backend app.Backend, _ config.Loaded) error {
 					return clean(backend)
 				})
@@ -195,8 +189,41 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 		},
 	}
 	durationFlag(command.Flags(), &olderThan, "older-than", "select logs completed at least this long ago")
+	command.Flags().BoolVar(&all, "all", false, "select every completed job and its logs")
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "report eligible logs without removing them")
-	command.Flags().BoolVar(&force, "force", false, "confirm cleanup when --dry-run=false")
+	command.Flags().BoolVar(&force, "force", false, "apply cleanup instead of the default dry run")
 
 	return command
+}
+
+func cleanRequest(
+	command *cobra.Command,
+	arguments []string,
+	olderThan time.Duration,
+	all bool,
+	dryRun bool,
+	force bool,
+) (app.CleanRequest, error) {
+	effectiveDryRun := dryRun
+	if force && !command.Flags().Changed("dry-run") {
+		effectiveDryRun = false
+	}
+	if !effectiveDryRun && !force {
+		return app.CleanRequest{}, usageError(errors.New("destructive cleanup requires --force or use --dry-run"))
+	}
+	if all && len(arguments) != 0 {
+		return app.CleanRequest{}, usageError(errors.New("--all cannot be combined with a job selector"))
+	}
+	if all && command.Flags().Changed("older-than") {
+		return app.CleanRequest{}, usageError(errors.New("--all cannot be combined with --older-than"))
+	}
+	selector := ""
+	if len(arguments) == 1 {
+		selector = arguments[0]
+	}
+
+	return app.CleanRequest{
+		Selector: selector, OlderThan: olderThan, DryRun: effectiveDryRun,
+		UsePolicy: !all && !command.Flags().Changed("older-than"), All: all,
+	}, nil
 }

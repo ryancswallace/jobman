@@ -101,10 +101,11 @@ job.
 Policy-based `jobman clean` also synchronizes the capacities because it already
 uses the effective retention configuration as an administrative authority.
 
-Read-only inspection, lifecycle emergency commands, `doctor`, and explicit
-`clean --older-than` do not apply store-wide settings. They remain usable when
-the current configuration is malformed. Removing a named pool through an
-authority command fails while active admissions still reference that pool.
+Read-only inspection, lifecycle emergency commands, `doctor`, `clean --all`,
+and explicit `clean --older-than` do not apply store-wide settings. They remain
+usable when the current configuration is malformed. Removing a named pool
+through an authority command fails while active admissions still reference
+that pool.
 
 ## Named objects
 
@@ -140,7 +141,9 @@ unresolved dependency, pending notification, or active admission needs it.
 
 ```console
 jobman clean                         # policy-based dry run
-jobman clean --dry-run=false --force # apply the policy
+jobman clean --force                 # apply the policy
+jobman clean --all                   # preview all completed jobs and logs
+jobman clean --all --force           # remove all eligible completed history
 ```
 
 ## Secrets and notifiers

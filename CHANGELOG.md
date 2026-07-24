@@ -8,6 +8,16 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Added `clean --all` to preview or remove all eligible completed jobs and
+  their logs independently of retention policy.
+
+### Fixed
+
+- Made `clean --force` apply the selected cleanup plan instead of remaining in
+  the default dry-run mode.
+
 ## [1.0.0] - 2026-07-24
 
 ### Added

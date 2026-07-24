@@ -383,6 +383,12 @@ It MUST NOT delete an active job, an active run, or a file currently owned by a
 supervisor. Any destructive invocation requires explicit `--force`; Jobman
 does not prompt when input may be non-interactive.
 
+`clean` is a policy-based dry run by default. `--force` applies the selected
+plan without requiring the redundant `--dry-run=false`. `--all` selects every
+completed job and its logs independently of retention policy or configuration;
+it cannot be combined with a job selector or `--older-than`. Dependency,
+notification, admission, and active-state safety checks still apply.
+
 ### 4.13 `jobman config`
 
 Initial subcommands are:
@@ -401,8 +407,8 @@ starting a job. `apply` explicitly writes store-wide concurrency limits without
 submitting a job. `run`, `rerun`, and policy-based `clean` are also
 configuration-authority operations. Read/inspection, emergency commands,
 `doctor`, and explicit
-age-based cleanup do not use configuration as a store authority and remain
-usable when it is malformed.
+age-based cleanup and `clean --all` do not use configuration as a store
+authority and remain usable when it is malformed.
 
 ### 4.14 `jobman doctor`
 

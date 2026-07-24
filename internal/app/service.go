@@ -1232,11 +1232,11 @@ func (service *Service) FollowLogs(
 	return nil
 }
 
-// Clean safely removes completed log sets selected explicitly or by effective
-// retention policy. Job/run tombstone metadata remains available for history
-// and dependency evaluation.
+// Clean safely removes completed log sets selected explicitly, by effective
+// retention policy, or by an all-completed request. Policy and age cleanup
+// retain tombstone metadata; all-completed cleanup also prunes eligible history.
 //
-//nolint:gocognit,cyclop,maintidx,nestif // Cleanup keeps policy planning, state rechecks, deletion, and tombstoning together.
+//nolint:gocognit,cyclop,maintidx // Cleanup keeps policy planning, state rechecks, deletion, and tombstoning together.
 func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanResult, error) {
 	var jobs []model.JobState
 	if request.Selector != "" {
@@ -1291,7 +1291,12 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 
 	selected := make(map[string]struct{}, len(all))
 	now := service.now().UTC()
-	if request.UsePolicy {
+	switch {
+	case request.All:
+		for _, item := range all {
+			selected[cleanupCandidateKey(item.candidate.JobID, item.candidate.RunNumber)] = struct{}{}
+		}
+	case request.UsePolicy:
 		candidates := make([]logstore.RetentionCandidate, len(all))
 		for index, item := range all {
 			candidates[index] = item.candidate
@@ -1317,7 +1322,7 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 				}
 			}
 		}
-	} else {
+	default:
 		cutoff := now.Add(-request.OlderThan)
 		for _, item := range all {
 			if !item.candidate.CompletedAt.After(cutoff) {
@@ -1375,25 +1380,31 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		result.Files += cleaned.Files
 		result.Bytes += cleaned.Bytes
 	}
-	if request.UsePolicy {
+	metadataCutoff := time.Time{}
+	if request.All {
+		metadataCutoff = now
+	} else if request.UsePolicy {
 		if maximumAge, finite := service.retention.CompletedMetadataMaxAge.Value(); finite {
-			cutoff := now.Add(-maximumAge)
-			for _, job := range jobs {
-				if job.Phase != model.JobPhaseCompleted || job.CompletedAt == nil || job.CompletedAt.After(cutoff) {
-					continue
-				}
-				pruned, pruneErr := service.store.PruneCompletedJobMetadata(
-					ctx,
-					job.ID,
-					cutoff,
-					request.DryRun,
-				)
-				if pruneErr != nil {
-					return result, fmt.Errorf("clean job metadata %s: %w", job.ID, pruneErr)
-				}
-				if pruned {
-					result.Jobs++
-				}
+			metadataCutoff = now.Add(-maximumAge)
+		}
+	}
+	if !metadataCutoff.IsZero() {
+		for _, job := range jobs {
+			if job.Phase != model.JobPhaseCompleted || job.CompletedAt == nil ||
+				job.CompletedAt.After(metadataCutoff) {
+				continue
+			}
+			pruned, pruneErr := service.store.PruneCompletedJobMetadata(
+				ctx,
+				job.ID,
+				metadataCutoff,
+				request.DryRun,
+			)
+			if pruneErr != nil {
+				return result, fmt.Errorf("clean job metadata %s: %w", job.ID, pruneErr)
+			}
+			if pruned {
+				result.Jobs++
 			}
 		}
 	}

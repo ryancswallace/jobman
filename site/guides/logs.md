@@ -53,13 +53,18 @@ Cleanup is dry-run by default:
 ```console
 $ jobman clean
 $ jobman clean --older-than 30d
-$ jobman clean --dry-run=false --force
+$ jobman clean --force
+$ jobman clean --all --force
 ```
 
 Policy cleanup evaluates configured age, per-job run and byte limits, store
 job limits, and total log bytes. It prunes completed-run logs before deleting
 eligible metadata and never removes active state. Metadata remains while an
 unresolved dependency, notification, or admission needs it.
+
+`--force` applies the selected plan instead of the default dry run. Use
+`--all --force` to remove every eligible completed job and its logs regardless
+of retention policy. Omit `--force` to preview that operation.
 
 Explicit `--older-than` cleanup does not require valid configuration. Do not
 delete files below the state root directly.

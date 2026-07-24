@@ -193,3 +193,31 @@ func TestServicePolicyCleanPrunesExpiredMetadata(test *testing.T) {
 		test.Fatalf("Inspect(pruned) error = %v, want not found", err)
 	}
 }
+
+func TestServiceCleanAllPrunesCompletedMetadata(test *testing.T) {
+	test.Parallel()
+	service, clock := newTestService(test)
+	job, _, _ := completeCapturedRun(test, service, clock)
+
+	preview, err := service.Clean(test.Context(), CleanRequest{All: true, DryRun: true})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if preview.Runs != 1 || preview.Jobs != 1 {
+		test.Fatalf("Clean(all dry run) = %+v, want one run and one job", preview)
+	}
+	if _, inspectErr := service.Inspect(test.Context(), job.ID.String()); inspectErr != nil {
+		test.Fatalf("Inspect(after dry run) error = %v", inspectErr)
+	}
+
+	result, err := service.Clean(test.Context(), CleanRequest{All: true})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if result.Runs != 1 || result.Jobs != 1 {
+		test.Fatalf("Clean(all) = %+v, want one run and one job", result)
+	}
+	if _, err := service.Inspect(test.Context(), job.ID.String()); !errors.Is(err, ErrNotFound) {
+		test.Fatalf("Inspect(pruned) error = %v, want not found", err)
+	}
+}

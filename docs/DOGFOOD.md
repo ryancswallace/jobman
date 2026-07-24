@@ -496,8 +496,8 @@ Create configuration layers at every precedence level. Confirm origins,
 trusted-project enforcement, unknown-key rejection, and that malformed config
 does not prevent `list`, `status`, `show`, `logs`, `cancel`, or `doctor`. Apply
 store-wide concurrency with `config apply`, `run`, `rerun`, and policy-based
-`clean`; confirm explicit `clean --older-than` does not become an authority
-operation.
+`clean`; confirm `clean --all` and explicit `clean --older-than` do not become
+authority operations.
 
 Put unique canary values in fields named `token`, `password`, and a configured
 redaction pattern. Confirm canaries do not appear in human diagnostics, JSON,
