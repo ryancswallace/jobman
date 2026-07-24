@@ -20,8 +20,8 @@ builds, signs, and publishes the release artifacts.
 6. An isolated SLSA generator signs provenance for every checksummed artifact
    and uploads `jobman.intoto.jsonl` to the draft GitHub release. After the
    remote checksum, signature, and provenance assets are verified, the workflow
-   publishes the GitHub release and then moves the stable `latest` container
-   alias to its already signed immutable image.
+   publishes the exact draft by numeric release ID and then moves the stable
+   `latest` container alias to its already signed immutable image.
 7. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
@@ -121,6 +121,12 @@ The isolated SLSA provenance job additionally receives `actions: read`,
 by a complete release tag such as `v2.1.0`: its verifier currently rejects a
 commit-SHA reference. This is an intentional exception to the repository's
 normal action-pinning policy. Dependabot monitors the tag for updates.
+
+The **Publish staged release** recovery workflow receives `actions: read` and
+`contents: write`. It can publish an already-staged stable draft but cannot
+rebuild artifacts, sign new content, push packages, or move a container alias.
+It runs under the protected `main` environment and shares
+`devel/verify-publish-release.sh` with the normal release workflow.
 
 In **Settings → Actions → General → Workflow permissions**, enable **Allow
 GitHub Actions to create and approve pull requests** so the post-release and
@@ -286,14 +292,36 @@ the input from publishing an arbitrary repository tag.
 
 This path also recovers the narrow failure window in which semantic-release
 successfully pushed the tag but did not create the draft GitHub release. If
-`main` has advanced since the tagged release attempt, do not use an old-tag
-workflow dispatch: publish a newly tested patch release instead.
+`main` has advanced since the tagged release attempt, do not use this
+rebuilding workflow for the old tag.
 
 If no release exists yet, GoReleaser creates the draft; otherwise, recovery
 keeps the incomplete release private while replacing its asset set. Run it only
 while the tag is still at current `main`. Never undraft an incomplete
 replacement manually: first complete a successful retry and verify every
 checksummed asset, the checksum signature, and provenance.
+
+If **Build and stage release** and the complete SLSA provenance job succeeded,
+but **Publish complete release** failed before making the draft public, retain
+the tag, draft, assets, provenance, signatures, and versioned images. Do not
+rebuild them after `main` advances. Land the workflow correction as a
+non-releasing `ci:` commit, wait for its own `main` checks, and then:
+
+1. Run **Publish staged release** from `main` with the retained stable tag and
+   approve the protected environment.
+2. Let it require successful exact-commit quality workflows, verify the signed
+   checksum and every artifact, bind the SLSA provenance and container metadata
+   to the tagged source commit, recheck the draft for concurrent changes, and
+   publish that exact numeric release ID.
+3. Run **Repair stable container alias** from `main` with the same tag. It
+   verifies the immutable image again, promotes `latest`, and resumes
+   post-release maintenance.
+
+This publish-only path intentionally supports stable drafts, not prereleases.
+It also rejects a tag that is not reachable from `main` or is older than an
+already-published stable version. A rerun of the original failed job continues
+to use the workflow definition from its original commit and therefore cannot
+pick up a later workflow fix.
 
 If the GitHub release is already public but only the mutable GHCR `latest`
 alias failed to move, do not rebuild or redraft the release. Run the **Repair
@@ -319,6 +347,9 @@ Before retrying, diagnose the failed publishing stage:
   an empty file;
 - a duplicate asset error should be handled automatically by GoReleaser's
   `replace_existing_artifacts` setting.
+- a `404 Not Found` from `GET /releases/tags/<tag>` while the release is still
+  a draft means the published-release-only REST lookup was used. Drafts must be
+  resolved through GraphQL and then read or updated by numeric release ID.
 
 Only remove a tag or release when it points at the wrong commit or exposed an
 artifact that must be revoked. Document that incident before publishing a new

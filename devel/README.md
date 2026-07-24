@@ -15,6 +15,9 @@ the shipped Jobman binary.
   workload, and persistent-state contract to local and digest-pinned images.
 - `check-release.sh` verifies tracked release records and the contents,
   checksums, SBOM inventory, and embedded metadata of a built release snapshot.
+- `verify-publish-release.sh` verifies a staged draft's exact asset inventory,
+  signatures, provenance, source commit, and versioned container image before
+  publishing that draft by numeric GitHub release ID.
 - `updates/` contains deterministic repository-maintenance scripts.
 
 Run the utilities through the Makefile so paths and validation stay consistent:
