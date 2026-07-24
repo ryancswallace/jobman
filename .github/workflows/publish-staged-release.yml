@@ -1,0 +1,163 @@
+---
+name: Publish staged release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Unpublished staged stable tag to verify and publish (for example, v1.0.0)
+        required: true
+        type: string
+
+concurrency:
+  group: jobman-release
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  publish:
+    name: Verify and publish retained draft
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: write
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/jobman/releases
+
+    steps:
+      - name: Checkout trusted publication logic
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate retained release candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable semantic version tag such as v1.0.0." >&2
+            exit 1
+          fi
+
+          git fetch --force origin \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          source_commit=$(git rev-parse --verify \
+            "refs/tags/${RELEASE_TAG}^{commit}")
+          if [[ ! "${source_commit}" =~ ^[0-9a-f]{40}$ ]] ||
+             ! git merge-base --is-ancestor "${source_commit}" origin/main; then
+            echo "${RELEASE_TAG} does not identify a commit reachable from main." >&2
+            exit 1
+          fi
+
+          release_record=$(gh api graphql \
+            -f query="query(\$owner:String!,\$name:String!,\$tag:String!){repository(owner:\$owner,name:\$name){release(tagName:\$tag){databaseId isDraft isPrerelease tagName}}}" \
+            -F owner="${GITHUB_REPOSITORY_OWNER}" \
+            -F name="${GITHUB_REPOSITORY#*/}" \
+            -F tag="${RELEASE_TAG}" \
+            --jq 'if .data.repository.release == null then "" else [.data.repository.release.databaseId, .data.repository.release.isDraft, .data.repository.release.isPrerelease, .data.repository.release.tagName] | @tsv end')
+          IFS=$'\t' read -r release_id is_draft is_prerelease release_tag \
+            <<< "${release_record}"
+          if [[ ! "${release_id}" =~ ^[0-9]+$ ||
+                "${is_draft}" != "true" ||
+                "${is_prerelease}" != "false" ||
+                "${release_tag}" != "${RELEASE_TAG}" ]]; then
+            echo "Could not resolve the exact stable draft ${RELEASE_TAG}." >&2
+            exit 1
+          fi
+
+          published_stable_tags=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' |
+            grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' ||
+            true)
+          if [[ -n "${published_stable_tags}" ]]; then
+            newest_tag=$(printf '%s\n%s\n' \
+              "${published_stable_tags}" "${RELEASE_TAG}" |
+              LC_ALL=C sort -V | tail -n 1)
+            if [[ "${newest_tag}" != "${RELEASE_TAG}" ]]; then
+              echo "A newer stable release than ${RELEASE_TAG} is already public." >&2
+              exit 1
+            fi
+          fi
+
+          required_workflows=(
+            "Test"
+            "CodeQL"
+            "Fuzz"
+            "Docs site"
+            "Docs links"
+            "OpenSSF Scorecard"
+          )
+          mapfile -t runs < <(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${source_commit}&event=push&per_page=100" \
+              --jq '.workflow_runs[] | [.name, .status, (.conclusion // "")] | @tsv'
+          )
+          for expected in "${required_workflows[@]}"; do
+            succeeded=false
+            for run in "${runs[@]}"; do
+              IFS=$'\t' read -r name status conclusion <<< "${run}"
+              if [[ "${name}" == "${expected}" &&
+                    "${status}" == "completed" &&
+                    "${conclusion}" == "success" ]]; then
+                succeeded=true
+                break
+              fi
+            done
+            if [[ "${succeeded}" != "true" ]]; then
+              echo "${expected} has no successful run on ${source_commit}." >&2
+              exit 1
+            fi
+          done
+
+          echo "source_commit=${source_commit}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: >-
+            image=moby/buildkit@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install SLSA verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
+
+      - name: Resolve immutable release image
+        id: image
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          image=ghcr.io/ryancswallace/jobman
+          image_digest=$(docker buildx imagetools inspect \
+            "${image}:${RELEASE_TAG}" --format '{{.Manifest.Digest}}')
+          plain_digest=$(docker buildx imagetools inspect \
+            "${image}:${RELEASE_TAG#v}" --format '{{.Manifest.Digest}}')
+          if [[ ! "${image_digest}" =~ ^sha256:[0-9a-f]{64}$ ||
+                "${plain_digest}" != "${image_digest}" ]]; then
+            echo "The staged versioned image tags are missing or inconsistent." >&2
+            exit 1
+          fi
+          echo "digest=${image_digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify remote assets and publish retained draft
+        env:
+          EXPECTED_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          EXPECTED_SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTE_LATEST: "false"
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: ./devel/verify-publish-release.sh
+
+      - name: Describe required alias repair
+        run: |
+          echo "The GitHub release is public and verified."
+          echo "Run the Repair stable container alias workflow for ${{ inputs.tag }}."

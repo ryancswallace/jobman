@@ -476,6 +476,13 @@ jobs:
       packages: write
 
     steps:
+      - name: Checkout verified publication logic
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.release.outputs.source_commit }}
+
       - name: Set up Docker Buildx for stable alias promotion
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
@@ -500,158 +507,6 @@ jobs:
           EXPECTED_IMAGE_DIGEST: ${{ needs.release.outputs.image_digest }}
           EXPECTED_SOURCE_COMMIT: ${{ needs.release.outputs.source_commit }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTE_LATEST: "true"
           RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
-        run: |
-          release_id=$(gh api \
-            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            --jq .id)
-          if [[ ! "${release_id}" =~ ^[0-9]+$ ]]; then
-            echo "Could not resolve draft ${RELEASE_TAG}." >&2
-            exit 1
-          fi
-          asset_records=$(gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?per_page=100" \
-            --jq '.[] | [.name, (.digest // "")] | @tsv')
-          asset_list=$(printf '%s\n' "${asset_records}" | awk -F '\t' '{ print $1 }')
-          version=${RELEASE_TAG#v}
-          checksum_name="jobman_${version}_checksums.txt"
-          signature_name="${checksum_name}.sigstore.json"
-
-          for required in \
-            "${checksum_name}" \
-            "${signature_name}" \
-            jobman.intoto.jsonl; do
-            if ! grep -Fqx "${required}" <<< "${asset_list}"; then
-              echo "Draft ${RELEASE_TAG} is missing ${required}" >&2
-              exit 1
-            fi
-          done
-
-          download_dir="${RUNNER_TEMP}/jobman-release-assets"
-          mkdir -p "${download_dir}"
-          gh release download "${RELEASE_TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --dir "${download_dir}"
-          test -s "${download_dir}/${checksum_name}"
-          test -s "${download_dir}/${signature_name}"
-          test -s "${download_dir}/jobman.intoto.jsonl"
-
-          expected_assets="${RUNNER_TEMP}/jobman-expected-assets.txt"
-          actual_assets="${RUNNER_TEMP}/jobman-actual-assets.txt"
-          awk '{ print $2 }' "${download_dir}/${checksum_name}" > "${expected_assets}"
-          printf '%s\n' \
-            "${checksum_name}" \
-            "${signature_name}" \
-            jobman.intoto.jsonl >> "${expected_assets}"
-          LC_ALL=C sort -u -o "${expected_assets}" "${expected_assets}"
-          printf '%s\n' "${asset_list}" | LC_ALL=C sort > "${actual_assets}"
-          if [[ -n "$(uniq -d "${actual_assets}")" ]]; then
-            echo "Draft ${RELEASE_TAG} contains duplicate asset names." >&2
-            exit 1
-          fi
-          if ! diff -u "${expected_assets}" "${actual_assets}"; then
-            echo "Draft ${RELEASE_TAG} contains an incomplete or unchecksummed asset set." >&2
-            exit 1
-          fi
-
-          artifact_paths=()
-          while read -r digest artifact; do
-            if [[ ! "${digest}" =~ ^[0-9a-f]{64}$ || \
-                  ! "${artifact}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-              echo "Invalid checksum-manifest record: ${digest} ${artifact}" >&2
-              exit 1
-            fi
-            remote_digest=$(awk -F '\t' -v artifact="${artifact}" '
-              $1 == artifact { value = $2; matches++ }
-              END {
-                if (matches != 1) exit 1
-                print value
-              }
-            ' <<< "${asset_records}") || {
-              echo "Draft ${RELEASE_TAG} is missing checksummed asset ${artifact}" >&2
-              exit 1
-            }
-            if [[ "${remote_digest}" != "sha256:${digest}" ]]; then
-              echo "Remote digest for ${artifact} is ${remote_digest}; expected sha256:${digest}" >&2
-              exit 1
-            fi
-            test -s "${download_dir}/${artifact}"
-            artifact_paths+=("${download_dir}/${artifact}")
-          done < "${download_dir}/${checksum_name}"
-
-          if [[ ${#artifact_paths[@]} -eq 0 ]]; then
-            echo "The release checksum manifest contains no artifacts." >&2
-            exit 1
-          fi
-
-          cosign verify-blob \
-            --bundle "${download_dir}/${signature_name}" \
-            --certificate-identity \
-              'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${download_dir}/${checksum_name}"
-          (
-            cd "${download_dir}"
-            sha256sum --check "${checksum_name}"
-          )
-          slsa-verifier verify-artifact \
-            "${artifact_paths[@]}" \
-            --provenance-path "${download_dir}/jobman.intoto.jsonl" \
-            --source-uri github.com/ryancswallace/jobman \
-            --source-branch main
-
-          provenance_source=$(jq -er \
-            '.dsseEnvelope.payload | @base64d | fromjson |
-             .predicate.invocation.configSource.uri' \
-            "${download_dir}/jobman.intoto.jsonl")
-          provenance_commit=$(jq -er \
-            '.dsseEnvelope.payload | @base64d | fromjson |
-             .predicate.invocation.configSource.digest.sha1' \
-            "${download_dir}/jobman.intoto.jsonl")
-          expected_source='git+https://github.com/ryancswallace/jobman@refs/heads/main'
-          if [[ "${provenance_source}" != "${expected_source}" || \
-                "${provenance_commit}" != "${EXPECTED_SOURCE_COMMIT}" ]]; then
-            echo "SLSA provenance does not identify the approved source commit." >&2
-            exit 1
-          fi
-
-          image=ghcr.io/ryancswallace/jobman
-          for image_tag in "${RELEASE_TAG}" "${RELEASE_TAG#v}"; do
-            current_image_digest=$(docker buildx imagetools inspect \
-              "${image}:${image_tag}" --format '{{.Manifest.Digest}}')
-            if [[ "${current_image_digest}" != "${EXPECTED_IMAGE_DIGEST}" ]]; then
-              echo "Release image ${image_tag} changed after verification: ${current_image_digest}" >&2
-              exit 1
-            fi
-          done
-          cosign verify \
-            --certificate-identity \
-              'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${image}@${EXPECTED_IMAGE_DIGEST}"
-
-          if [[ "${RELEASE_TAG}" == *-* ]]; then
-            gh release edit "${RELEASE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --draft=false \
-              --latest=false \
-              --prerelease
-          else
-            # The immutable version tags are uploaded and signed during the
-            # draft stage. Publish the verified release before moving the
-            # mutable alias; a failed alias update leaves only `latest` stale.
-            gh release edit "${RELEASE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --draft=false \
-              --latest \
-              --prerelease=false
-            docker buildx imagetools create \
-              --tag "${image}:latest" \
-              "${image}@${EXPECTED_IMAGE_DIGEST}"
-            latest_digest=$(docker buildx imagetools inspect \
-              "${image}:latest" --format '{{.Manifest.Digest}}')
-            if [[ "${latest_digest}" != "${EXPECTED_IMAGE_DIGEST}" ]]; then
-              echo "latest does not resolve to the verified release digest." >&2
-              exit 1
-            fi
-          fi
+        run: ./devel/verify-publish-release.sh
