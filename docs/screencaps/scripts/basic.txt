@@ -1,0 +1,31 @@
+ZDOTDIR="$PWD/.asciinema-zsh" asciinema rec \
+  --command "zsh -d" \
+  --idle-time-limit 1.5 \
+  --overwrite \
+  casts/basic-demo.cast
+
+DEMO_ROOT=$(mktemp -d)
+jobman() { ./bin/jobman --state-dir "$DEMO_ROOT/state" "$@"; }
+jobman clean --all --force
+clear
+
+
+---
+jobman --version
+
+jobman run --name demo -- sh -c 'echo sleeping...; sleep 10; echo done'
+
+jobman list
+
+jobman logs -f demo
+
+jobman show demo
+---
+
+
+agg \
+  --select 1.3.. \
+  --idle-time-limit 1.5 \
+  --font-size 16 \
+  casts/basic.cast \
+  gifs/basic.gif

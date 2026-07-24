@@ -1,0 +1,28 @@
+ZDOTDIR="$PWD/.asciinema-zsh" asciinema rec \
+  --command "zsh -d" \
+  --idle-time-limit 1.5 \
+  --overwrite \
+  casts/basic-demo.cast
+
+DEMO_ROOT=$(mktemp -d)
+jobman() { ./bin/jobman --state-dir "$DEMO_ROOT/state" "$@"; }
+jobman clean --all --force
+clear
+
+
+---
+jobman run --name retry --retries 2 -- sh -c 'echo failed; exit 1'
+
+jobman wait retry
+echo $?
+
+jobman show retry
+---
+
+
+agg \
+  --select 1.3.. \
+  --idle-time-limit 1.5 \
+  --font-size 16 \
+  casts/advanced_retries.cast \
+  gifs/advanced_retries.gif
