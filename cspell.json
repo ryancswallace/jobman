@@ -13,6 +13,7 @@
         "build/**",
         "cspell.json",
         "dist/**",
+        "docs/screencaps/**",
         "go.sum",
         "THIRD_PARTY_NOTICES.md"
     ],
