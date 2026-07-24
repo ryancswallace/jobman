@@ -19,23 +19,21 @@
 adds retries, timeouts, durable logs, dependencies, concurrency controls, and
 notifications without a resident service.
 
-## Demo
+## Basic demo
 
-<!--
-Terminal demo GIF goes here.
-
+<!-- markdownlint-disable MD033 -->
 <p align="center">
-  <img src="docs/screencaps/jobman-beginner.gif"
+  <img src="docs/screencaps/gifs/basic-demo.gif"
        alt="A beginner Jobman terminal demo"
        width="900">
 </p>
--->
+<!-- markdownlint-enable MD033 -->
 
 Follow the [first-job guide] for a copy-paste introduction.
 
 ## Features
 
-| Capability | What Jobman provides |
+| Capability | Jobman provides... |
 | --- | --- |
 | Daemonless execution | A per-job supervisor that requires no shared service or privileged installation |
 | Durable state | Inspectable job metadata and logs stored in a private per-user directory |

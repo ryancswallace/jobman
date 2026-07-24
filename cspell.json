@@ -107,6 +107,7 @@
         "Fstypename",
         "funlen",
         "fuzztime",
+        "gifs",
         "goarch",
         "GOBIN",
         "gocheckcompilerdirectives",
