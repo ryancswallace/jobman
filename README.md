@@ -23,8 +23,8 @@ notifications without a resident service.
 
 <!-- markdownlint-disable MD033 -->
 <p align="center">
-  <img src="docs/screencaps/gifs/basic-demo.gif"
-       alt="A beginner Jobman terminal demo"
+  <img src="docs/screencaps/gif/basic.gif"
+       alt="A beginner Jobman demo"
        width="900">
 </p>
 <!-- markdownlint-enable MD033 -->
