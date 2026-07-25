@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .DELETE_ON_ERROR:
-.NOTPARALLEL: check
+.NOTPARALLEL: check screencast screencasts
 
 # Validation targets must not take over the terminal with an interactive pager.
 # Individual commands can still opt into one outside the Makefile.
@@ -41,6 +41,7 @@ GEN_NOTICES := ./devel/thirdpartynotices
 UPDATE_SCRIPTS := ./devel/updates
 RELEASE_CHECK := ./devel/check-release.sh
 CONTAINER_SMOKE := ./devel/container-smoke.sh
+SCREENCASTS := ./devel/screencasts.sh
 
 GO ?= go
 DOCKER ?= docker
@@ -52,6 +53,7 @@ GORELEASER_VERSION ?= v2.17.0
 ACTIONLINT_VERSION ?= v1.7.12
 GOVULNCHECK_VERSION ?= v1.6.0
 SYFT_VERSION ?= v1.46.0
+VHS_VERSION ?= v0.11.0
 CSPELL_VERSION ?= 10.0.1
 
 GOLANGCI_LINT ?= $(BIN_DIR)/golangci-lint
@@ -60,6 +62,8 @@ ACTIONLINT ?= $(BIN_DIR)/actionlint
 GOVULNCHECK ?= $(BIN_DIR)/govulncheck
 SYFT ?= $(BIN_DIR)/syft
 SYFT_VERSION_FILE := $(BIN_DIR)/.syft-$(SYFT_VERSION)
+VHS ?= $(BIN_DIR)/vhs
+TAPE ?=
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || printf '%s' dev)
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf '%s' unknown)
@@ -102,7 +106,7 @@ go-version-check: ## Verify the active Go toolchain matches go.version exactly.
 	fi
 
 .PHONY: tools
-tools: tool-golangci-lint tool-goreleaser tool-actionlint tool-govulncheck tool-syft ## Install pinned development tools into bin/ when absent.
+tools: tool-golangci-lint tool-goreleaser tool-actionlint tool-govulncheck tool-syft tool-vhs ## Install pinned development tools into bin/ when absent.
 
 .PHONY: tool-golangci-lint
 tool-golangci-lint:
@@ -154,6 +158,15 @@ tool-syft:
 		touch '$(SYFT_VERSION_FILE)'; \
 	fi
 
+.PHONY: tool-vhs
+tool-vhs:
+	@if ! $(VHS) --version 2>/dev/null; then \
+		echo "Installing VHS $(VHS_VERSION) into $(BIN_DIR)/"; \
+		mkdir -p $(BIN_DIR); \
+		GOBIN=$(abspath $(BIN_DIR)) $(GO) install \
+			github.com/charmbracelet/vhs@$(VHS_VERSION); \
+	fi
+
 .PHONY: versions
 versions: ## Print the versions used by development and release tooling.
 	@printf 'project:        %s\n' '$(VERSION)'
@@ -169,6 +182,8 @@ versions: ## Print the versions used by development and release tooling.
 	@$(GOVULNCHECK) -version
 	@$(MAKE) --no-print-directory tool-syft
 	@$(SYFT) version
+	@$(MAKE) --no-print-directory tool-vhs
+	@$(VHS) --version
 
 .PHONY: download
 download: ## Download and verify Go module dependencies.
@@ -327,8 +342,31 @@ notices-check: go-version-check ## Verify the tracked third-party notices match 
 gen-all: gen-manpage gen-completions gen-site gen-notices ## Generate every derived repository asset.
 generate: gen-all
 
+.PHONY: screencast-check
+screencast-check: ## Validate tape declarations and the tracked GIF/WebM inventory.
+	$(SCREENCASTS) check
+
+.PHONY: screencast-deps-check
+screencast-deps-check: ## Verify the native VHS recording dependencies are available.
+	$(SCREENCASTS) dependencies
+
+.PHONY: screencast _require-tape
+_require-tape:
+	@if [[ -z '$(TAPE)' ]]; then \
+		echo 'TAPE is required; for example: make screencast TAPE=basic' >&2; \
+		exit 2; \
+	fi
+
+screencast: _require-tape screencast-deps-check build tool-vhs ## Render one VHS tape; pass TAPE=basic (or a .tape path).
+	$(SCREENCASTS) render '$(abspath $(VHS))' '$(TAPE)'
+
+.PHONY: screencasts gen-screencasts
+screencasts: screencast-deps-check build tool-vhs ## Render every VHS tape to tracked GIF and WebM files.
+	$(SCREENCASTS) render '$(abspath $(VHS))'
+gen-screencasts: screencasts
+
 .PHONY: docs-check
-docs-check: ## Check Markdown whitespace and generated documentation assets.
+docs-check: screencast-check ## Check Markdown whitespace and generated documentation assets.
 	@if git --no-pager grep -nI -E '[[:blank:]]+$$' -- '*.md'; then \
 		echo 'Markdown files contain trailing whitespace.' >&2; \
 		exit 1; \
@@ -383,8 +421,10 @@ run: build ## Build and run jobman; pass arguments with ARGS='...'.
 	$(BIN_DIR)/$(PROJECT) $(ARGS)
 
 .PHONY: docker-check
-docker-check: ## Validate the Dockerfile without building an image.
+docker-check: ## Validate the runtime and devcontainer Dockerfiles without building images.
 	$(DOCKER) build --progress=$(DOCKER_PROGRESS) --check .
+	$(DOCKER) build --progress=$(DOCKER_PROGRESS) --check \
+		--file .devcontainer/Dockerfile .devcontainer
 
 .PHONY: docker-image
 docker-image: ## Build the local container image.
@@ -471,5 +511,5 @@ clean: clean-generated ## Remove build, release, and test artifacts.
 clean-tools: ## Remove tools installed into bin/ by this Makefile.
 	$(RM) $(BIN_DIR)/golangci-lint $(BIN_DIR)/goreleaser
 	$(RM) $(BIN_DIR)/actionlint $(BIN_DIR)/govulncheck
-	$(RM) $(BIN_DIR)/syft
+	$(RM) $(BIN_DIR)/syft $(BIN_DIR)/vhs
 	$(RM) $(BIN_DIR)/.syft-*

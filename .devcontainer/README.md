@@ -9,6 +9,8 @@ It provides:
     `make bootstrap`.
 * GitHub CLI for pull request and release workflows.
 * Docker-outside-of-Docker for optional local container checks.
+* VHS recording prerequisites (`ffmpeg`, `ttyd`, and `zsh`) for the tracked
+    terminal screencasts.
 * VS Code recommendations for Go, Markdown, CSpell, GitHub Actions, containers,
     YAML, and Makefile.
 
@@ -17,6 +19,9 @@ which means the devcontainer should be treated as a trusted development
 environment. Keep local secrets in your editor, Codespaces secrets, or ignored
 shell environment files. The shared configuration has no required host mounts
 or environment files, so a clean clone can start without local preparation.
+Container setup runs `make screencast-deps-check` before downloading the module
+graph so a missing recording dependency fails during setup rather than during a
+render.
 
 ## Local Runtime Options
 

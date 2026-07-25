@@ -7,6 +7,8 @@ the shipped Jobman binary.
 - `dogfood/` contains disposable evidence, process-tree, notifier, and bounded
   soak helpers used by the release-candidate runbook in `docs/DOGFOOD.md`.
 - `manpages/` generates manual pages from the Cobra command tree.
+- `screencasts.sh` validates and renders the VHS terminal demos tracked under
+  `docs/screencaps/`.
 - `sitedocs/` stages the published manual, imports canonical contracts, checks
   internal links, and generates the web command reference from Cobra.
 - `thirdpartynotices/` generates the tracked license and patent notices for the
@@ -24,6 +26,7 @@ Run the utilities through the Makefile so paths and validation stay consistent:
 
 ```console
 make gen-all
+make screencasts
 make release-check
 make snapshot
 make update

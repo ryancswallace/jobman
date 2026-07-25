@@ -11,7 +11,7 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "remoteUser": "vscode",
-  "updateContentCommand": "go mod download",
+  "updateContentCommand": "make screencast-deps-check && go mod download",
   "customizations": {
     "vscode": {
       "extensions": [

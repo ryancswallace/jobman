@@ -11,7 +11,7 @@ Set Padding 24
 Hide
 Type `DEMO_ROOT=$(mktemp -d)`
 Enter
-Type `jobman() { ./bin/jobman --state-dir "$DEMO_ROOT/state" "$@"; }`
+Type `jobman() { ../../bin/jobman --state-dir "$DEMO_ROOT/state" "$@"; }`
 Enter
 Type `jobman clean --all --force`
 Enter
@@ -41,3 +41,11 @@ Enter
 Sleep 500ms
 Enter
 Sleep 3s
+
+Hide
+Type `jobman clean --all --force`
+Enter
+Wait
+Type `rm -rf "$DEMO_ROOT"`
+Enter
+Wait
