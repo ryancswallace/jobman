@@ -14,6 +14,7 @@
 [![Go version](https://img.shields.io/github/go-mod/go-version/ryancswallace/jobman)](https://github.com/ryancswallace/jobman/blob/main/go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman/jobman)
 [![Documentation](https://img.shields.io/badge/docs-jobman.tech-blue)](https://jobman.tech/)
+[![OSS hosting by Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-Cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com/)
 
 Jobman is a daemonless CLI for running and managing local background jobs. It
 adds retries, timeouts, durable logs, dependencies, concurrency controls, and
@@ -108,6 +109,7 @@ See the [configuration reference], [sample configuration], and
 
 | Method | Starting point |
 | --- | --- |
+| RPM repository | Configure the signed Cloudsmith repository, then run `sudo dnf install jobman` |
 | Release archive or Linux package | Download and verify an artifact from [GitHub Releases] |
 | Go toolchain | `go install github.com/ryancswallace/jobman@latest` |
 | Source checkout | Clone the repository, then run `make install` |

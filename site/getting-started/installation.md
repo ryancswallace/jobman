@@ -70,6 +70,23 @@ jobman_<version>_windows_amd64.zip
 Linux releases also include `.apk`, `.deb`, and `.rpm` packages. Every release
 includes a checksum manifest, a Sigstore bundle, SBOMs, and provenance.
 
+### Install from the RPM repository
+
+On Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux, Amazon Linux, and other
+DNF-compatible systems, configure Jobman's public Cloudsmith repository:
+
+```sh
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/jobman/stable/cfg/setup/bash.rpm.sh' |
+  sudo -E bash
+sudo dnf install jobman
+```
+
+The setup script configures Cloudsmith's distribution-neutral repository and
+its signing key. Review the script before running it if local policy prohibits
+piping a network response to a privileged shell. Subsequent stable releases
+are available through `sudo dnf upgrade jobman`.
+
 Verify the signed checksum manifest before trusting an archive:
 
 ```console

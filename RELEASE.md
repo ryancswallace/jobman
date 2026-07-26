@@ -22,9 +22,11 @@ builds, signs, and publishes the release artifacts.
    remote checksum, signature, and provenance assets are verified, the workflow
    publishes the exact draft by numeric release ID and then moves the stable
    `latest` container alias to its already signed immutable image.
-7. After the release is public, the workflow publishes the generated Homebrew
-   formula to `ryancswallace/homebrew-tap`. This ordering prevents the tap from
-   advertising assets that are still private in a draft release.
+7. After a stable release is public, the workflow publishes its verified RPMs
+   to the public `jobman/stable` Cloudsmith repository and publishes the
+   generated Homebrew formula to `ryancswallace/homebrew-tap`. This ordering
+   prevents either package repository from advertising assets that are still
+   private in a draft release.
 8. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
@@ -120,6 +122,25 @@ is required. Keep these workflow permissions enabled:
 - `packages: write` for GHCR;
 - `id-token: write` for keyless Sigstore signing;
 - `attestations: write` and `artifact-metadata: write` for provenance.
+
+Cloudsmith publication uses GitHub OIDC rather than a stored API key. In the
+`jobman` Cloudsmith workspace, create a service account whose slug is
+`github-actions`, grant it permission to push only to the `stable` repository,
+and associate it with a GitHub OIDC provider restricted to the
+`ryancswallace/jobman` repository, the protected `main` environment, and the
+default branch. Configure the provider's audience as
+`https://github.com/ryancswallace`; the protected jobs use the subject
+`repo:ryancswallace/jobman:environment:main`. The release, staged-release
+recovery, and manual RPM repair jobs request short-lived credentials for that
+service account. Keep the Cloudsmith repository public and classified as open
+source.
+
+RPM publication is idempotent. Before uploading, the shared publication script
+requires an already-public stable GitHub release, verifies its keyless signed
+checksum manifest, verifies all three expected RPM checksums, and refuses to
+replace a Cloudsmith package with different bytes. If publication fails after
+the GitHub release becomes public, dispatch **Publish RPM release** from `main`
+with the existing stable tag; it verifies and publishes only missing RPMs.
 
 Create `HOMEBREW_TAP_TOKEN` as a fine-grained personal access token restricted
 to the `ryancswallace/homebrew-tap` repository with **Contents: read and

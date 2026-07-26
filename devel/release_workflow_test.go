@@ -71,7 +71,9 @@ func TestReleaseWorkflowsShareProtectedPublicationHelper(t *testing.T) {
 		"name: main",
 		"actions: read",
 		"contents: write",
+		"id-token: write",
 		"run: ./devel/verify-publish-release.sh",
+		"run: ./devel/publish-cloudsmith-rpms.sh",
 		`PROMOTE_LATEST: "false"`,
 	} {
 		if !strings.Contains(recoveryWorkflow, required) {
@@ -80,13 +82,65 @@ func TestReleaseWorkflowsShareProtectedPublicationHelper(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"packages: write",
-		"id-token: write",
 		"gh release edit",
 		"/releases/tags/",
+		"secrets.CLOUDSMITH",
 	} {
 		if strings.Contains(recoveryWorkflow, forbidden) {
 			t.Errorf("staged-release workflow contains excessive or unsafe operation %q", forbidden)
 		}
+	}
+}
+
+func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
+	t.Parallel()
+
+	releaseWorkflow := readRepositoryFile(t, "../.github/workflows/release.yml")
+	repairWorkflow := readRepositoryFile(
+		t,
+		"../.github/workflows/publish-cloudsmith-rpms.yml",
+	)
+	for name, contents := range map[string]string{
+		"release": releaseWorkflow,
+		"repair":  repairWorkflow,
+	} {
+		for _, required := range []string{
+			"id-token: write",
+			"environment:",
+			"name: main",
+			"cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16",
+			"oidc-audience: https://github.com/ryancswallace",
+			"oidc-namespace: jobman",
+			"oidc-service-slug: github-actions",
+			"publish-cloudsmith-rpms.sh",
+		} {
+			if !strings.Contains(contents, required) {
+				t.Errorf("%s workflow is missing %q", name, required)
+			}
+		}
+		if strings.Contains(contents, "secrets.CLOUDSMITH") {
+			t.Errorf("%s workflow uses a long-lived Cloudsmith secret", name)
+		}
+	}
+
+	helper := readRepositoryFile(t, "publish-cloudsmith-rpms.sh")
+	for _, required := range []string{
+		"gh release view",
+		"cosign verify-blob",
+		"sha256sum --check",
+		"any-distro/any-version",
+		"checksum_sha256",
+	} {
+		if !strings.Contains(helper, required) {
+			t.Errorf("Cloudsmith publication helper is missing %q", required)
+		}
+	}
+	info, err := os.Stat("publish-cloudsmith-rpms.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Error("Cloudsmith publication helper is not executable")
 	}
 }
 

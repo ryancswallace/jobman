@@ -8,6 +8,11 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Added a signed public RPM repository backed by Cloudsmith, with OIDC-based
+  release publication and an idempotent repair workflow.
+
 ## [1.1.1] - 2026-07-26
 
 ### Fixed

@@ -24,6 +24,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      id-token: write
     environment:
       name: main
       url: https://github.com/ryancswallace/jobman/releases
@@ -204,6 +205,18 @@ jobs:
           git add Formula/jobman.rb
           git commit -m "jobman ${RELEASE_TAG#v}"
           git push origin HEAD:main
+
+      - name: Authenticate to Cloudsmith with GitHub OIDC
+        uses: cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16 # v2.0.3
+        with:
+          oidc-audience: https://github.com/ryancswallace
+          oidc-namespace: jobman
+          oidc-service-slug: github-actions
+
+      - name: Publish recovered RPMs to Cloudsmith
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./devel/publish-cloudsmith-rpms.sh "${{ inputs.tag }}"
 
       - name: Describe required alias repair
         run: |
