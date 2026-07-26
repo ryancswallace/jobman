@@ -145,7 +145,7 @@ var formulaTemplate = template.Must(template.New("formula").Parse(`class Jobman 
 
   test do
     assert_match version.to_s, shell_output("#{bin}/jobman --version")
-    system bin/"jobman", "config", "validate", etc/"jobman/jobman.yml"
+    assert_match "system\t", shell_output("#{bin}/jobman config paths")
   end
 end
 `))
