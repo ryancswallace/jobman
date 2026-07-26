@@ -5,7 +5,7 @@
 
 repository:
   description: "A daemon-less command line job manager with flexible support for retries, timeouts, logging, notifications, and more."
-  homepage: "https://ryancswallace.github.io/jobman/"
+  homepage: "https://jobman.tech/"
   topics: "background-jobs, cli, command-line, daemonless, go, job-manager, logging, monitoring-tool, nohup, notifications, process-supervisor, retries, timeouts"
   has_issues: true
   has_projects: false

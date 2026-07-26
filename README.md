@@ -13,7 +13,7 @@
 [![Latest release](https://img.shields.io/github/v/release/ryancswallace/jobman?sort=semver)](https://github.com/ryancswallace/jobman/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/ryancswallace/jobman)](https://github.com/ryancswallace/jobman/blob/main/go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman/jobman.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman/jobman)
-[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue)](https://ryancswallace.github.io/jobman/)
+[![Documentation](https://img.shields.io/badge/docs-jobman.tech-blue)](https://jobman.tech/)
 
 Jobman is a daemonless CLI for running and managing local background jobs. It
 adds retries, timeouts, durable logs, dependencies, concurrency controls, and
@@ -173,20 +173,20 @@ Jobman is available under the [MIT License](LICENSE). Release binaries also
 include the components and terms in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-[command reference]: https://ryancswallace.github.io/jobman/reference/commands/
-[compatibility contract]: https://ryancswallace.github.io/jobman/reference/compatibility/
-[configuration reference]: https://ryancswallace.github.io/jobman/reference/configuration/
-[container guide]: https://ryancswallace.github.io/jobman/guides/containers/
+[command reference]: https://jobman.tech/reference/commands/
+[compatibility contract]: https://jobman.tech/reference/compatibility/
+[configuration reference]: https://jobman.tech/reference/configuration/
+[container guide]: https://jobman.tech/guides/containers/
 [design documentation]: docs/design/README.md
-[first-job guide]: https://ryancswallace.github.io/jobman/getting-started/first-job/
-[getting started]: https://ryancswallace.github.io/jobman/getting-started/
+[first-job guide]: https://jobman.tech/getting-started/first-job/
+[getting started]: https://jobman.tech/getting-started/
 [GitHub Releases]: https://github.com/ryancswallace/jobman/releases
-[installation guide]: https://ryancswallace.github.io/jobman/getting-started/installation/
+[installation guide]: https://jobman.tech/getting-started/installation/
 [issue tracker]: https://github.com/ryancswallace/jobman/issues
-[operations guides]: https://ryancswallace.github.io/jobman/operations/
+[operations guides]: https://jobman.tech/operations/
 [persisted-schema reference]: docs/design/PERSISTED_SCHEMA.md
-[platform support reference]: https://ryancswallace.github.io/jobman/reference/platforms/
+[platform support reference]: https://jobman.tech/reference/platforms/
 [release and artifact verification guide]: RELEASE.md
 [sample configuration]: etc/jobman/jobman.yml
 [security policy]: SECURITY.md
-[user guides]: https://ryancswallace.github.io/jobman/guides/
+[user guides]: https://jobman.tech/guides/

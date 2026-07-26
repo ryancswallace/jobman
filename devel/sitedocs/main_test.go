@@ -46,6 +46,14 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 			t.Fatalf("generated %s is empty", relative)
 		}
 	}
+	config, err := os.ReadFile(filepath.Join(outputRoot, "_config.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), "url: https://jobman.tech") ||
+		!strings.Contains(string(config), "baseurl: \"\"") {
+		t.Fatalf("generated site config does not use the production custom domain:\n%s", config)
+	}
 	if _, err := os.Stat(filepath.Join(outputRoot, "README.md")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("staged README stat error = %v, want not exist", err)
 	}

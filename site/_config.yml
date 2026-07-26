@@ -1,7 +1,7 @@
 title: Jobman Documentation
 description: Run and manage durable command-line jobs without a shared daemon.
-url: https://ryancswallace.github.io
-baseurl: /jobman
+url: https://jobman.tech
+baseurl: ""
 repository: ryancswallace/jobman
 
 remote_theme: just-the-docs/just-the-docs@v0.12.0

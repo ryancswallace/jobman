@@ -13,4 +13,4 @@ Run `make docs` to regenerate and validate documentation. Generated man pages
 and completions are intentionally ignored by Git and are built from the tagged
 source during a release.
 
-[Jobman documentation site]: https://ryancswallace.github.io/jobman/
+[Jobman documentation site]: https://jobman.tech/

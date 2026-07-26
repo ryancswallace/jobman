@@ -11,3 +11,9 @@ validate generation, spelling, internal links, and the production-equivalent
 Jekyll build. `.github/workflows/docs-links.yml` checks published HTTPS links
 on relevant changes and weekly; deliberate example endpoints are excluded.
 Do not commit `_site/`, `site/_site/`, `site-build/`, or other generated output.
+
+The production site uses the `jobman.tech` apex domain configured in
+`_config.yml`. Because Pages is deployed by a custom GitHub Actions workflow,
+configure the custom domain in the repository's Pages settings and configure
+the apex and `www` DNS records at the DNS provider; a repository `CNAME` file
+is ignored by this deployment mode.
