@@ -178,6 +178,17 @@ jobs:
             -checksums "generated-formula/jobman_${RELEASE_TAG#v}_checksums.txt" \
             -output generated-formula/jobman.rb
 
+      - name: Verify Homebrew tap token
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ "$(gh api repos/ryancswallace/homebrew-tap \
+            --jq '.permissions.push')" != "true" ]]; then
+            echo "HOMEBREW_TAP_TOKEN cannot push to ryancswallace/homebrew-tap." >&2
+            echo "Grant the fine-grained token Contents: read and write for that repository." >&2
+            exit 1
+          fi
+
       - name: Checkout Homebrew tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

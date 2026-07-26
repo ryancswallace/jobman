@@ -151,6 +151,20 @@ the `main` environment. The Homebrew publication job receives no write
 permission through `GITHUB_TOKEN`; it runs only after the verified Jobman
 release is public.
 
+When creating or editing the token, select `ryancswallace` as its resource
+owner, choose **Only select repositories**, explicitly select
+`homebrew-tap`, and set **Repository permissions → Contents** to **Read and
+write**. Replace the environment secret whenever the token is regenerated or
+expires. The workflows query the repository API before checkout and fail early
+unless the token reports push permission. Repository branch protection or
+rulesets must also permit this token's owner to update `main`.
+
+If Homebrew publication fails after the GitHub release becomes public, fix the
+token or repository rule and dispatch **Publish Homebrew formula** from `main`
+with the existing stable tag. The repair workflow regenerates the formula only
+from that public release's checksum manifest and does not rebuild or modify
+release artifacts.
+
 The isolated SLSA provenance job additionally receives `actions: read`,
 `contents: write`, and `id-token: write`. The SLSA generator must be referenced
 by a complete release tag such as `v2.1.0`: its verifier currently rejects a

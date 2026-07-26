@@ -1,0 +1,114 @@
+---
+name: Publish Homebrew formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable tag to publish or repair (for example, v1.2.3)
+        required: true
+        type: string
+
+concurrency:
+  group: jobman-homebrew
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  publish:
+    name: Publish verified formula to Homebrew tap
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/homebrew-tap
+
+    steps:
+      - name: Checkout trusted formula generator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate published stable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable semantic version tag such as v1.2.3." >&2
+            exit 1
+          fi
+          release_state=$(gh release view "${RELEASE_TAG}" \
+            --json isDraft,isPrerelease,tagName \
+            --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')
+          IFS=$'\t' read -r is_draft is_prerelease resolved_tag \
+            <<< "${release_state}"
+          if [[ "${is_draft}" != "false" ||
+                "${is_prerelease}" != "false" ||
+                "${resolved_tag}" != "${RELEASE_TAG}" ]]; then
+            echo "${RELEASE_TAG} is not the exact published stable release." >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.5"
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Generate formula from published checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p generated-formula
+          gh release download "${RELEASE_TAG}" \
+            --pattern "jobman_${RELEASE_TAG#v}_checksums.txt" \
+            --dir generated-formula
+          go run ./devel/homebrewformula \
+            -checksums "generated-formula/jobman_${RELEASE_TAG#v}_checksums.txt" \
+            -output generated-formula/jobman.rb
+
+      - name: Verify Homebrew tap token
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ "$(gh api repos/ryancswallace/homebrew-tap \
+            --jq '.permissions.push')" != "true" ]]; then
+            echo "HOMEBREW_TAP_TOKEN cannot push to ryancswallace/homebrew-tap." >&2
+            echo "Grant the fine-grained token Contents: read and write for that repository." >&2
+            exit 1
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ryancswallace/homebrew-tap
+          path: homebrew-tap
+          persist-credentials: true
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Publish verified formula
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          formula=generated-formula/jobman.rb
+          test -s "${formula}"
+          grep -Eq "version \"v?${RELEASE_TAG#v}\"" "${formula}"
+          grep -Fq "/releases/download/${RELEASE_TAG}/" "${formula}"
+          install -m 0644 "${formula}" homebrew-tap/Formula/jobman.rb
+          cd homebrew-tap
+          if git diff --quiet -- Formula/jobman.rb; then
+            echo "Homebrew formula already describes ${RELEASE_TAG}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/jobman.rb
+          git commit -m "jobman ${RELEASE_TAG#v}"
+          git push origin HEAD:main

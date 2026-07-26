@@ -144,6 +144,46 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 	}
 }
 
+func TestHomebrewPublicationChecksTokenAndIsRepairable(t *testing.T) {
+	t.Parallel()
+
+	releaseWorkflow := readRepositoryFile(t, "../.github/workflows/release.yml")
+	recoveryWorkflow := readRepositoryFile(
+		t,
+		"../.github/workflows/publish-staged-release.yml",
+	)
+	repairWorkflow := readRepositoryFile(
+		t,
+		"../.github/workflows/publish-homebrew-formula.yml",
+	)
+	for name, contents := range map[string]string{
+		"release":  releaseWorkflow,
+		"recovery": recoveryWorkflow,
+		"repair":   repairWorkflow,
+	} {
+		for _, required := range []string{
+			"secrets.HOMEBREW_TAP_TOKEN",
+			"gh api repos/ryancswallace/homebrew-tap",
+			"--jq '.permissions.push'",
+			"repository: ryancswallace/homebrew-tap",
+			"git push origin HEAD:main",
+		} {
+			if !strings.Contains(contents, required) {
+				t.Errorf("%s workflow is missing %q", name, required)
+			}
+		}
+	}
+	for _, required := range []string{
+		"name: main",
+		"Validate published stable release",
+		"Generate formula from published checksums",
+	} {
+		if !strings.Contains(repairWorkflow, required) {
+			t.Errorf("Homebrew repair workflow is missing %q", required)
+		}
+	}
+}
+
 func TestVerifyPublishReleasePublishesExactDraft(t *testing.T) {
 	t.Parallel()
 
