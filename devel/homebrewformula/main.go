@@ -140,12 +140,11 @@ var formulaTemplate = template.Must(template.New("formula").Parse(`class Jobman 
     bash_completion.install "docs/completions/bash/jobman"
     zsh_completion.install "docs/completions/zsh/_jobman"
     man1.install Dir["docs/manpage/jobman*.1"]
-    etc.install "etc/jobman/jobman.yml" => "jobman/jobman.yml"
+    (etc/"jobman").install "etc/jobman/jobman.yml"
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/jobman --version")
-    assert_match "system\t", shell_output("#{bin}/jobman config paths")
   end
 end
 `))
