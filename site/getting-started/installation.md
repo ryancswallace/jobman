@@ -174,7 +174,8 @@ guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smar
 Use the command matching the target system after verifying the package. The
 package installs the binary, man page, Bash/Zsh completions, project and
 third-party license notices, and a preserved sample configuration at
-`/etc/jobman/jobman.yml`:
+`/etc/jobman/jobman.yml`. It also installs the Bash completion framework and
+Zsh so both completion scripts are usable:
 
 ```sh
 sudo apt install ./jobman_1.0.0_linux_amd64.deb
@@ -184,7 +185,8 @@ sudo apk add --allow-untrusted ./jobman_1.0.0_linux_amd64.apk
 
 Run only one of these commands. The packaged system configuration contains safe
 defaults; a user's configuration overrides it, and runtime state remains
-per-user by default.
+per-user by default. Start a new shell after installation so it discovers the
+new completion script.
 
 ## macOS signing status
 

@@ -933,7 +933,9 @@ sudo apk del jobman
 
 Run only the block for the VM's native package manager. Confirm package removal
 does not delete user state and that `/etc/jobman/jobman.yml` follows the package
-manager's configuration-preservation semantics. On macOS, install and remove
+manager's configuration-preservation semantics. Start a new shell after
+installation and confirm that `jobman ru<Tab>` completes to `jobman run` in
+both Bash and Zsh. On macOS, install and remove
 the verified `darwin` archive manually. Jobman v1 intentionally has no
 Homebrew Cask until its macOS binaries are Apple Developer ID signed and
 notarized; do not treat an `xattr` quarantine bypass as package acceptance.

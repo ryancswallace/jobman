@@ -105,6 +105,12 @@ nfpms:
       - apk
       - deb
       - rpm
+    # The files below are inert unless the shells' completion frameworks are
+    # available. Keep this a hard dependency so installing any native package
+    # fulfills the documented completion contract without manual setup.
+    dependencies:
+      - bash-completion
+      - zsh
     contents:
       - src: LICENSE
         dst: /usr/share/licenses/jobman/LICENSE
@@ -119,6 +125,13 @@ nfpms:
         dst: /usr/share/bash-completion/completions/jobman
       - src: docs/completions/zsh/_jobman
         dst: /usr/share/zsh/vendor-completions/_jobman
+        packager: deb
+      - src: docs/completions/zsh/_jobman
+        dst: /usr/share/zsh/site-functions/_jobman
+        packager: rpm
+      - src: docs/completions/zsh/_jobman
+        dst: /usr/share/zsh/site-functions/_jobman
+        packager: apk
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"

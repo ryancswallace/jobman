@@ -8,6 +8,11 @@ semantic-release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made native Linux packages install functional Bash and Zsh completions,
+  including their runtime dependencies and distribution-specific Zsh paths.
+
 ## [1.1.0] - 2026-07-24
 
 ## [1.0.1] - 2026-07-24
