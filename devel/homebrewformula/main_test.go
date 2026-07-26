@@ -36,7 +36,10 @@ func TestRun(t *testing.T) {
 		`sha256 "` + amd64Digest + `"`,
 		"/releases/download/v1.2.3/jobman_1.2.3_darwin_arm64.tar.gz",
 		`sha256 "` + arm64Digest + `"`,
+		`bash_completion.install "docs/completions/bash/jobman"`,
 		`zsh_completion.install "docs/completions/zsh/_jobman"`,
+		`(etc/"jobman").install "etc/jobman/jobman.yml"`,
+		`assert_match version.to_s, shell_output("#{bin}/jobman --version")`,
 	} {
 		if !strings.Contains(string(formula), want) {
 			t.Errorf("formula does not contain %q", want)
