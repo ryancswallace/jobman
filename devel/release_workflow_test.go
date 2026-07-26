@@ -111,7 +111,7 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 			"cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16",
 			"oidc-audience: https://github.com/ryancswallace",
 			"oidc-namespace: jobman",
-			"oidc-service-slug: github-actions",
+			"oidc-service-slug: github-actions-m651",
 			"publish-cloudsmith-rpms.sh",
 		} {
 			if !strings.Contains(contents, required) {

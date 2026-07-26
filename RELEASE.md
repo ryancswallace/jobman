@@ -125,8 +125,8 @@ is required. Keep these workflow permissions enabled:
 
 Cloudsmith publication uses GitHub OIDC rather than a stored API key. In the
 `jobman` Cloudsmith workspace, create a service account whose slug is
-`github-actions`, grant it permission to push only to the `stable` repository,
-and associate it with a GitHub OIDC provider restricted to the
+`github-actions-m651`, grant it permission to push only to the `stable`
+repository, and associate it with a GitHub OIDC provider restricted to the
 `ryancswallace/jobman` repository, the protected `main` environment, and the
 default branch. Configure the provider's audience as
 `https://github.com/ryancswallace`; the protected jobs use the subject
