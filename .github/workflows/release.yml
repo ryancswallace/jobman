@@ -347,6 +347,23 @@ jobs:
       - name: Verify staged artifact set
         run: make artifact-check
 
+      - name: Generate and verify Homebrew formula
+        run: |
+          go run ./devel/homebrewformula \
+            -checksums dist/jobman_*_checksums.txt \
+            -output dist/jobman.rb
+          grep -Fq 'bash_completion.install "docs/completions/bash/jobman"' \
+            dist/jobman.rb
+          grep -Fq 'zsh_completion.install "docs/completions/zsh/_jobman"' \
+            dist/jobman.rb
+
+      - name: Preserve Homebrew formula for verified publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: homebrew-formula
+          path: dist/jobman.rb
+          retention-days: 5
+
       - name: Prepare artifact attestation input
         id: provenance-subjects
         run: |
@@ -510,3 +527,51 @@ jobs:
           PROMOTE_LATEST: "true"
           RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
         run: ./devel/verify-publish-release.sh
+
+  homebrew:
+    name: Publish Homebrew formula
+    needs:
+      - release
+      - publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/homebrew-tap
+
+    steps:
+      - name: Download staged Homebrew formula
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: homebrew-formula
+          path: generated-formula
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ryancswallace/homebrew-tap
+          path: homebrew-tap
+          persist-credentials: true
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Publish verified formula
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+        run: |
+          formula=generated-formula/jobman.rb
+          test -s "${formula}"
+          grep -Eq "version \"v?${RELEASE_TAG#v}\"" "${formula}"
+          grep -Fq "/releases/download/${RELEASE_TAG}/" "${formula}"
+          install -m 0644 "${formula}" homebrew-tap/Formula/jobman.rb
+          cd homebrew-tap
+          if git diff --quiet -- Formula/jobman.rb; then
+            echo "Homebrew formula already describes ${RELEASE_TAG}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/jobman.rb
+          git commit -m "jobman ${RELEASE_TAG#v}"
+          git push origin HEAD:main

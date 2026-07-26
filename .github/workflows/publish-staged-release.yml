@@ -157,6 +157,54 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: ./devel/verify-publish-release.sh
 
+      - name: Set up Go for Homebrew formula generation
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.5"
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Generate Homebrew formula from published checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p generated-formula
+          gh release download "${RELEASE_TAG}" \
+            --pattern "jobman_${RELEASE_TAG#v}_checksums.txt" \
+            --dir generated-formula
+          go run ./devel/homebrewformula \
+            -checksums "generated-formula/jobman_${RELEASE_TAG#v}_checksums.txt" \
+            -output generated-formula/jobman.rb
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ryancswallace/homebrew-tap
+          path: homebrew-tap
+          persist-credentials: true
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Publish recovered Homebrew formula
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          formula=generated-formula/jobman.rb
+          test -s "${formula}"
+          grep -Eq "version \"v?${RELEASE_TAG#v}\"" "${formula}"
+          grep -Fq "/releases/download/${RELEASE_TAG}/" "${formula}"
+          install -m 0644 "${formula}" homebrew-tap/Formula/jobman.rb
+          cd homebrew-tap
+          if git diff --quiet -- Formula/jobman.rb; then
+            echo "Homebrew formula already describes ${RELEASE_TAG}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/jobman.rb
+          git commit -m "jobman ${RELEASE_TAG#v}"
+          git push origin HEAD:main
+
       - name: Describe required alias repair
         run: |
           echo "The GitHub release is public and verified."

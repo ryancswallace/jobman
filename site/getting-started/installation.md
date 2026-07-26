@@ -25,7 +25,7 @@ Windows Server 2016 or later.
 | Operating system | Release architectures | Distribution |
 | --- | --- | --- |
 | Linux | `amd64`, `arm64`, `386` | `.tar.gz`, `.deb`, `.rpm`, `.apk`, container (`amd64`/`arm64`) |
-| macOS | `amd64`, `arm64` | portable `.tar.gz` |
+| macOS | `amd64`, `arm64` | Homebrew formula, portable `.tar.gz` |
 | Windows | `amd64`, `arm64`, `386` | portable `.zip` |
 
 Every listed target receives a release-style compile check. Lifecycle and race
@@ -34,6 +34,26 @@ system; cross-compiled architectures do not receive identical native evidence.
 The state directory must be on a local filesystem with reliable SQLite WAL
 locking. Jobs are scoped to the current OS user session even though they can
 survive closing the submitting terminal or SSH connection.
+
+## Install with Homebrew on macOS
+
+Install Jobman from its project-maintained tap:
+
+```sh
+brew install ryancswallace/tap/jobman
+```
+
+The formula selects the Intel or Apple Silicon release archive and installs the
+binary, man pages, sample configuration, and Bash and Zsh completions. Start a
+new shell after installation so it discovers the completions. Upgrade with
+`brew upgrade ryancswallace/tap/jobman` and remove it with
+`brew uninstall jobman`.
+
+The formula uses the same checksummed release archives described below. The
+macOS executable is not yet Apple Developer ID signed or notarized, so
+Gatekeeper may require the explicit per-application approval described under
+the archive installation instructions. The formula does not remove quarantine
+attributes or disable Gatekeeper.
 
 ## Release archives and Linux packages
 
@@ -190,13 +210,11 @@ new completion script.
 
 ## macOS signing status
 
-Jobman v1 does not publish a Homebrew Cask. The release archives have signed
-checksums and provenance, but the macOS executable is not yet Apple Developer
-ID signed and notarized. Use the verified `darwin` archive instructions above;
-the manual Gatekeeper approval may therefore be required. The project
-deliberately does not install an `xattr` hook that bypasses quarantine. A future
-package-manager channel must add native signing and notarization plus
-installation tests first.
+The Homebrew formula and portable archives use the same release binaries. They
+are covered by checksums, signatures, and provenance, but are not yet Apple
+Developer ID signed or notarized. The manual Gatekeeper approval may therefore
+be required. The project deliberately does not install an `xattr` hook that
+bypasses quarantine.
 
 ## Container image
 

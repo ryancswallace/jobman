@@ -22,7 +22,10 @@ builds, signs, and publishes the release artifacts.
    remote checksum, signature, and provenance assets are verified, the workflow
    publishes the exact draft by numeric release ID and then moves the stable
    `latest` container alias to its already signed immutable image.
-7. If there are no releasable commits, the workflow exits successfully without
+7. After the release is public, the workflow publishes the generated Homebrew
+   formula to `ryancswallace/homebrew-tap`. This ordering prevents the tap from
+   advertising assets that are still private in a draft release.
+8. If there are no releasable commits, the workflow exits successfully without
    creating a tag or publishing artifacts.
 
 Release jobs are serialized and are never cancelled in progress. The workflow
@@ -90,14 +93,15 @@ remains public while `latest` remains on the preceding stable version; run the
 **Repair stable container alias** workflow with the published tag to repair
 that channel without rebuilding public artifacts.
 
-Jobman v1 does not publish a Homebrew Cask. Its portable macOS archives are
-covered by checksums, Sigstore, and provenance, but the executable is not Apple
-Developer ID signed or notarized. A Cask would therefore be unreliable under
-Gatekeeper unless it removed the quarantine attribute, which this project does
-not accept as a production signing substitute. The installation guide documents
-Apple's explicit per-application approval for users who accept that limitation.
-Add a macOS package-manager channel only after native signing, notarization, and
-install/uninstall evidence are automated.
+After GoReleaser stages the release, Jobman's formula generator reads its
+checksum manifest and creates a formula for the same Intel and Apple Silicon
+archives. The formula, including installation rules for man pages, sample
+configuration, and Bash/Zsh completions, is carried between jobs as a
+short-lived workflow artifact and is pushed to `ryancswallace/homebrew-tap`
+only after the matching GitHub release becomes public. The executable is not
+Apple Developer ID signed or notarized, and the formula does not remove
+quarantine attributes. The installation guide documents Apple's explicit
+per-application approval for users who accept that limitation.
 
 The portable Windows executables are likewise not Authenticode signed. Their
 checksums, Sigstore bundle, attestations, and provenance authenticate release
@@ -108,13 +112,23 @@ and native install evidence in the release workflow.
 
 ## Repository configuration
 
-The workflow uses GitHub's short-lived `GITHUB_TOKEN`; no repository PAT or GPG
-private key is required. Keep these workflow permissions enabled:
+The workflow uses GitHub's short-lived `GITHUB_TOKEN` for Jobman releases and a
+separate `HOMEBREW_TAP_TOKEN` secret only for the tap update. No GPG private key
+is required. Keep these workflow permissions enabled:
 
 - `contents: write` for tags, releases, and assets;
 - `packages: write` for GHCR;
 - `id-token: write` for keyless Sigstore signing;
 - `attestations: write` and `artifact-metadata: write` for provenance.
+
+Create `HOMEBREW_TAP_TOKEN` as a fine-grained personal access token restricted
+to the `ryancswallace/homebrew-tap` repository with **Contents: read and
+write**. Store it as a secret in the Jobman repository's protected `main`
+environment. Do not grant it access to the Jobman repository, releases,
+packages, workflows, or administration. Every job that reads this secret uses
+the `main` environment. The Homebrew publication job receives no write
+permission through `GITHUB_TOKEN`; it runs only after the verified Jobman
+release is public.
 
 The isolated SLSA provenance job additionally receives `actions: read`,
 `contents: write`, and `id-token: write`. The SLSA generator must be referenced

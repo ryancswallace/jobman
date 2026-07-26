@@ -13,6 +13,11 @@ semantic-release.
 - Made native Linux packages install functional Bash and Zsh completions,
   including their runtime dependencies and distribution-specific Zsh paths.
 
+### Added
+
+- Added a project-maintained Homebrew tap that installs Jobman, its man pages,
+  sample configuration, and Bash and Zsh completions on macOS.
+
 ## [1.1.0] - 2026-07-24
 
 ## [1.0.1] - 2026-07-24
