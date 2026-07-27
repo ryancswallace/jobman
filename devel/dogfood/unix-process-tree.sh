@@ -32,8 +32,6 @@ esac
 
 umask 077
 mkdir -p "$(dirname "$pid_file")" "$(dirname "$progress_file")"
-: >"$pid_file"
-: >"$progress_file"
 
 run_progress_loop() {
 	role=$1
@@ -63,6 +61,16 @@ case ${JOBMAN_DOGFOOD_ROLE-} in
 			trap '' TERM INT
 		fi
 		run_progress_loop child
+		;;
+	'')
+		# Only the top-level process owns initialization. Child invocations
+		# append their identity and progress to the same files.
+		: >"$pid_file"
+		: >"$progress_file"
+		;;
+	*)
+		echo "unix-process-tree.sh: invalid internal role: $JOBMAN_DOGFOOD_ROLE" >&2
+		exit 2
 		;;
 esac
 
