@@ -51,33 +51,6 @@ notifications without a resident service.
 > end with the operating-system user session. Back up important state and logs
 > independently.
 
-## Quick start
-
-Submit a detached command, inspect it, and read its output:
-
-```console
-$ job_id=$(jobman run --name example -- sh -c 'printf "hello\n"; sleep 30')
-$ jobman status "$job_id"
-01980f4c-7b2a-7a6f-8c10-0123456789ab  example  running
-$ jobman logs --stream stdout "$job_id"
-hello
-$ jobman cancel "$job_id"
-01980f4c-7b2a-7a6f-8c10-0123456789ab  stopping
-```
-
-Combine dependencies, retries, backoff, and concurrency controls:
-
-```console
-$ prepare=$(jobman run --name prepare -- ./prepare-data)
-$ jobman run --name analyze --after-success "$prepare" \
-    --slots 2 --retry-backoff exponential \
-    --retry-delay 5s --retries 3 -- ./analyze
-```
-
-Target arguments are passed directly to the operating system; Jobman does not
-join them into an implicit shell command. Use an explicit shell, as in the
-first example, only when shell syntax is required.
-
 ## Command overview
 
 | Task | Commands |
@@ -91,26 +64,15 @@ Job selectors accept a full ID, a unique ID prefix of at least eight
 characters, or an unambiguous exact name. Run `jobman COMMAND --help` for all
 options, or browse the [command reference].
 
-### Configuration and state
-
-- Configuration is strict, versioned YAML.
-- Sources merge from built-in defaults through system, user, trusted project,
-  explicit-file, environment, and command-line layers.
-- Project `.jobman.yml` files load only from configured trusted roots.
-- `jobman config paths`, `config validate`, and `config show` explain the
-  effective configuration.
-- `--state-dir PATH` or `JOBMAN_STATE_DIR` selects a different local state
-  directory.
-
 See the [configuration reference], [sample configuration], and
-[persisted-schema reference] for the complete contracts.
+[persisted-schema reference] for more info.
 
 ## Installation
 
 | Method | Starting point |
 | --- | --- |
-| RPM repository | Configure the signed Cloudsmith repository, then run `sudo dnf install jobman` |
-| Release archive or Linux package | Download and verify an artifact from [GitHub Releases] |
+| RPM repository | Configure the signed repository, then run `sudo dnf install jobman` |
+| Release archive or Linux package | Download an artifact from [GitHub Releases] |
 | Go toolchain | `go install github.com/ryancswallace/jobman@latest` |
 | Source checkout | Clone the repository, then run `make install` |
 | Container | Pull `ghcr.io/ryancswallace/jobman:vX.Y.Z` |
@@ -121,22 +83,6 @@ and verification commands.
 
 Supported operating systems, architectures, lifecycle primitives, and known
 platform differences are documented in the [platform support reference].
-
-### Containers
-
-Run a single managed job with a persistent state volume:
-
-```console
-docker run --rm \
-  --volume jobman-state:/home/jobman/.local/state/jobman \
-  --volume "$PWD:/work" \
-  ghcr.io/ryancswallace/jobman:vX.Y.Z \
-  run --wait -- /work/bin/batch-job
-```
-
-The base image contains Jobman and basic runtime utilities, not arbitrary
-target commands. Read the [container guide] before deriving an image or
-running detached work.
 
 ## Documentation
 
@@ -167,13 +113,9 @@ make check
 ```
 
 `make help` lists development, test, documentation, packaging, and container
-targets. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
+targets.
 
-## License
-
-Jobman is available under the [MIT License](LICENSE). Release binaries also
-include the components and terms in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 
 [command reference]: https://jobman.tech/reference/commands/
 [compatibility contract]: https://jobman.tech/reference/compatibility/
