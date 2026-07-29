@@ -20,8 +20,6 @@ Jobman is a daemonless CLI for running and managing local background jobs. It
 adds retries, timeouts, durable logs, dependencies, concurrency controls, and
 notifications without a resident service.
 
-**Basic Demo:**
-
 <!-- markdownlint-disable MD033 -->
 <p align="center">
   <img src="docs/screencaps/gif/basic.gif"
@@ -30,7 +28,9 @@ notifications without a resident service.
 </p>
 <!-- markdownlint-enable MD033 -->
 
-Follow the [first-job guide] for a copy-paste introduction.
+> [!TIP]
+> **Read the [Jobman documentation](https://jobman.tech)** for a quickstart,
+> install instructions, user guides, and command reference.
 
 ## Features
 
