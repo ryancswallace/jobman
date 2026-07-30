@@ -51,7 +51,7 @@ Submit a named job, list it, follow its logs, and inspect its recorded state.
 Job _selectors_ accept a complete ID, a unique ID prefix of at least eight
 characters, or an unambiguous exact name.
 
-<video controls preload="metadata" width="100%">
+<video controls muted playsinline autoplay loop preload="metadata" width="100%">
   <source src="{{ site.baseurl }}/assets/videos/basic.webm" type="video/webm">
   <a href="{{ site.baseurl }}/assets/videos/basic.webm">Watch the basic job demo.</a>
 </video>
@@ -61,7 +61,7 @@ characters, or an unambiguous exact name.
 Make one job wait for another to succeed, then pause and resume the prerequisite
 while following both jobs' progress.
 
-<video controls preload="metadata" width="100%">
+<video controls muted playsinline autoplay loop preload="metadata" width="100%">
   <source src="{{ site.baseurl }}/assets/videos/dependencies.webm" type="video/webm">
   <a href="{{ site.baseurl }}/assets/videos/dependencies.webm">Watch the job dependencies demo.</a>
 </video>
@@ -71,7 +71,7 @@ while following both jobs' progress.
 Start a job with live standard input, send it a line, close the input stream,
 and review the resulting job state and logs.
 
-<video controls preload="metadata" width="100%">
+<video controls muted playsinline autoplay loop preload="metadata" width="100%">
   <source src="{{ site.baseurl }}/assets/videos/input.webm" type="video/webm">
   <a href="{{ site.baseurl }}/assets/videos/input.webm">Watch the live input demo.</a>
 </video>
@@ -81,7 +81,7 @@ and review the resulting job state and logs.
 Watch Jobman run a failing command with two configured retries, wait for it to
 finish, and report the final result.
 
-<video controls preload="metadata" width="100%">
+<video controls muted playsinline autoplay loop preload="metadata" width="100%">
   <source src="{{ site.baseurl }}/assets/videos/retries.webm" type="video/webm">
   <a href="{{ site.baseurl }}/assets/videos/retries.webm">Watch the retries demo.</a>
 </video>
@@ -91,7 +91,7 @@ finish, and report the final result.
 Apply a five-second timeout to a long-running command, wait for the timeout,
 and inspect the completed job.
 
-<video controls preload="metadata" width="100%">
+<video controls muted playsinline autoplay loop preload="metadata" width="100%">
   <source src="{{ site.baseurl }}/assets/videos/timeouts.webm" type="video/webm">
   <a href="{{ site.baseurl }}/assets/videos/timeouts.webm">Watch the run timeout demo.</a>
 </video>
