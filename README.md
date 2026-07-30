@@ -88,7 +88,7 @@ platform differences are documented in the [platform support reference].
 
 | Topic | Resource |
 | --- | --- |
-| Start here | [Getting started] and the [first-job guide] |
+| Quickstart | [Getting started] and the [first-job guide] |
 | Common workflows | [User guides] |
 | CLI | [Command reference][command reference] |
 | Configuration | [Configuration reference][configuration reference] |
