@@ -24,7 +24,7 @@ Windows Server 2016 or later.
 
 | Operating system | Release architectures | Distribution |
 | --- | --- | --- |
-| Linux | `amd64`, `arm64`, `386` | `.tar.gz`, `.deb`, `.rpm`, `.apk`, container (`amd64`/`arm64`) |
+| Linux | `amd64`, `arm64` | `.tar.gz`, `.rpm`, container (`amd64`/`arm64`) |
 | macOS | `amd64`, `arm64` | Homebrew formula, portable `.tar.gz` |
 | Windows | `amd64`, `arm64`, `386` | portable `.zip` |
 
@@ -76,10 +76,10 @@ On Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux, Amazon Linux, and other
 DNF-compatible systems, configure Jobman's public Cloudsmith repository:
 
 ```sh
-curl -1sLf \
+$ curl -1sLf \
   'https://dl.cloudsmith.io/public/jobman/stable/cfg/setup/bash.rpm.sh' |
   sudo -E bash
-sudo dnf install jobman
+$ sudo dnf install jobman
 ```
 
 The setup script configures Cloudsmith's distribution-neutral repository and
@@ -215,23 +215,12 @@ third-party license notices, and a preserved sample configuration at
 Zsh so both completion scripts are usable:
 
 ```sh
-sudo apt install ./jobman_1.0.0_linux_amd64.deb
 sudo dnf install ./jobman_1.0.0_linux_amd64.rpm
-sudo apk add --allow-untrusted ./jobman_1.0.0_linux_amd64.apk
 ```
 
-Run only one of these commands. The packaged system configuration contains safe
-defaults; a user's configuration overrides it, and runtime state remains
-per-user by default. Start a new shell after installation so it discovers the
-new completion script.
-
-## macOS signing status
-
-The Homebrew formula and portable archives use the same release binaries. They
-are covered by checksums, signatures, and provenance, but are not yet Apple
-Developer ID signed or notarized. The manual Gatekeeper approval may therefore
-be required. The project deliberately does not install an `xattr` hook that
-bypasses quarantine.
+The packaged system configuration contains safe defaults; a user's configuration
+overrides it, and runtime state remains per-user by default. Start a new shell
+after installation so it discovers the new completion script.
 
 ## Container image
 

@@ -30,6 +30,11 @@ func TestGenerateSitePublishesCompleteDeterministicTree(t *testing.T) {
 		"assets/images/logo-dark-transparent.svg",
 		"assets/images/favicon.svg",
 		"assets/images/favicon-dark.svg",
+		"assets/videos/basic.webm",
+		"assets/videos/dependencies.webm",
+		"assets/videos/input.webm",
+		"assets/videos/retries.webm",
+		"assets/videos/timeouts.webm",
 		"guides/containers.md",
 		"reference/configuration.md",
 		"reference/commands/run/index.md",
@@ -363,6 +368,9 @@ func newValidSiteFixture(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "_includes", "head_custom.html"), "<link href=\"/assets/images/favicon.svg\">\n<link href=\"/assets/images/favicon-dark.svg\">\n")
 	for _, name := range []string{"logo.svg", "logo-dark.svg", "logo-dark-transparent.svg", "favicon.svg", "favicon-dark.svg"} {
 		writeTestFile(t, filepath.Join(root, "assets", "images", name), "<svg></svg>")
+	}
+	for _, name := range demoRecordings {
+		writeTestFile(t, filepath.Join(root, "assets", "videos", name), "video")
 	}
 
 	return root

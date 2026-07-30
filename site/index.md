@@ -12,13 +12,6 @@ running shared daemon. It combines detached execution, retries, timeouts,
 dependencies, concurrency limits, retained logs, lifecycle controls, live
 input, and notifications in one local CLI.
 
-{: .important }
-These pages document the current `main` branch and the stable v1 contract.
-Compatible additions can appear here before the next tagged release; check the
-[release notes](https://github.com/ryancswallace/jobman/releases) and your
-installed command's `--help` when behavior differs. Jobman manages local
-per-user processes and state, so keep independent backups for important work.
-
 ## Get productive quickly
 
 - [Install Jobman]({{ site.baseurl }}/getting-started/installation/) from a
@@ -47,33 +40,63 @@ per-user processes and state, so keep independent backups for important work.
 - **Integration:** strict layered YAML, secret references, command callbacks,
   HTTPS webhooks, and SMTP notifications.
 
-## A small example
+## Basic examples
 
-```console
-$ jobman run --name report --retries 2 --run-timeout 5m -- ./build-report quarterly.csv
-01980f4c-7b2a-7a6f-8c10-0123456789ab
-$ jobman status 01980f4c
-01980f4c-7b2a-7a6f-8c10-0123456789ab  report  running
-$ jobman logs --follow 01980f4c
-```
+The following recordings walk through common Jobman workflows, from running a
+single command to coordinating dependencies, sending input, and handling failures.
 
-Job selectors accept a complete ID, a unique ID prefix of at least eight
-characters, or an unambiguous exact name. Target arguments after `--` are
-passed directly to the operating system; Jobman does not construct an implicit
-shell command.
+### Run and inspect a job
 
-## Choose the next topic
+Submit a named job, list it, follow its logs, and inspect its recorded state.
+Job _selectors_ accept a complete ID, a unique ID prefix of at least eight
+characters, or an unambiguous exact name.
 
-| Goal | Documentation |
-| --- | --- |
-| Make execution resilient | [Retries, repetition, and timeouts]({{ site.baseurl }}/guides/reliability/) |
-| Order related jobs | [Dependencies and wait conditions]({{ site.baseurl }}/guides/dependencies/) |
-| Bound local resource use | [Concurrency and pools]({{ site.baseurl }}/guides/concurrency/) |
-| Inspect or prune output | [Logs and retention]({{ site.baseurl }}/guides/logs/) |
-| Operate an active job | [Lifecycle controls]({{ site.baseurl }}/guides/lifecycle/) |
-| Diagnose state | [Troubleshooting]({{ site.baseurl }}/operations/troubleshooting/) |
-| Upgrade safely | [Upgrading and restoring]({{ site.baseurl }}/operations/upgrading/) |
-| Check platform behavior | [Platform support]({{ site.baseurl }}/reference/platforms/) |
+<video controls preload="metadata" width="100%">
+  <source src="{{ site.baseurl }}/assets/videos/basic.webm" type="video/webm">
+  <a href="{{ site.baseurl }}/assets/videos/basic.webm">Watch the basic job demo.</a>
+</video>
+
+### Coordinate dependent jobs
+
+Make one job wait for another to succeed, then pause and resume the prerequisite
+while following both jobs' progress.
+
+<video controls preload="metadata" width="100%">
+  <source src="{{ site.baseurl }}/assets/videos/dependencies.webm" type="video/webm">
+  <a href="{{ site.baseurl }}/assets/videos/dependencies.webm">Watch the job dependencies demo.</a>
+</video>
+
+### Send live input
+
+Start a job with live standard input, send it a line, close the input stream,
+and review the resulting job state and logs.
+
+<video controls preload="metadata" width="100%">
+  <source src="{{ site.baseurl }}/assets/videos/input.webm" type="video/webm">
+  <a href="{{ site.baseurl }}/assets/videos/input.webm">Watch the live input demo.</a>
+</video>
+
+### Retry failures
+
+Watch Jobman run a failing command with two configured retries, wait for it to
+finish, and report the final result.
+
+<video controls preload="metadata" width="100%">
+  <source src="{{ site.baseurl }}/assets/videos/retries.webm" type="video/webm">
+  <a href="{{ site.baseurl }}/assets/videos/retries.webm">Watch the retries demo.</a>
+</video>
+
+### Enforce a run timeout
+
+Apply a five-second timeout to a long-running command, wait for the timeout,
+and inspect the completed job.
+
+<video controls preload="metadata" width="100%">
+  <source src="{{ site.baseurl }}/assets/videos/timeouts.webm" type="video/webm">
+  <a href="{{ site.baseurl }}/assets/videos/timeouts.webm">Watch the run timeout demo.</a>
+</video>
+
+## License
 
 Jobman is available under the [MIT License](https://github.com/ryancswallace/jobman/blob/main/LICENSE).
 Release binaries also include the applicable
