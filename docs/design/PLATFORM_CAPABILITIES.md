@@ -1,21 +1,8 @@
-# Platform capability record
-
-Status: v1 adapters implemented and release-candidate dogfood completed;
-native evidence is repeated in GitHub Actions for every release commit
-Recorded: 2026-07-22
-Specification: [Platform requirements](SPEC.md#17-platform-requirements)
-Decision: [ADR-0001](adr/0001-per-job-supervisor.md)
-
-This record distinguishes implementation from evidence. A release is supported
-on an operating system only after its native `Test` workflow job passes for the
-release commit; cross-compilation alone is never treated as acceptance.
+# Platform requirements and capabilities
 
 Jobman v1 inherits the [Go 1.26 minimum operating-system requirements]: Linux
 kernel 3.2 or later, macOS 12 Monterey or later, and Windows 10 or Windows
-Server 2016 or later. Current GitHub-hosted Linux, macOS, and Windows runners
-provide the native evidence; older supported OS versions inherit the same Go
-runtime contract but do not receive an identical native lifecycle run for each
-Jobman release.
+Server 2016 or later.
 
 ## v1 matrix
 
@@ -39,30 +26,6 @@ runner. Release-style builds remain `CGO_ENABLED=0`. Cross-architecture build
 jobs prove compilation only; they do not replace native lifecycle or race
 evidence.
 
-## Crash-boundary evidence
-
-The Linux assembled binary is built with the opt-in `jobman_faultinject` tag.
-Production builds compile inert hooks. Tests abruptly terminate the responsible
-Jobman process at these boundaries:
-
-- after the job insert transaction;
-- after supervisor claim, before acknowledgement;
-- after acknowledgement;
-- immediately before target start;
-- after target start, before process-identity publication;
-- after process-identity publication;
-- after a raw log fsync, before its index record;
-- after an index fsync;
-- before and after run-completion commit;
-- after terminal job-completion commit; and
-- after cancellation-intent commit and after the cancellation side effect; and
-- after cleanup removes claimed log files but before pruning metadata commits.
-
-Every case must converge to a valid terminal state and pass `jobman doctor`.
-Raw bytes without an index record are treated as an unindexed tail, never as a
-valid-looking ordered suffix. An uncertain lifecycle becomes `lost`; Jobman
-does not infer success.
-
 ## Deliberate differences
 
 - Windows console control delivery is inherently dependent on console
@@ -72,17 +35,5 @@ does not infer success.
   user-visible contract is tree-wide lifecycle control, not identical signals.
 - Ending an entire operating-system user session may terminate jobs. The v1
   guarantee covers closing the submitting terminal or SSH connection.
-
-## Release gate
-
-Before publishing a supported release, confirm all three native workflow jobs
-and every declared architecture build passed on the exact release commit and
-review the scheduled soak result. The v1 release-candidate manual campaign in
-the [dogfood runbook](../DOGFOOD.md) was accepted by the maintainer on
-2026-07-22; any subsequent change to process, storage, packaging, or other
-dogfood-covered behavior requires targeted repetition before publication. A
-skipped native suite is a failed release gate, not equivalent evidence. The
-support window is defined in
-[SECURITY.md](../../SECURITY.md) and [SUPPORT.md](../../SUPPORT.md).
 
 [Go 1.26 minimum operating-system requirements]: https://go.dev/wiki/MinimumRequirements
