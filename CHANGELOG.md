@@ -8,6 +8,8 @@ semantic-release.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-03
+
 ### Changed
 
 - Made SMTP notification subjects identify the event result, job name when
@@ -357,7 +359,8 @@ Release version.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ryancswallace/jobman/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/ryancswallace/jobman/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ryancswallace/jobman/compare/v1.1.5...v1.2.0
 [1.1.5]: https://github.com/ryancswallace/jobman/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/ryancswallace/jobman/compare/v1.1.3...v1.1.4
