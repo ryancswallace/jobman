@@ -70,14 +70,14 @@ func redactField(command *cobra.Command, name, value string) string {
 }
 
 func redactJSONValue(redactor *config.Redactor, value any, field string) any {
+	if field != "" && redactor.RedactField(field, "visible") == config.Redacted {
+		return redactedJSONPlaceholder(value)
+	}
+
 	switch typed := value.(type) {
 	case map[string]any:
 		result := make(map[string]any, len(typed))
 		for name, child := range typed {
-			if _, scalar := child.(string); !scalar && redactor.RedactField(name, "visible") == config.Redacted {
-				result[name] = config.Redacted
-				continue
-			}
 			result[name] = redactJSONValue(redactor, child, name)
 		}
 
@@ -93,6 +93,23 @@ func redactJSONValue(redactor *config.Redactor, value any, field string) any {
 		return redactor.RedactField(field, typed)
 	default:
 		return value
+	}
+}
+
+func redactedJSONPlaceholder(value any) any {
+	switch value.(type) {
+	case map[string]any:
+		return map[string]any{}
+	case []any:
+		return []any{}
+	case float64:
+		return float64(0)
+	case bool:
+		return false
+	case nil:
+		return nil
+	default:
+		return config.Redacted
 	}
 }
 

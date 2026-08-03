@@ -478,6 +478,20 @@ func parseLimitFlag(name, value string) (policy.Limit, error) {
 func appendDependencyFlags(options *runOptions) ([]app.DependencyRequest, error) {
 	result := make([]app.DependencyRequest, 0,
 		len(options.afterSuccess)+len(options.afterFinish)+len(options.afterFailed)+len(options.afterOutcome))
+	for _, dependency := range []struct {
+		name      string
+		selectors []string
+	}{
+		{name: "after-success", selectors: options.afterSuccess},
+		{name: "after-finish", selectors: options.afterFinish},
+		{name: "after-failed", selectors: options.afterFailed},
+	} {
+		for _, selector := range dependency.selectors {
+			if strings.TrimSpace(selector) == "" {
+				return nil, fmt.Errorf("--%s requires a nonempty JOB selector", dependency.name)
+			}
+		}
+	}
 	for _, selector := range options.afterSuccess {
 		result = append(result, app.DependencyRequest{Selector: selector, Predicate: "success"})
 	}

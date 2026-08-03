@@ -86,6 +86,15 @@ func (options *listCommandOptions) request(command *cobra.Command) (app.ListRequ
 	if options.all {
 		options.limit = store.MaximumListLimit
 	}
+	if options.limit < 1 || options.limit > store.MaximumListLimit {
+		return app.ListRequest{}, fmt.Errorf("--limit must be between 1 and %d", store.MaximumListLimit)
+	}
+	if options.phase != "" && !model.JobPhase(options.phase).Valid() {
+		return app.ListRequest{}, fmt.Errorf("invalid --phase %q", options.phase)
+	}
+	if options.outcome != "" && !model.JobOutcome(options.outcome).Valid() {
+		return app.ListRequest{}, fmt.Errorf("invalid --outcome %q", options.outcome)
+	}
 	after, err := parseListTime("--submitted-after", options.submittedAfter)
 	if err != nil {
 		return app.ListRequest{}, err

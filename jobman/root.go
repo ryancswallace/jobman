@@ -15,6 +15,7 @@ import (
 	"github.com/ryancswallace/jobman/internal/app"
 	"github.com/ryancswallace/jobman/internal/buildinfo"
 	"github.com/ryancswallace/jobman/internal/config"
+	"github.com/ryancswallace/jobman/internal/model"
 )
 
 type openBackendFunc func(context.Context, string) (app.Backend, error)
@@ -104,12 +105,16 @@ func Execute() error {
 
 // ExitCode maps a returned command error to Jobman's stable process status.
 func ExitCode(err error) int {
+	var validationError *model.ValidationError
+
 	switch {
 	case err == nil:
 		return 0
 	case errors.Is(err, errUsage):
 		return 2
 	case errors.Is(err, config.ErrInvalid):
+		return 2
+	case errors.As(err, &validationError):
 		return 2
 	case errors.Is(err, app.ErrNotFound):
 		return 3

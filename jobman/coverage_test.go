@@ -458,6 +458,10 @@ func TestRunOptionValidationMatrix(t *testing.T) {
 		{"run", "--retries", "18446744073709551615", "--", "true"},
 		{"run", "--max-runs", "0", "--", "true"},
 		{"run", "--slots", "0", "--", "true"},
+		{"run", "--after-success", "", "--", "true"},
+		{"run", "--after-finish", "", "--", "true"},
+		{"run", "--after-failed", "", "--", "true"},
+		{"run", "--notify-on", "job_failed", "--", "true"},
 		{"run", "--wait-condition", "missing", "--", "true"},
 		{"run", "--wait-abort-at", "bad", "--", "true"},
 		{"run", "--wait-until", "bad", "--", "true"},
@@ -502,6 +506,7 @@ func TestRunOptionValidationMatrix(t *testing.T) {
 
 func TestLifecycleAndStatusCommandSuccess(t *testing.T) {
 	backend := newFakeBackend(t)
+	backend.jobs[0].Outcome = model.JobOutcomeSuccess
 	for _, arguments := range [][]string{
 		{"cancel", testJobID},
 		{"pause", testJobID},
@@ -730,6 +735,32 @@ func TestRunAppliesCompleteFlagOverlay(t *testing.T) {
 	})
 	if err != nil || stdout != testJobID+"\n" || backend.rerunRequest == nil {
 		t.Fatalf("run --rerun --wait = (%q, %v, %+v)", stdout, err, backend.rerunRequest)
+	}
+}
+
+func TestRunWaitPollOverridesNamedConditions(t *testing.T) {
+	t.Parallel()
+
+	configuration := filepath.Join(t.TempDir(), "jobman.yml")
+	if err := os.WriteFile(configuration, []byte(`---
+schema_version: 1
+wait_conditions:
+  imported:
+    type: delay
+    delay: 1h
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend := newFakeBackend(t)
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{
+		"--config", configuration,
+		"run", "--wait-condition", "imported", "--wait-poll", "25ms", "--", "true",
+	}); err != nil {
+		t.Fatalf("run with named wait condition: %v", err)
+	}
+	conditions := backend.submitRequest.ExecutionPolicy.WaitConditions
+	if len(conditions) != 1 || conditions[0].PollInterval != 25*time.Millisecond {
+		t.Fatalf("wait conditions = %+v, want named condition with 25ms poll", conditions)
 	}
 }
 

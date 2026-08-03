@@ -14,7 +14,7 @@ func newCancelCommand(dependencies dependencies, root *rootOptions) *cobra.Comma
 		Short: "Cancel the selected active run and its job",
 		Long: "Cancel the selected active run. The v1 contract also cancels the owning job, " +
 			"so no subsequent retry is started.",
-		Args: usageArgs(cobra.ExactArgs(2)),
+		Args: usageArgs(exactRunSelectorArgs),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			return withBackend(command, dependencies, root, func(backend app.Backend) error {
 				details, err := backend.Inspect(command.Context(), arguments[0])

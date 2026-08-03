@@ -608,6 +608,38 @@ func TestLifecycleAndInputCommandsUseTypedBackends(t *testing.T) {
 	}
 }
 
+func TestWaitCommandReflectsTerminalOutcome(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		outcome model.JobOutcome
+		wantErr bool
+	}{
+		{outcome: model.JobOutcomeSuccess},
+		{outcome: model.JobOutcomeFailure, wantErr: true},
+		{outcome: model.JobOutcomeTimedOut, wantErr: true},
+		{outcome: model.JobOutcomeCancelled, wantErr: true},
+		{outcome: model.JobOutcomeAborted, wantErr: true},
+	} {
+		t.Run(string(test.outcome), func(t *testing.T) {
+			t.Parallel()
+			backend := newFakeBackend(t)
+			backend.jobs[0].Outcome = test.outcome
+
+			stdout, err := executeCommand(t, dependenciesFor(backend), []string{"wait", testJobID})
+			if (err != nil) != test.wantErr {
+				t.Fatalf("wait error = %v, want error %t", err, test.wantErr)
+			}
+			if stdout != testJobID+"\t"+string(test.outcome)+"\n" {
+				t.Fatalf("wait output = %q", stdout)
+			}
+			if test.wantErr && ExitCode(err) != 1 {
+				t.Fatalf("wait exit code = %d, want 1", ExitCode(err))
+			}
+		})
+	}
+}
+
 func TestInputEOFDoesNotReadInteractiveTerminal(t *testing.T) {
 	t.Parallel()
 
@@ -786,8 +818,14 @@ func TestListShowAndCancelV1Forms(t *testing.T) {
 			t.Errorf("%v error = %v", arguments, err)
 		}
 	}
+	stdout, err = executeCommand(
+		t, dependenciesFor(backend), []string{"show", "run", testJobID, "-1", "--json"},
+	)
+	if err != nil || !strings.Contains(stdout, `"number":1`) {
+		t.Fatalf("show run with trailing --json = %q/%v", stdout, err)
+	}
 	if _, err := executeCommand(
-		t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "-1"},
+		t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "-1", "--state-dir", t.TempDir()},
 	); err != nil {
 		t.Fatalf("cancel run: %v", err)
 	}
@@ -814,6 +852,10 @@ func TestListOptionValidationAndAllLimit(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"list", "--all", "--limit", "1"},
 		{"list", "--active", "--completed"},
+		{"list", "--limit", "0"},
+		{"list", "--limit", "1001"},
+		{"list", "--phase", "invalid"},
+		{"list", "--outcome", "invalid"},
 		{"list", "--submitted-after", "bad"},
 		{"list", "--submitted-before", "bad"},
 	} {
@@ -878,6 +920,7 @@ func TestExitCode(t *testing.T) {
 		{err: nil, want: 0},
 		{err: errUsage, want: 2},
 		{err: config.ErrInvalid, want: 2},
+		{err: &model.ValidationError{Field: "job name", Reason: "invalid"}, want: 2},
 		{err: app.ErrNotFound, want: 3},
 		{err: app.ErrAmbiguous, want: 4},
 		{err: app.ErrConflict, want: 5},

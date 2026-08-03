@@ -19,7 +19,7 @@ func newShowCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 	runCommand := &cobra.Command{
 		Use:   "run JOB RUN",
 		Short: "Show one run by number or negative index",
-		Args:  usageArgs(cobra.ExactArgs(2)),
+		Args:  usageArgs(exactRunSelectorArgs),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			return showRun(command, dependencies, root, arguments[0], arguments[1], jsonOutput)
 		},
@@ -51,6 +51,20 @@ func newShowCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 	)
 
 	return command
+}
+
+func exactRunSelectorArgs(command *cobra.Command, arguments []string) error {
+	if len(arguments) <= 2 {
+		return cobra.ExactArgs(2)(command, arguments)
+	}
+	if err := command.ParseFlags(arguments[2:]); err != nil {
+		return err
+	}
+	if remaining := command.Flags().Args(); len(remaining) != 0 {
+		return fmt.Errorf("accepts 2 arg(s), received %d", 2+len(remaining))
+	}
+
+	return nil
 }
 
 func showJob(

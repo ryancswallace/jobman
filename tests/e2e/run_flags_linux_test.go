@@ -282,9 +282,8 @@ notifiers:
 		t.Fatalf("admission/metadata policy = %+v groups %v tags %v",
 			effective.Concurrency, effective.Groups, effective.Tags)
 	}
-	secret := effective.SecretEnv["API_TOKEN"]
-	if secret.Provider != "file" || secret.Name != secretPath || effective.StdinPath != stdinPath {
-		t.Fatalf("secret/stdin references = secret %+v stdin %q", secret, effective.StdinPath)
+	if len(effective.SecretEnv) != 0 || effective.StdinPath != stdinPath {
+		t.Fatalf("redacted secret/stdin references = secrets %+v stdin %q", effective.SecretEnv, effective.StdinPath)
 	}
 	if len(effective.Dependencies) != 4 || len(detail.Dependencies) != 4 || len(effective.WaitConditions) != 4 ||
 		effective.WaitMode != policy.WaitModeAll {
@@ -405,6 +404,19 @@ func testRunInputAndAttachmentFlags(t *testing.T, binary string) {
 		assertJobAndRunOutcome(t, showJob(t, binary, stateDir, jobID), "success")
 		assertLogs(t, binary, stateDir, jobID, "stdout", "waited")
 	})
+
+	t.Run("standalone wait reflects a failed outcome", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		shell := requireExecutable(t, "sh")
+		jobID := submit(t, binary, stateDir, shell, "-c", "exit 9")
+		if detail := waitForCompletedJob(t, binary, stateDir, jobID); detail.Summary.Outcome != "failure" {
+			t.Fatalf("failed job outcome = %q", detail.Summary.Outcome)
+		}
+		result := invokeWithTimeout(t, binary, stateDir, "wait", jobID)
+		if result.err == nil || result.stdout != jobID+"\tfailure\n" {
+			t.Fatalf("standalone wait = stdout %q error %v stderr %q", result.stdout, result.err, result.stderr)
+		}
+	})
 }
 
 func testRunRetryAndTimeoutFlags(t *testing.T, binary string) {
@@ -491,8 +503,9 @@ if [ "$count" -eq 1 ]; then exit 17; fi`
 			"--", shell, "-c", "exit 17",
 		)
 		detail := waitForCompletedJob(t, binary, stateDir, jobID)
-		if detail.Summary.Outcome != "failure" || len(detail.Runs) != 1 {
-			t.Fatalf("retry-abort result = %+v, want one failed run", detail)
+		if detail.Summary.Outcome != "aborted" || len(detail.Runs) != 1 ||
+			detail.Runs[0].Outcome != "failure" {
+			t.Fatalf("retry-abort result = %+v, want an aborted job after one failed run", detail)
 		}
 	})
 
@@ -547,7 +560,7 @@ if [ "$count" -eq 1 ]; then exit 17; fi`
 while :; do sleep 1; done`
 		jobID := submitRun(
 			t, binary, stateDir,
-			"--stop-grace", "50ms", "--force-after-grace=false", "--",
+			"--stop-grace", "500ms", "--force-after-grace=false", "--",
 			shell, "-c", script, "jobman-e2e", ready, graceful,
 		)
 		registerCancellationCleanup(t, binary, stateDir, jobID)
@@ -771,6 +784,9 @@ func testRunInvalidFlagCombinations(t *testing.T, binary string) {
 		{name: "retries and max runs", arguments: []string{"--retries", "1", "--max-runs", "2", "--", printf, "x"}},
 		{name: "stdin and stdin file", arguments: []string{"--stdin", "live", "--stdin-file", stdinPath, "--", printf, "x"}},
 		{name: "foreground and stdin file", arguments: []string{"--foreground", "--stdin-file", stdinPath, "--", printf, "x"}},
+		{name: "invalid job name", arguments: []string{"--name", "   ", "--", printf, "x"}},
+		{name: "empty dependency selector", arguments: []string{"--after-success", "", "--", printf, "x"}},
+		{name: "notification event without notifier", arguments: []string{"--notify-on", "job_failed", "--", printf, "x"}},
 		{name: "command without boundary", arguments: []string{printf, "x"}},
 	}
 	for _, test := range tests {

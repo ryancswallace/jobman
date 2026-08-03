@@ -54,8 +54,11 @@ func newWaitCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(command.OutOrStdout(), "%s\t%s\n", job.ID, job.Outcome)
-		return err
+		if _, err = fmt.Fprintf(command.OutOrStdout(), "%s\t%s\n", job.ID, job.Outcome); err != nil {
+			return err
+		}
+
+		return completedJobError(job)
 	})
 }
 

@@ -505,6 +505,11 @@ func applyRunOptions(
 			AbortAt: waitAbort, PollInterval: poll,
 		})
 	}
+	if flagChanged(command, "wait-poll") {
+		for index := range request.ExecutionPolicy.WaitConditions {
+			request.ExecutionPolicy.WaitConditions[index].PollInterval = poll
+		}
+	}
 	if flagChanged(command, "wait-mode") {
 		request.ExecutionPolicy.WaitMode = policy.WaitMode(options.waitMode)
 	}
@@ -548,6 +553,9 @@ func applyRunOptions(
 				model.NotificationSubscription{Notifier: name, Events: events})
 		}
 	} else if flagChanged(command, "notify-on") {
+		if len(request.ExecutionPolicy.Notifications) == 0 {
+			return errors.New("--notify-on requires an effective notifier selected by --notify or configuration")
+		}
 		for index := range request.ExecutionPolicy.Notifications {
 			request.ExecutionPolicy.Notifications[index].Events = slices.Clone(options.notificationEvents)
 		}
@@ -608,11 +616,7 @@ func attachForeground(command *cobra.Command, backend app.Backend, job model.Job
 	if err != nil {
 		return err
 	}
-	if completed.Outcome != model.JobOutcomeSuccess {
-		return fmt.Errorf("job %s completed with outcome %s", completed.ID, completed.Outcome)
-	}
-
-	return nil
+	return completedJobError(completed)
 }
 
 func pumpForegroundInput(ctx context.Context, backend app.InputBackend, selector string, source io.Reader) error {
@@ -643,6 +647,10 @@ func waitForSubmittedJob(ctx context.Context, backend app.Backend, selector stri
 	if err != nil {
 		return err
 	}
+	return completedJobError(job)
+}
+
+func completedJobError(job model.JobState) error {
 	if job.Outcome != model.JobOutcomeSuccess {
 		return fmt.Errorf("job %s completed with outcome %s", job.ID, job.Outcome)
 	}

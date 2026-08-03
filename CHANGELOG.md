@@ -14,6 +14,16 @@ semantic-release.
   present, and a short job ID, and replaced the JSON-only message part with a
   human-readable, non-secret job and run summary.
 
+### Fixed
+
+- Made `wait` return a nonzero status when a job finishes with any outcome
+  other than success.
+- Preserved JSON field types when redacting structured and scalar values so
+  typed clients can continue decoding command output.
+- Normalized invalid CLI values to usage status 2, applied `--wait-poll` to
+  imported conditions, rejected `--notify-on` without an effective notifier,
+  and accepted trailing flags after negative run selectors.
+
 ## [1.2.0] - 2026-08-03
 
 ### Added
