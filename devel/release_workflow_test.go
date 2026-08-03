@@ -92,6 +92,41 @@ func TestReleaseWorkflowsShareProtectedPublicationHelper(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflowRefreshesMainAtDecisionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	releaseWorkflow := readRepositoryFile(t, "../.github/workflows/release.yml")
+	for _, boundary := range []struct {
+		decision string
+		refresh  string
+	}{
+		{
+			decision: "- name: Select release source",
+			refresh:  "- name: Refresh current main for release decision",
+		},
+		{
+			decision: "- name: Restore approved release source",
+			refresh:  "- name: Refresh current main after approval",
+		},
+	} {
+		refreshIndex := strings.Index(releaseWorkflow, boundary.refresh)
+		decisionIndex := strings.Index(releaseWorkflow, boundary.decision)
+		switch {
+		case refreshIndex < 0:
+			t.Errorf("release workflow is missing %q", boundary.refresh)
+		case decisionIndex < 0:
+			t.Errorf("release workflow is missing %q", boundary.decision)
+		case refreshIndex > decisionIndex:
+			t.Errorf("release workflow refresh %q occurs after %q", boundary.refresh, boundary.decision)
+		}
+	}
+
+	const mainRefspec = "refs/heads/main:refs/remotes/origin/main"
+	if count := strings.Count(releaseWorkflow, mainRefspec); count != 2 {
+		t.Errorf("release workflow main refresh count = %d, want 2", count)
+	}
+}
+
 func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 	t.Parallel()
 

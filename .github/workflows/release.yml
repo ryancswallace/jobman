@@ -61,6 +61,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Refresh current main for release decision
+        run: >-
+          git fetch --force origin
+          refs/heads/main:refs/remotes/origin/main
+
       - name: Select release source
         id: source
         env:
@@ -190,6 +195,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Refresh current main after approval
+        run: >-
+          git fetch --force origin
+          refs/heads/main:refs/remotes/origin/main
 
       - name: Restore approved release source
         env:

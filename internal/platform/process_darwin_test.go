@@ -49,8 +49,8 @@ func TestDarwinOriginalProcessExitingValidation(t *testing.T) {
 
 	reused := identity
 	reused.Creation = "different process"
-	if _, err := originalProcessExiting(reused); !errors.Is(err, ErrIdentityMismatch) {
-		t.Fatalf("originalProcessExiting(reused PID) error = %v", err)
+	if _, mismatchErr := originalProcessExiting(reused); !errors.Is(mismatchErr, ErrIdentityMismatch) {
+		t.Fatalf("originalProcessExiting(reused PID) error = %v", mismatchErr)
 	}
 
 	gone := ProcessIdentity{PID: 1 << 30, Creation: "missing", Boot: "missing"}
@@ -63,19 +63,21 @@ func TestDarwinOriginalProcessExitingValidation(t *testing.T) {
 func TestDarwinOriginalProcessExiting(t *testing.T) {
 	t.Parallel()
 
-	command := exec.Command("/bin/sh", "-c", "read ignored || true")
+	command := exec.CommandContext(t.Context(), "/bin/sh", "-c", "read ignored || true")
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
+	if startErr := command.Start(); startErr != nil {
+		t.Fatal(startErr)
 	}
 	waited := false
 	t.Cleanup(func() {
 		_ = stdin.Close()
 		if !waited {
-			_ = command.Wait()
+			if waitErr := command.Wait(); waitErr != nil {
+				t.Errorf("wait for helper process: %v", waitErr)
+			}
 		}
 	})
 	identity, err := Inspect(command.Process.Pid)
