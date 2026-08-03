@@ -8,6 +8,11 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Added a product rationale page and a factual comparison guide for choosing
+  among Jobman, `nohup`, tmux, and `systemd-run`.
+
 ### Changed
 
 - Made SMTP notification subjects identify the event result, job name when

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: User guides
-nav_order: 3
+nav_order: 4
 has_children: true
 permalink: /guides/
 ---
@@ -11,6 +11,7 @@ permalink: /guides/
 These guides explain how Jobman features compose around a managed direct
 command.
 
+- [Compare Jobman with `nohup`, tmux, and `systemd-run`]({{ site.baseurl }}/guides/comparison/)
 - [Configuration and reusable policies]({{ site.baseurl }}/guides/configuration/)
 - [Retries, repetition, and timeouts]({{ site.baseurl }}/guides/reliability/)
 - [Dependencies and wait conditions]({{ site.baseurl }}/guides/dependencies/)

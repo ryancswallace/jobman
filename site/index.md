@@ -14,6 +14,9 @@ input, and notifications in one local CLI.
 
 ## Get productive quickly
 
+- Read [Why Jobman]({{ site.baseurl }}/why-jobman/) and the
+  [comparison guide]({{ site.baseurl }}/guides/comparison/) to decide whether
+  it fits your workflow.
 - [Install Jobman]({{ site.baseurl }}/getting-started/installation/) using the
   recommended package or archive for your operating system. The guide also
   covers Go, source, and container-based installation.
