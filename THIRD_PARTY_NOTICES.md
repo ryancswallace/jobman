@@ -658,9 +658,9 @@ Module: <https://pkg.go.dev/github.com/spf13/pflag@v1.0.10>
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## go.yaml.in/yaml/v3 v3.0.4
+## go.yaml.in/yaml/v3 v3.0.5
 
-Module: <https://pkg.go.dev/go.yaml.in/yaml/v3@v3.0.4>
+Module: <https://pkg.go.dev/go.yaml.in/yaml/v3@v3.0.5>
 
 ### LICENSE
 
@@ -1262,9 +1262,9 @@ Module: <https://pkg.go.dev/modernc.org/memory@v1.11.0>
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-## modernc.org/sqlite v1.54.0
+## modernc.org/sqlite v1.55.0
 
-Module: <https://pkg.go.dev/modernc.org/sqlite@v1.54.0>
+Module: <https://pkg.go.dev/modernc.org/sqlite@v1.55.0>
 
 ### LICENSE
 
