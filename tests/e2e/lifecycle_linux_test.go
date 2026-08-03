@@ -1257,9 +1257,11 @@ func TestAssembledBinaryCrashBoundaries(t *testing.T) {
 		if crashed.err == nil {
 			t.Fatalf("cleanup fault point %s did not terminate the client", point)
 		}
+		// Resume through age-based cleanup so the job metadata remains available
+		// for verifying that the interrupted log pruning was durably recorded.
 		resumed := invokeWithTimeout(
 			t, binary, stateDir,
-			"clean", jobID, "--older-than", "0s", "--dry-run=false", "--force",
+			"clean", "--older-than", "0s", "--dry-run=false", "--force",
 		)
 		if resumed.err != nil {
 			t.Fatalf("resume cleanup after crash: %v: %s", resumed.err, resumed.stderr)
