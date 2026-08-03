@@ -73,12 +73,12 @@ Start with the package or archive that fits your operating system:
 
 | Environment | Recommended for most users | Other available methods |
 | --- | --- | --- |
-| macOS | Homebrew: `brew install ryancswallace/tap/jobman` | `.tar.gz`, Go toolchain, source |
-| Fedora, RHEL, Rocky, AlmaLinux, Amazon Linux | Signed RPM repository, then `sudo dnf install jobman` | Downloaded `.rpm`, `.tar.gz`, Go toolchain, source |
-| Debian or Ubuntu | Downloaded `.deb`, then `sudo apt install ./jobman_X.Y.Z_linux_amd64.deb` | `.tar.gz`, Go toolchain, source |
-| Alpine Linux | Downloaded `.apk`, then `sudo apk add --allow-untrusted ./jobman_X.Y.Z_linux_amd64.apk` | `.tar.gz`, Go toolchain, source |
-| Other Linux | Portable `.tar.gz` release archive | Go toolchain, source |
-| Windows | Portable `.zip` release archive installed with PowerShell | Go toolchain, source |
+| macOS | [Homebrew][install-homebrew]: `brew install ryancswallace/tap/jobman` | `.tar.gz`, Go toolchain, source |
+| Fedora, RHEL, Rocky, AlmaLinux, Amazon Linux | [Signed RPM repository][install-rpm-repository], then `sudo dnf install jobman` | Downloaded `.rpm`, `.tar.gz`, Go toolchain, source |
+| Debian or Ubuntu | [Downloaded `.deb`][install-deb], then `sudo apt install ./jobman_X.Y.Z_linux_amd64.deb` | `.tar.gz`, Go toolchain, source |
+| Alpine Linux | [Downloaded `.apk`][install-apk], then `sudo apk add --allow-untrusted ./jobman_X.Y.Z_linux_amd64.apk` | `.tar.gz`, Go toolchain, source |
+| Other Linux | [Portable `.tar.gz` release archive][install-archive] | Go toolchain, source |
+| Windows | [Portable `.zip` release archive][install-windows] installed with PowerShell | Go toolchain, source |
 
 Release artifacts include signed checksums, provenance, SBOMs, man pages, and
 shell completions. Follow the [installation guide] for repository setup,
@@ -133,6 +133,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 [first-job guide]: https://jobman.tech/getting-started/first-job/
 [getting started]: https://jobman.tech/getting-started/
 [GitHub Releases]: https://github.com/ryancswallace/jobman/releases
+[install-apk]: https://jobman.tech/getting-started/installation/#install-an-apk-package-on-alpine-linux
+[install-archive]: https://jobman.tech/getting-started/installation/#install-a-portable-linux-or-macos-archive
+[install-deb]: https://jobman.tech/getting-started/installation/#install-a-deb-package-on-debian-or-ubuntu
+[install-homebrew]: https://jobman.tech/getting-started/installation/#install-with-homebrew-on-macos
+[install-rpm-repository]: https://jobman.tech/getting-started/installation/#install-from-the-rpm-repository
+[install-windows]: https://jobman.tech/getting-started/installation/#install-a-windows-zip
 [installation guide]: https://jobman.tech/getting-started/installation/
 [issue tracker]: https://github.com/ryancswallace/jobman/issues
 [operations guides]: https://jobman.tech/operations/
