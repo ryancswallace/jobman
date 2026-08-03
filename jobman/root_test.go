@@ -814,8 +814,8 @@ func TestListShowAndCancelV1Forms(t *testing.T) {
 		{"show", "run", testJobID, "-1"},
 		{"show", "run", "--json", testJobID, "1"},
 	} {
-		if _, err := executeCommand(t, dependenciesFor(backend), arguments); err != nil {
-			t.Errorf("%v error = %v", arguments, err)
+		if _, commandErr := executeCommand(t, dependenciesFor(backend), arguments); commandErr != nil {
+			t.Errorf("%v error = %v", arguments, commandErr)
 		}
 	}
 	stdout, err = executeCommand(
@@ -824,10 +824,10 @@ func TestListShowAndCancelV1Forms(t *testing.T) {
 	if err != nil || !strings.Contains(stdout, `"number":1`) {
 		t.Fatalf("show run with trailing --json = %q/%v", stdout, err)
 	}
-	if _, err := executeCommand(
+	if _, commandErr := executeCommand(
 		t, dependenciesFor(backend), []string{"cancel", "run", testJobID, "-1", "--state-dir", t.TempDir()},
-	); err != nil {
-		t.Fatalf("cancel run: %v", err)
+	); commandErr != nil {
+		t.Fatalf("cancel run: %v", commandErr)
 	}
 	if !backend.canceled {
 		t.Fatal("cancel run did not cancel owning job")
