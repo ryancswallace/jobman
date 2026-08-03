@@ -20,8 +20,8 @@ input, and notifications in one local CLI.
 - [Install Jobman]({{ site.baseurl }}/getting-started/installation/) using the
   recommended package or archive for your operating system. The guide also
   covers Go, source, and container-based installation.
-- Follow [Your first job]({{ site.baseurl }}/getting-started/first-job/) to
-  submit a command and inspect its result.
+- [Run your first managed job]({{ site.baseurl }}/getting-started/first-job/),
+  inspect its durable result, and read its captured output in about a minute.
 - Read [Core concepts]({{ site.baseurl }}/getting-started/concepts/) to
   understand jobs, runs, supervisors, and durable state.
 - Browse the generated [`jobman` command reference]({{ site.baseurl }}/reference/commands/).

@@ -379,4 +379,7 @@ $ jobman config paths
 and lifecycle health. `config paths` shows the concrete configuration files
 for the current platform without resolving secrets.
 
-Continue with [Your first job]({{ site.baseurl }}/getting-started/first-job/).
+Once `jobman --version` succeeds, continue with
+[Your first job]({{ site.baseurl }}/getting-started/first-job/). The opening
+three commands submit a managed job, inspect its durable result, and read its
+captured output in about a minute.
