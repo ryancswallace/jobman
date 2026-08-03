@@ -265,6 +265,6 @@ func cleanRequest(
 
 	return app.CleanRequest{
 		Selector: selector, OlderThan: olderThan, DryRun: effectiveDryRun,
-		UsePolicy: !all && !command.Flags().Changed("older-than"), All: all,
+		UsePolicy: selector == "" && !all && !command.Flags().Changed("older-than"), All: all,
 	}, nil
 }

@@ -37,7 +37,7 @@ Unknown and duplicate YAML keys are errors. Lists replace lower-precedence
 lists rather than appending. A project `.jobman.yml` is ignored until its
 canonical root is trusted by a user-controlled or explicit source.
 
-Inspection, cancellation, `doctor`, `clean --all`, and explicit
+Inspection, cancellation, `doctor`, `clean JOB`, `clean --all`, and explicit
 `clean --older-than` remain available without valid configuration. Use them to
 recover safely before repairing a configuration-authority command.
 

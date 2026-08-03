@@ -317,6 +317,7 @@ func TestEmergencyAndInspectionCommandsIgnoreMalformedConfiguration(t *testing.T
 		{"cancel", testJobID},
 		{"pause", testJobID},
 		{"resume", testJobID},
+		{"clean", testJobID, "--dry-run"},
 		{"clean", "--older-than", "1h", "--dry-run"},
 	}
 	for _, arguments := range commands {

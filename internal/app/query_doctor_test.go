@@ -221,3 +221,46 @@ func TestServiceCleanAllPrunesCompletedMetadata(test *testing.T) {
 		test.Fatalf("Inspect(pruned) error = %v, want not found", err)
 	}
 }
+
+func TestServiceCleanSelectedJobPrunesCompletedMetadata(test *testing.T) {
+	test.Parallel()
+	service, clock := newTestService(test)
+	job, _, _ := completeCapturedRun(test, service, clock)
+
+	tooYoung, err := service.Clean(test.Context(), CleanRequest{
+		Selector:  job.ID.String(),
+		OlderThan: time.Hour,
+		DryRun:    true,
+	})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if tooYoung != (CleanResult{}) {
+		test.Fatalf("Clean(selected too young) = %+v, want no eligible data", tooYoung)
+	}
+
+	preview, err := service.Clean(test.Context(), CleanRequest{
+		Selector: job.ID.String(),
+		DryRun:   true,
+	})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if preview.Runs != 1 || preview.Jobs != 1 {
+		test.Fatalf("Clean(selected dry run) = %+v, want one run and one job", preview)
+	}
+	if _, inspectErr := service.Inspect(test.Context(), job.ID.String()); inspectErr != nil {
+		test.Fatalf("Inspect(after selected dry run) error = %v", inspectErr)
+	}
+
+	result, err := service.Clean(test.Context(), CleanRequest{Selector: job.ID.String()})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if result.Runs != 1 || result.Jobs != 1 {
+		test.Fatalf("Clean(selected) = %+v, want one run and one job", result)
+	}
+	if _, inspectErr := service.Inspect(test.Context(), job.ID.String()); !errors.Is(inspectErr, ErrNotFound) {
+		test.Fatalf("Inspect(selected prune) error = %v, want not found", inspectErr)
+	}
+}

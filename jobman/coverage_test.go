@@ -351,8 +351,8 @@ func TestExtendedLogCleanupAndForegroundCommands(t *testing.T) {
 	if backend.cleanRequest == nil || backend.cleanRequest.OlderThan != time.Hour || backend.cleanRequest.UsePolicy {
 		t.Fatalf("Clean request = %+v", backend.cleanRequest)
 	}
-	if backend.appliedConfig != 2 || backend.configured != 2 {
-		t.Fatalf("cleanup configuration calls = applied %d configured %d, want two policy cleanups",
+	if backend.appliedConfig != 1 || backend.configured != 1 {
+		t.Fatalf("cleanup configuration calls = applied %d configured %d, want one policy cleanup",
 			backend.appliedConfig, backend.configured)
 	}
 	for _, arguments := range [][]string{
@@ -389,6 +389,25 @@ func TestCleanForceHonorsExplicitDryRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "would remove 1 runs") {
 		t.Fatalf("clean output = %q, want dry-run result", stdout)
+	}
+}
+
+func TestCleanSelectorBypassesRetentionPolicy(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+
+	if _, err := executeCommand(t, dependenciesFor(backend), []string{
+		"clean", testJobID, "--force",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if backend.cleanRequest == nil || backend.cleanRequest.Selector != testJobID ||
+		backend.cleanRequest.UsePolicy || backend.cleanRequest.DryRun {
+		t.Fatalf("Clean request = %+v, want forced explicit selection", backend.cleanRequest)
+	}
+	if backend.appliedConfig != 0 || backend.configured != 0 {
+		t.Fatalf("selected cleanup configuration calls = applied %d configured %d, want none",
+			backend.appliedConfig, backend.configured)
 	}
 }
 

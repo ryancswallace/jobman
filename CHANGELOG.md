@@ -13,6 +13,11 @@ semantic-release.
 - Added dynamic job ID completion for command arguments and flags that accept
   job selectors.
 
+### Fixed
+
+- Made `clean JOB --force` remove the selected eligible completed job and its
+  logs independently of retention policy.
+
 ## [1.1.5] - 2026-07-30
 
 ## [1.1.4] - 2026-07-26

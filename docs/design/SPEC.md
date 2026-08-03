@@ -387,10 +387,13 @@ supervisor. Any destructive invocation requires explicit `--force`; Jobman
 does not prompt when input may be non-interactive.
 
 `clean` is a policy-based dry run by default. `--force` applies the selected
-plan without requiring the redundant `--dry-run=false`. `--all` selects every
-completed job and its logs independently of retention policy or configuration;
-it cannot be combined with a job selector or `--older-than`. Dependency,
-notification, admission, and active-state safety checks still apply.
+plan without requiring the redundant `--dry-run=false`. `clean JOB` selects
+that completed job and its logs independently of retention policy or
+configuration, and `--older-than` may restrict that selection. `--all` selects
+every completed job and its logs independently of retention policy or
+configuration; it cannot be combined with a job selector or `--older-than`.
+Dependency, notification, admission, and active-state safety checks still
+apply.
 
 ### 4.13 `jobman config`
 
@@ -409,9 +412,8 @@ to exist. `validate` performs strict schema and semantic validation without
 starting a job. `apply` explicitly writes store-wide concurrency limits without
 submitting a job. `run`, `rerun`, and policy-based `clean` are also
 configuration-authority operations. Read/inspection, emergency commands,
-`doctor`, and explicit
-age-based cleanup and `clean --all` do not use configuration as a store
-authority and remain usable when it is malformed.
+`doctor`, explicitly selected or age-based cleanup, and `clean --all` do not use
+configuration as a store authority and remain usable when it is malformed.
 
 ### 4.14 `jobman doctor`
 

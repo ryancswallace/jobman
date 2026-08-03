@@ -136,6 +136,19 @@ func TestNativeAssembledBinaryLifecycle(t *testing.T) {
 		nativeInvoke(t, binary, stateDir, "cancel", jobID)
 		waitNativeCompleted(t, binary, stateDir, jobID)
 	})
+
+	t.Run("selected cleanup removes completed job", func(t *testing.T) {
+		stateDir := filepath.Join(t.TempDir(), "state")
+		jobID := nativeSubmit(t, binary, stateDir, "input")
+		waitNativeCompleted(t, binary, stateDir, jobID)
+		cleaned := nativeInvoke(t, binary, stateDir, "clean", jobID, "--force")
+		if !strings.Contains(cleaned, "removed 1 runs") || !strings.Contains(cleaned, "1 jobs") {
+			t.Fatalf("selected cleanup output = %q, want one run and one job", cleaned)
+		}
+		if listed := nativeInvoke(t, binary, stateDir, "list", "--all"); strings.Contains(listed, jobID) {
+			t.Fatalf("list after selected cleanup = %q, still contains %s", listed, jobID)
+		}
+	})
 }
 
 func TestNativeHelperProcess(t *testing.T) {

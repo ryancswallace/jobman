@@ -530,7 +530,8 @@ test "$(jm logs --stream stdout --raw "$CLEAN_ID")" = retained-log
 jm clean "$CLEAN_ID" --older-than 0s --dry-run=false --force \
   >"$EVIDENCE_DIR/clean-forced.txt"
 ! jm logs --stream stdout --raw "$CLEAN_ID"
-jm show --json "$CLEAN_ID" >"$EVIDENCE_DIR/clean-tombstone.json"
+! jm show --json "$CLEAN_ID"
+! jm list --all | grep -F "$CLEAN_ID"
 ```
 
 Also confirm active admissions, unresolved dependencies, and pending

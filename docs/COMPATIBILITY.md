@@ -38,7 +38,9 @@ forward migrations for the SQLite state schema.
   policy-based `clean` are the explicit configuration-authority paths.
 - `clean` is a dry run unless `--force` is present. `clean --all` selects every
   completed job and its logs independently of retention policy, while retaining
-  dependency, notification, admission, and active-state safety checks.
+  dependency, notification, admission, and active-state safety checks. A job
+  selector applies the same behavior to one completed job and may be combined
+  with `--older-than`.
 - `doctor` is configuration-independent. `--repair` authorizes WAL checkpoint,
   stale lifecycle reconciliation, and due-notification recovery; `--backup`
   writes a new consistent SQLite snapshot.

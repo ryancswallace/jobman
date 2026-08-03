@@ -90,9 +90,9 @@ the same settings without submitting a job:
 $ jobman config apply
 ```
 
-Inspection, lifecycle-emergency commands, `doctor`, `clean --all`, and explicit
-`clean --older-than` never apply configuration. They remain available when a
-configuration file is malformed.
+Inspection, lifecycle-emergency commands, `doctor`, `clean JOB`, `clean --all`,
+and explicit `clean --older-than` never apply configuration. They remain
+available when a configuration file is malformed.
 
 ## Continue to the schema
 
