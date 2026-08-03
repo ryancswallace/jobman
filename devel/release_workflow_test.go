@@ -111,11 +111,12 @@ func TestReleaseWorkflowRefreshesMainAtDecisionBoundaries(t *testing.T) {
 	} {
 		refreshIndex := strings.Index(releaseWorkflow, boundary.refresh)
 		decisionIndex := strings.Index(releaseWorkflow, boundary.decision)
-		if refreshIndex < 0 {
+		switch {
+		case refreshIndex < 0:
 			t.Errorf("release workflow is missing %q", boundary.refresh)
-		} else if decisionIndex < 0 {
+		case decisionIndex < 0:
 			t.Errorf("release workflow is missing %q", boundary.decision)
-		} else if refreshIndex > decisionIndex {
+		case refreshIndex > decisionIndex:
 			t.Errorf("release workflow refresh %q occurs after %q", boundary.refresh, boundary.decision)
 		}
 	}

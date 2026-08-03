@@ -579,9 +579,10 @@ func TestWholeJobTimeoutRemainsTimedOut(t *testing.T) {
 func TestRetryableRunTimeoutsStopAtWholeJobTimeout(t *testing.T) {
 	configuration := model.DefaultExecutionPolicy()
 	configuration.RunTimeout = 40 * time.Millisecond
-	// Leave enough whole-job budget for multiple instrumented process launches;
-	// race and coverage builds can add hundreds of milliseconds per helper run.
-	configuration.JobTimeout = 2 * time.Second
+	// Leave enough whole-job budget for multiple instrumented process launches.
+	// Windows race builds can spend more than a second starting and terminating
+	// each helper process.
+	configuration.JobTimeout = 5 * time.Second
 	configuration.Classification.RetryTimeout = true
 	configuration.Completion = policy.CompletionPolicy{
 		MaxRuns:       policy.UnlimitedLimit(),

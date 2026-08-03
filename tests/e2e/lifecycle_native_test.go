@@ -90,7 +90,7 @@ func TestNativeAssembledBinaryLifecycle(t *testing.T) {
 		nativeInvoke(t, binary, stateDir, "cancel", jobID)
 		completed := waitNativeCompleted(t, binary, stateDir, jobID)
 		if completed.Summary.Outcome != "cancelled" { //nolint:misspell // Stable persisted spelling.
-			t.Fatalf("outcome = %q, want cancelled", completed.Summary.Outcome)
+			t.Fatalf("outcome = %q, want persisted cancellation outcome", completed.Summary.Outcome)
 		}
 		for _, pid := range pids {
 			waitNativeProcessGone(t, pid)
@@ -103,7 +103,15 @@ func TestNativeAssembledBinaryLifecycle(t *testing.T) {
 		waitNativeJob(t, binary, stateDir, jobID, func(job nativeJob) bool {
 			return job.Summary.Phase == "running"
 		})
-		command := exec.Command(binary, "--state-dir", stateDir, "input", "--eof", jobID)
+		command := exec.CommandContext( // #nosec G702 -- Test-controlled assembled binary path and arguments.
+			t.Context(),
+			binary,
+			"--state-dir",
+			stateDir,
+			"input",
+			"--eof",
+			jobID,
+		)
 		command.Stdin = strings.NewReader("native-input")
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("input error = %v: %s", err, output)
@@ -151,10 +159,17 @@ func TestNativeAssembledBinaryLifecycle(t *testing.T) {
 	})
 }
 
-func TestNativeHelperProcess(t *testing.T) {
+func TestMain(m *testing.M) {
+	exitCode := 0
 	if os.Getenv(nativeHelperEnvironment) != "1" {
-		return
+		exitCode = m.Run()
+	} else if err := runNativeHelper(context.Background()); err != nil {
+		exitCode = 1
 	}
+	os.Exit(exitCode)
+}
+
+func runNativeHelper(ctx context.Context) error {
 	arguments := os.Args
 	separator := -1
 	for index, argument := range arguments {
@@ -164,44 +179,86 @@ func TestNativeHelperProcess(t *testing.T) {
 		}
 	}
 	if separator < 0 || separator+1 >= len(arguments) {
-		os.Exit(90)
+		return errors.New("native helper mode is missing")
 	}
 	values := arguments[separator+1:]
 	switch values[0] {
 	case "gate":
+		if len(values) != 2 {
+			return errors.New("native gate helper requires a path")
+		}
 		for {
-			if _, err := os.Stat(values[1]); err == nil {
-				_, _ = io.WriteString(os.Stdout, "detached-success")
-				os.Exit(0)
+			if _, err := os.Stat(values[1]); err == nil { // #nosec G703 -- Test-controlled gate path.
+				if _, writeErr := os.Stdout.WriteString("detached-success"); writeErr != nil {
+					return fmt.Errorf("write gate result: %w", writeErr)
+				}
+
+				return nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("inspect gate path: %w", err)
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
 	case "tree":
-		child := exec.Command(os.Args[0], "-test.run=TestNativeHelperProcess", "--", "sleep") // #nosec G204 -- Fixed self-executable and arguments.
+		child := exec.CommandContext( // #nosec G204,G702 -- Fixed self-executable and arguments.
+			ctx,
+			os.Args[0],
+			"-test.run=TestNativeHelperProcess",
+			"--",
+			"sleep",
+		)
 		child.Env = append(os.Environ(), nativeHelperEnvironment+"=1")
 		if err := child.Start(); err != nil {
-			os.Exit(91)
+			return fmt.Errorf("start child helper: %w", err)
 		}
-		_, _ = fmt.Fprintf(os.Stdout, "%d %d\n", os.Getpid(), child.Process.Pid)
-		_ = child.Wait()
-		os.Exit(0)
+		if _, err := fmt.Fprintf(os.Stdout, "%d %d\n", os.Getpid(), child.Process.Pid); err != nil {
+			return fmt.Errorf("write process identifiers: %w", err)
+		}
+		if err := child.Wait(); err != nil {
+			return fmt.Errorf("wait for child helper: %w", err)
+		}
+
+		return nil
 	case "sleep":
 		time.Sleep(2 * time.Minute)
+
+		return nil
 	case "input":
-		_, _ = io.Copy(os.Stdout, os.Stdin)
-		os.Exit(0)
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			return fmt.Errorf("copy native input: %w", err)
+		}
+
+		return nil
 	case "progress":
+		if len(values) != 2 {
+			return errors.New("native progress helper requires a path")
+		}
 		for {
-			file, err := os.OpenFile(values[1], os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- Test-controlled path.
+			file, err := os.OpenFile( // #nosec G703 -- Test-controlled progress path.
+				values[1],
+				os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+				0o600,
+			)
 			if err != nil {
-				os.Exit(92)
+				return fmt.Errorf("open progress file: %w", err)
 			}
-			_, _ = file.Write([]byte("x"))
-			_ = file.Close()
+			if _, err := file.WriteString("x"); err != nil {
+				if closeErr := file.Close(); closeErr != nil {
+					return errors.Join(
+						fmt.Errorf("write progress file: %w", err),
+						fmt.Errorf("close progress file: %w", closeErr),
+					)
+				}
+
+				return fmt.Errorf("write progress file: %w", err)
+			}
+			if err := file.Close(); err != nil {
+				return fmt.Errorf("close progress file: %w", err)
+			}
 			time.Sleep(25 * time.Millisecond)
 		}
 	default:
-		os.Exit(93)
+		return fmt.Errorf("unknown native helper mode %q", values[0])
 	}
 }
 
@@ -241,7 +298,8 @@ func nativeSubmitWithOptions(
 	arguments ...string,
 ) string {
 	t.Helper()
-	values := []string{"--state-dir", stateDir, "run", "--env", nativeHelperEnvironment + "=1"}
+	values := make([]string, 0, 10+len(options)+len(arguments))
+	values = append(values, "--state-dir", stateDir, "run", "--env", nativeHelperEnvironment+"=1")
 	values = append(values, options...)
 	values = append(values, "--", os.Args[0], "-test.run=TestNativeHelperProcess", "--", mode)
 	values = append(values, arguments...)
@@ -259,7 +317,7 @@ func nativeCommand(t *testing.T, binary string, arguments ...string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, arguments...)
+	command := exec.CommandContext(ctx, binary, arguments...) // #nosec G702 -- Test-controlled assembled binary path and arguments.
 	command.Env = nativeAssembledBinaryEnvironment()
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr

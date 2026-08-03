@@ -19,7 +19,7 @@ func validateStateFilesystem(path string) error {
 		if value == 0 {
 			break
 		}
-		bytes = append(bytes, byte(value))
+		bytes = append(bytes, value)
 	}
 	name := strings.ToLower(string(bytes))
 	switch name {
