@@ -48,12 +48,17 @@ type showEnvelope struct {
 
 type jobDetail struct {
 	Summary                jobSummary                   `json:"summary"`
+	Specification          model.JobSpec                `json:"specification"`
 	Runs                   []runDetail                  `json:"runs"`
 	Runtime                jobRuntime                   `json:"runtime"`
+	Dependencies           []json.RawMessage            `json:"dependencies"`
 	NotificationDeliveries []notificationDeliveryDetail `json:"notification_deliveries"`
 }
 
 type jobRuntime struct {
+	RunCount          uint64 `json:"run_count"`
+	SuccessCount      uint64 `json:"success_count"`
+	FailureCount      uint64 `json:"failure_count"`
 	InputEndpoint     string `json:"input_endpoint"`
 	InputEOFRequested bool   `json:"input_eof_requested"`
 }
@@ -64,13 +69,15 @@ type jobSummary struct {
 }
 
 type runDetail struct {
-	ID      string           `json:"id"`
-	Number  uint64           `json:"number"`
-	Process *processIdentity `json:"process"`
-	Exit    *exitInfo        `json:"exit"`
-	Logs    logDetail        `json:"logs"`
-	Outcome string           `json:"outcome"`
-	Phase   string           `json:"phase"`
+	ID          string           `json:"id"`
+	Number      uint64           `json:"number"`
+	Process     *processIdentity `json:"process"`
+	StartedAt   *time.Time       `json:"started_at"`
+	CompletedAt *time.Time       `json:"completed_at"`
+	Exit        *exitInfo        `json:"exit"`
+	Logs        logDetail        `json:"logs"`
+	Outcome     string           `json:"outcome"`
+	Phase       string           `json:"phase"`
 }
 
 type logDetail struct {
