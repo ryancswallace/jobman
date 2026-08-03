@@ -412,15 +412,14 @@ var migrations = []migration{
 }
 
 func (s *Store) migrate(ctx context.Context) error {
+	version, err := validateMigrationState(ctx, s.db)
+	if err != nil || version == currentSchemaVersion {
+		return err
+	}
+
 	return s.writeTransaction(ctx, "store migration", func(tx *sql.Tx) error {
-		application, version, err := readSchemaHeaders(ctx, tx)
+		version, err := validateMigrationState(ctx, tx)
 		if err != nil {
-			return err
-		}
-		if err := validateSchemaHeaders(application, version); err != nil {
-			return err
-		}
-		if err := verifyAppliedMigrations(ctx, tx, version); err != nil {
 			return err
 		}
 
@@ -436,6 +435,21 @@ func (s *Store) migrate(ctx context.Context) error {
 
 		return nil
 	})
+}
+
+func validateMigrationState(ctx context.Context, queryer schemaQueryer) (int, error) {
+	application, version, err := readSchemaHeaders(ctx, queryer)
+	if err != nil {
+		return 0, err
+	}
+	if err := validateSchemaHeaders(application, version); err != nil {
+		return 0, err
+	}
+	if err := verifyAppliedMigrations(ctx, queryer, version); err != nil {
+		return 0, err
+	}
+
+	return version, nil
 }
 
 func validateSchemaHeaders(application, version int) error {

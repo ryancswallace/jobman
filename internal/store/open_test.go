@@ -148,6 +148,42 @@ func TestOpenExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestOpenCurrentSchemaDoesNotRequireWriterLock(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	first, err := Open(t.Context(), Options{StateDir: stateDir})
+	if err != nil {
+		t.Fatalf("first Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := first.Close(); closeErr != nil {
+			t.Errorf("first Close() error = %v", closeErr)
+		}
+	})
+
+	blocking, err := first.db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("begin blocking transaction: %v", err)
+	}
+	t.Cleanup(func() {
+		if rollbackErr := blocking.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			t.Errorf("rollback blocking transaction: %v", rollbackErr)
+		}
+	})
+
+	second, err := Open(t.Context(), Options{
+		StateDir:    stateDir,
+		BusyTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("Open(current schema during write) error = %v", err)
+	}
+	if closeErr := second.Close(); closeErr != nil {
+		t.Fatalf("second Close() error = %v", closeErr)
+	}
+}
+
 func TestOpenRejectsUnsafePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows access is validated through ACLs")
