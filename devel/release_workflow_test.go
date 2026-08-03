@@ -143,7 +143,7 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 			"id-token: write",
 			"environment:",
 			"name: main",
-			"cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16",
+			"cloudsmith-io/cloudsmith-cli-action@db783de9f6e7a445e5e31d94f4210303b48a10a3",
 			"oidc-audience: https://github.com/ryancswallace",
 			"oidc-namespace: jobman",
 			"oidc-service-slug: github-actions-m651",
