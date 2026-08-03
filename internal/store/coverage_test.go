@@ -42,6 +42,14 @@ func TestStoreDeferredRuntimeOperations(t *testing.T) {
 	if err != nil || eventID != event.ID {
 		t.Fatalf("TransitionEventID() = (%s, %v), want %s", eventID, err, event.ID)
 	}
+	byID, err := database.TransitionEventByID(t.Context(), event.ID)
+	if err != nil || byID.ID != event.ID || !byID.OccurredAt.Equal(event.OccurredAt) ||
+		!bytes.Equal(byID.Details, event.Details) {
+		t.Fatalf("TransitionEventByID() = (%+v, %v), want %+v", byID, err, event)
+	}
+	if _, err := database.TransitionEventByID(t.Context(), "invalid"); err == nil {
+		t.Fatal("TransitionEventByID(invalid) error = nil")
+	}
 	if _, err := database.GetSupervisorForJob(t.Context(), jobID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetSupervisorForJob(unclaimed) error = %v", err)
 	}

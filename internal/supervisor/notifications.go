@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -162,14 +163,10 @@ func processClaimedNotification(
 		if err != nil {
 			deliveryErr = &notify.DeliveryError{Kind: notify.ErrorInvalid, Retryable: false}
 		} else {
-			result, deliveryErr = destination.Deliver(deliveryCtx, notify.Event{
-				SchemaVersion: notify.EventSchemaVersion,
-				ID:            delivery.EventID.String(),
-				Type:          notify.EventType(delivery.EventType),
-				JobID:         delivery.JobID.String(),
-				RunID:         delivery.RunID.String(),
-				OccurredAt:    delivery.OccurredAt,
-			})
+			result, deliveryErr = destination.Deliver(
+				deliveryCtx,
+				notificationEvent(deliveryCtx, database, job, delivery),
+			)
 		}
 	}
 	finishedAt := time.Now().UTC()
@@ -226,6 +223,195 @@ func processClaimedNotification(
 	_, err = database.CompleteNotificationDelivery(persistCtx, completion)
 
 	return err
+}
+
+func notificationEvent(
+	ctx context.Context,
+	database *store.Store,
+	job model.JobState,
+	delivery store.NotificationDelivery,
+) notify.Event {
+	event := notify.Event{
+		SchemaVersion: notify.EventSchemaVersion,
+		ID:            delivery.EventID.String(),
+		Type:          notify.EventType(delivery.EventType),
+		JobID:         delivery.JobID.String(),
+		RunID:         delivery.RunID.String(),
+		OccurredAt:    delivery.OccurredAt,
+	}
+	summary := notify.EventSummary{
+		JobName:     job.Spec.Name(),
+		SubmittedAt: notificationTime(job.SubmittedAt),
+	}
+	transition, transitionErr := database.TransitionEventByID(ctx, delivery.EventID)
+	if transitionErr == nil {
+		applyTransitionNotificationDetails(&summary, transition)
+	}
+
+	runs, runsErr := database.ListRuns(ctx, job.ID)
+	if runsErr == nil {
+		if terminalJobNotification(delivery.EventType) {
+			summary.JobOutcome = notificationJobOutcome(delivery.EventType, transition.ToOutcome, job.Outcome)
+			summary.StartedAt = notificationTimeBefore(job.StartedAt, delivery.OccurredAt)
+			summary.CompletedAt = notificationTime(delivery.OccurredAt)
+			applyNotificationRunCounts(&summary, runs, delivery.OccurredAt)
+		}
+		if run, found := notificationRun(delivery, runs); found {
+			applyNotificationRun(&summary, run, delivery)
+		}
+	} else if terminalJobNotification(delivery.EventType) {
+		summary.JobOutcome = notificationJobOutcome(delivery.EventType, transition.ToOutcome, job.Outcome)
+		summary.StartedAt = notificationTimeBefore(job.StartedAt, delivery.OccurredAt)
+		summary.CompletedAt = notificationTime(delivery.OccurredAt)
+	}
+	event.SetSummary(summary)
+
+	return event
+}
+
+func applyTransitionNotificationDetails(summary *notify.EventSummary, event store.TransitionEvent) {
+	var details struct {
+		NextRunAt      *time.Time `json:"next_run_at"`
+		DiagnosticCode string     `json:"diagnostic_code"`
+		Reason         string     `json:"reason"`
+	}
+	if json.Unmarshal(event.Details, &details) != nil {
+		return
+	}
+	summary.NextRunAt = details.NextRunAt
+	summary.DiagnosticCode = details.DiagnosticCode
+	summary.Reason = details.Reason
+}
+
+func applyNotificationRunCounts(summary *notify.EventSummary, runs []model.RunState, occurredAt time.Time) {
+	var total, successes, failures uint64
+	for _, run := range runs {
+		if run.CompletedAt == nil || run.CompletedAt.After(occurredAt) {
+			continue
+		}
+		total++
+		if run.Outcome == model.RunOutcomeSuccess {
+			successes++
+		} else {
+			failures++
+		}
+	}
+	summary.RunCount = &total
+	summary.SuccessCount = &successes
+	summary.FailureCount = &failures
+}
+
+func notificationRun(
+	delivery store.NotificationDelivery,
+	runs []model.RunState,
+) (model.RunState, bool) {
+	for _, run := range runs {
+		if delivery.RunID.Valid() && run.ID == delivery.RunID {
+			return run, true
+		}
+	}
+	if delivery.EventType == "retry_scheduled" || terminalJobNotification(delivery.EventType) {
+		for index := len(runs) - 1; index >= 0; index-- {
+			completedAt := runs[index].CompletedAt
+			if completedAt != nil && completedAt.Equal(delivery.OccurredAt) {
+				return runs[index], true
+			}
+		}
+	}
+
+	return model.RunState{}, false
+}
+
+func applyNotificationRun(
+	summary *notify.EventSummary,
+	run model.RunState,
+	delivery store.NotificationDelivery,
+) {
+	summary.RunNumber = run.Number
+	summary.RunID = run.ID.String()
+	if delivery.EventType == "run_started" {
+		summary.RunStartedAt = notificationTime(delivery.OccurredAt)
+
+		return
+	}
+	if !terminalRunNotification(delivery.EventType) &&
+		delivery.EventType != "retry_scheduled" && !terminalJobNotification(delivery.EventType) {
+		return
+	}
+	summary.RunOutcome = string(run.Outcome)
+	summary.RunStartedAt = notificationTimeBefore(run.StartedAt, delivery.OccurredAt)
+	summary.RunCompletedAt = notificationTime(delivery.OccurredAt)
+	if run.Exit != nil {
+		summary.ExitCode = run.Exit.ExitCode
+	}
+	if summary.DiagnosticCode == "" {
+		summary.DiagnosticCode = run.LastDiagnosticCode
+	}
+}
+
+func notificationTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	result := value.UTC()
+
+	return &result
+}
+
+func notificationTimeBefore(value *time.Time, boundary time.Time) *time.Time {
+	if value == nil || value.After(boundary) {
+		return nil
+	}
+
+	return notificationTime(*value)
+}
+
+func terminalJobNotification(eventType string) bool {
+	switch eventType {
+	case "job_succeeded", "job_failed", "job_timed_out", "job_cancelled", //nolint:misspell // Stable event spelling.
+		"job_aborted", "job_lost",
+		"job_submission_failed":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalRunNotification(eventType string) bool {
+	switch eventType {
+	case "run_succeeded", "run_failed", "run_timed_out", "run_cancelled", //nolint:misspell // Stable event spelling.
+		"run_lost":
+		return true
+	default:
+		return false
+	}
+}
+
+func notificationJobOutcome(eventType, persisted string, current model.JobOutcome) string {
+	if persisted != "" {
+		return persisted
+	}
+	if current != model.JobOutcomeNone {
+		return string(current)
+	}
+	switch eventType {
+	case "job_succeeded":
+		return string(model.JobOutcomeSuccess)
+	case "job_failed":
+		return string(model.JobOutcomeFailure)
+	case "job_timed_out":
+		return string(model.JobOutcomeTimedOut)
+	case "job_cancelled": //nolint:misspell // Stable event spelling.
+		return string(model.JobOutcomeCancelled)
+	case "job_aborted":
+		return string(model.JobOutcomeAborted)
+	case "job_lost":
+		return string(model.JobOutcomeLost)
+	case "job_submission_failed":
+		return string(model.JobOutcomeSubmissionFailed)
+	default:
+		return ""
+	}
 }
 
 func notificationBudgetContext(

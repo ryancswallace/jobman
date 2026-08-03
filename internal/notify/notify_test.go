@@ -65,6 +65,38 @@ func TestMarshalEventProducesVersionedJSON(t *testing.T) {
 	}
 }
 
+func TestEventSummaryUsesDetailExtensionAndSurvivesJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	event := testEvent()
+	completedAt := event.OccurredAt
+	runCount := uint64(2)
+	event.SetSummary(EventSummary{
+		JobName: "backup", JobOutcome: "success", CompletedAt: &completedAt, RunCount: &runCount,
+	})
+	if event.Detail["attempt"] != float64(1) {
+		t.Fatalf("SetSummary() replaced existing detail: %#v", event.Detail)
+	}
+	summary, found := event.Summary()
+	if !found || summary.JobName != "backup" || summary.RunCount == nil || *summary.RunCount != 2 {
+		t.Fatalf("Summary() = (%+v, %t)", summary, found)
+	}
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Event
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	summary, found = decoded.Summary()
+	if !found || summary.JobOutcome != "success" || summary.CompletedAt == nil ||
+		!summary.CompletedAt.Equal(completedAt) {
+		t.Fatalf("round-trip Summary() = (%+v, %t)", summary, found)
+	}
+}
+
 func TestMarshalEventDoesNotExposeJSONEncodingFailure(t *testing.T) {
 	t.Parallel()
 

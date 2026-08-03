@@ -54,6 +54,61 @@ type Event struct {
 	RunID         string         `json:"run_id,omitempty"`
 }
 
+const eventSummaryDetailKey = "summary"
+
+// EventSummary is the bounded, non-secret lifecycle snapshot shared by
+// human-facing notifiers. It deliberately excludes commands, arguments,
+// working directories, environment values, and captured output.
+type EventSummary struct {
+	SubmittedAt    *time.Time `json:"submitted_at,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	NextRunAt      *time.Time `json:"next_run_at,omitempty"`
+	RunStartedAt   *time.Time `json:"run_started_at,omitempty"`
+	RunCompletedAt *time.Time `json:"run_completed_at,omitempty"`
+	ExitCode       *int       `json:"exit_code,omitempty"`
+	RunCount       *uint64    `json:"run_count,omitempty"`
+	SuccessCount   *uint64    `json:"success_count,omitempty"`
+	FailureCount   *uint64    `json:"failure_count,omitempty"`
+	RunNumber      uint64     `json:"run_number,omitempty"`
+	JobName        string     `json:"job_name,omitempty"`
+	JobOutcome     string     `json:"job_outcome,omitempty"`
+	RunID          string     `json:"run_id,omitempty"`
+	RunOutcome     string     `json:"run_outcome,omitempty"`
+	DiagnosticCode string     `json:"diagnostic_code,omitempty"`
+	Reason         string     `json:"reason,omitempty"`
+}
+
+// SetSummary adds a typed summary through the v1 event detail extension point.
+func (event *Event) SetSummary(summary EventSummary) {
+	if event.Detail == nil {
+		event.Detail = make(map[string]any, 1)
+	}
+	event.Detail[eventSummaryDetailKey] = summary
+}
+
+// Summary reads the optional typed summary. The JSON round-trip fallback also
+// supports callers that decoded and re-encoded a versioned event.
+func (event Event) Summary() (EventSummary, bool) {
+	value, found := event.Detail[eventSummaryDetailKey]
+	if !found {
+		return EventSummary{}, false
+	}
+	if summary, ok := value.(EventSummary); ok {
+		return summary, true
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return EventSummary{}, false
+	}
+	var summary EventSummary
+	if err := json.Unmarshal(encoded, &summary); err != nil {
+		return EventSummary{}, false
+	}
+
+	return summary, true
+}
+
 // Validate checks the stable event envelope.
 func (event Event) Validate() error {
 	if event.SchemaVersion != EventSchemaVersion {

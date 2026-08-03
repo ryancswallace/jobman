@@ -9,10 +9,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -216,14 +218,14 @@ func (notifier SMTP) Name() string {
 
 // Deliver builds and sends one bounded email.
 func (notifier SMTP) Deliver(parent context.Context, event Event) (Result, error) {
-	payload, err := marshalEvent(event)
+	_, err := marshalEvent(event)
 	if err != nil {
 		return Result{}, err
 	}
 	if strings.TrimSpace(notifier.NameValue) == "" {
 		return Result{}, errors.New("smtp notifier name is required")
 	}
-	request, messageID, err := notifier.request(event, payload)
+	request, messageID, err := notifier.request(event)
 	if err != nil {
 		return Result{}, err
 	}
@@ -248,7 +250,7 @@ func (notifier SMTP) Deliver(parent context.Context, event Event) (Result, error
 	return Result{MessageID: messageID}, nil
 }
 
-func (notifier SMTP) request(event Event, payload []byte) (SMTPRequest, string, error) {
+func (notifier SMTP) request(event Event) (SMTPRequest, string, error) {
 	mode, err := notifier.connectionMode()
 	if err != nil {
 		return SMTPRequest{}, "", err
@@ -269,7 +271,7 @@ func (notifier SMTP) request(event Event, payload []byte) (SMTPRequest, string, 
 	}
 	digest := sha256.Sum256([]byte(event.ID))
 	messageID := hex.EncodeToString(digest[:16]) + "@jobman.local"
-	message := buildMessage(from.String(), toHeaders, prefix, event, payload, messageID)
+	message := buildMessage(from.String(), toHeaders, prefix, event, messageID)
 	limit, err := byteLimit(notifier.MessageLimit)
 	if err != nil {
 		return SMTPRequest{}, "", err
@@ -337,19 +339,153 @@ func (notifier SMTP) envelope() (
 	return from, recipients, toHeaders, nil
 }
 
-func buildMessage(from string, to []string, prefix string, event Event, payload []byte, messageID string) []byte {
+func buildMessage(from string, to []string, prefix string, event Event, messageID string) []byte {
 	var message bytes.Buffer
 	fmt.Fprintf(&message, "From: %s\r\n", from)
 	fmt.Fprintf(&message, "To: %s\r\n", strings.Join(to, ", "))
 	fmt.Fprintf(&message, "Date: %s\r\n", event.OccurredAt.UTC().Format(time.RFC1123Z))
 	fmt.Fprintf(&message, "Message-ID: <%s>\r\n", messageID)
-	fmt.Fprintf(&message, "Subject: %s: %s\r\n", prefix, event.Type)
+	fmt.Fprintf(&message, "Subject: %s\r\n", encodeSubject(smtpSubject(prefix, event)))
 	message.WriteString("MIME-Version: 1.0\r\n")
-	message.WriteString("Content-Type: application/json; charset=utf-8\r\n")
+	message.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	message.WriteString("Content-Transfer-Encoding: base64\r\n\r\n")
-	writeBase64Lines(&message, payload)
+	writeBase64Lines(&message, smtpBody(event))
 
 	return message.Bytes()
+}
+
+func smtpSubject(prefix string, event Event) string {
+	identity := shortNotificationID(event.JobID)
+	if summary, found := event.Summary(); found && summary.JobName != "" {
+		identity = truncateSubjectValue(summary.JobName, 64) + " [" + identity + "]"
+	}
+
+	return strings.TrimSpace(prefix) + ": " + notificationSubjectStatus(event.Type) + ": " + identity
+}
+
+func notificationSubjectStatus(eventType EventType) string {
+	switch eventType {
+	case EventJobSucceeded, EventRunSucceeded:
+		return "succeeded"
+	case EventJobFailed, EventRunFailed:
+		return "failed"
+	case EventJobTimedOut, EventRunTimedOut:
+		return "timed out"
+	case EventJobCancelled, EventRunCancelled:
+		return "cancelled" //nolint:misspell // Event vocabulary uses this spelling.
+	case EventJobLost, EventRunLost:
+		return "lost"
+	case EventJobAborted:
+		return "aborted"
+	case EventSubmissionFailed:
+		return "submission failed"
+	case EventRetryScheduled:
+		return "retry scheduled"
+	case EventJobStarted, EventRunStarted:
+		return "started"
+	default:
+		return string(eventType)
+	}
+}
+
+func smtpBody(event Event) []byte {
+	var body bytes.Buffer
+	summary, _ := event.Summary()
+	writeSMTPField(&body, "Job", summary.JobName)
+	writeSMTPField(&body, "Job ID", event.JobID)
+	writeSMTPField(&body, "Event", string(event.Type))
+	writeSMTPField(&body, "Event ID", event.ID)
+	writeSMTPField(&body, "Outcome", summary.JobOutcome)
+	writeSMTPTime(&body, "Occurred", &event.OccurredAt)
+	writeSMTPTime(&body, "Submitted", summary.SubmittedAt)
+	writeSMTPTime(&body, "Started", summary.StartedAt)
+	writeSMTPTime(&body, "Completed", summary.CompletedAt)
+	writeSMTPDuration(&body, "Duration", summary.StartedAt, summary.CompletedAt)
+	if summary.RunNumber > 0 {
+		writeSMTPField(&body, "Run", strconv.FormatUint(summary.RunNumber, 10))
+	}
+	runID := summary.RunID
+	if runID == "" {
+		runID = event.RunID
+	}
+	writeSMTPField(&body, "Run ID", runID)
+	writeSMTPField(&body, "Run outcome", summary.RunOutcome)
+	writeSMTPTime(&body, "Run started", summary.RunStartedAt)
+	writeSMTPTime(&body, "Run completed", summary.RunCompletedAt)
+	writeSMTPDuration(&body, "Run duration", summary.RunStartedAt, summary.RunCompletedAt)
+	if summary.ExitCode != nil {
+		writeSMTPField(&body, "Exit code", strconv.Itoa(*summary.ExitCode))
+	}
+	if summary.RunCount != nil && summary.SuccessCount != nil && summary.FailureCount != nil {
+		writeSMTPField(&body, "Runs", fmt.Sprintf(
+			"%d total, %d succeeded, %d failed",
+			*summary.RunCount,
+			*summary.SuccessCount,
+			*summary.FailureCount,
+		))
+	}
+	writeSMTPField(&body, "Diagnostic", summary.DiagnosticCode)
+	writeSMTPTime(&body, "Next run", summary.NextRunAt)
+	writeSMTPField(&body, "Reason", summary.Reason)
+	body.WriteString("\r\nInspect:\r\n  jobman show ")
+	body.WriteString(event.JobID)
+	body.WriteString("\r\n")
+	if summary.RunNumber > 0 || event.RunID != "" {
+		body.WriteString("  jobman logs ")
+		body.WriteString(event.JobID)
+		body.WriteString("\r\n")
+	}
+
+	return body.Bytes()
+}
+
+func writeSMTPField(body *bytes.Buffer, label, value string) {
+	if value == "" {
+		return
+	}
+	fmt.Fprintf(body, "%-14s %s\r\n", label+":", value)
+}
+
+func writeSMTPTime(body *bytes.Buffer, label string, value *time.Time) {
+	if value == nil || value.IsZero() {
+		return
+	}
+	writeSMTPField(body, label, value.UTC().Format(time.RFC3339Nano))
+}
+
+func writeSMTPDuration(body *bytes.Buffer, label string, start, end *time.Time) {
+	if start == nil || end == nil || end.Before(*start) {
+		return
+	}
+	writeSMTPField(body, label, end.Sub(*start).String())
+}
+
+func shortNotificationID(value string) string {
+	const shortLength = 8
+	if len(value) <= shortLength {
+		return value
+	}
+
+	return value[:shortLength]
+}
+
+func truncateSubjectValue(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+
+	return string(runes[:limit-1]) + "…"
+}
+
+func encodeSubject(value string) string {
+	for _, character := range value {
+		if character > 0x7f {
+			return mime.QEncoding.Encode("utf-8", value)
+		}
+	}
+
+	return value
 }
 
 func writeBase64Lines(writer *bytes.Buffer, payload []byte) {

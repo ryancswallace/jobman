@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/smtp"
 	"strings"
@@ -41,7 +42,19 @@ func TestSMTPBuildsVersionedMessageAndPassesResolvedCredentialOnlyToTransport(t 
 			return nil
 		}),
 	}
-	result, err := notifier.Deliver(t.Context(), testEvent())
+	event := testEvent()
+	submittedAt := event.OccurredAt.Add(-2 * time.Minute)
+	startedAt := event.OccurredAt.Add(-90 * time.Second)
+	runCount, successCount, failureCount := uint64(1), uint64(1), uint64(0)
+	exitCode := 0
+	event.SetSummary(EventSummary{
+		JobName: "nightly backup", JobOutcome: "success", RunID: event.RunID,
+		RunNumber: 1, RunOutcome: "success", ExitCode: &exitCode,
+		SubmittedAt: &submittedAt, StartedAt: &startedAt, CompletedAt: &event.OccurredAt,
+		RunStartedAt: &startedAt, RunCompletedAt: &event.OccurredAt,
+		RunCount: &runCount, SuccessCount: &successCount, FailureCount: &failureCount,
+	})
+	result, err := notifier.Deliver(t.Context(), event)
 	if err != nil {
 		t.Fatalf("Deliver() error = %v", err)
 	}
@@ -65,9 +78,12 @@ func TestSMTPBuildsVersionedMessageAndPassesResolvedCredentialOnlyToTransport(t 
 	if strings.Contains(message, "top-secret") || strings.Contains(message, notifier.Address) {
 		t.Fatalf("SMTP message contains credential or server: %q", message)
 	}
-	if !strings.Contains(message, "Subject: Production Jobman: run_succeeded\r\n") ||
+	if !strings.Contains(message, "Subject: Production Jobman: succeeded: nightly backup [job_01]\r\n") ||
 		!strings.Contains(message, "Message-ID: <"+result.MessageID+">\r\n") {
 		t.Fatalf("SMTP message headers = %q", message)
+	}
+	if !strings.Contains(message, "Content-Type: text/plain; charset=utf-8\r\n") {
+		t.Fatalf("SMTP message content type = %q", message)
 	}
 	_, body, found := strings.Cut(message, "\r\n\r\n")
 	if !found {
@@ -78,8 +94,77 @@ func TestSMTPBuildsVersionedMessageAndPassesResolvedCredentialOnlyToTransport(t 
 	if err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if !strings.Contains(string(payload), `"schema_version":1`) || !strings.Contains(string(payload), `"id":"evt_01"`) {
-		t.Fatalf("decoded SMTP payload = %q", payload)
+	text := string(payload)
+	for _, wanted := range []string{
+		"Job:           nightly backup\r\n",
+		"Job ID:        job_01\r\n",
+		"Event:         run_succeeded\r\n",
+		"Outcome:       success\r\n",
+		"Duration:      1m30s\r\n",
+		"Run:           1\r\n",
+		"Run outcome:   success\r\n",
+		"Exit code:     0\r\n",
+		"Runs:          1 total, 1 succeeded, 0 failed\r\n",
+		"  jobman show job_01\r\n",
+		"  jobman logs job_01\r\n",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Errorf("decoded SMTP body missing %q: %q", wanted, text)
+		}
+	}
+}
+
+func TestSMTPSubjectUsesShortJobIDAndEncodesUnicodeName(t *testing.T) {
+	t.Parallel()
+
+	event := testEvent()
+	event.JobID = "019fc4e2-1454-7a0b-8dd3-d82a7a9b74f4"
+	event.SetSummary(EventSummary{JobName: "café backup"})
+	subject := encodeSubject(smtpSubject("[jobman test]", event))
+	if !strings.Contains(subject, "=?utf-8?") || strings.Contains(subject, event.JobID) {
+		t.Fatalf("encoded subject = %q", subject)
+	}
+	decoded, err := new(mime.WordDecoder).DecodeHeader(subject)
+	if err != nil {
+		t.Fatalf("DecodeHeader() error = %v", err)
+	}
+	if decoded != "[jobman test]: succeeded: café backup [019fc4e2]" {
+		t.Fatalf("decoded subject = %q", decoded)
+	}
+}
+
+func TestSMTPSubjectStatusCoversLifecycleEvents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		eventType EventType
+		want      string
+	}{
+		{EventJobSucceeded, "succeeded"},
+		{EventRunSucceeded, "succeeded"},
+		{EventJobFailed, "failed"},
+		{EventRunFailed, "failed"},
+		{EventJobTimedOut, "timed out"},
+		{EventRunTimedOut, "timed out"},
+		{EventJobCancelled, "cancelled"}, //nolint:misspell // Stable event spelling.
+		{EventRunCancelled, "cancelled"}, //nolint:misspell // Stable event spelling.
+		{EventJobLost, "lost"},
+		{EventRunLost, "lost"},
+		{EventJobAborted, "aborted"},
+		{EventSubmissionFailed, "submission failed"},
+		{EventRetryScheduled, "retry scheduled"},
+		{EventJobStarted, "started"},
+		{EventRunStarted, "started"},
+		{EventType("future_event"), "future_event"},
+	}
+	for _, test := range tests {
+		if got := notificationSubjectStatus(test.eventType); got != test.want {
+			t.Errorf("notificationSubjectStatus(%q) = %q, want %q", test.eventType, got, test.want)
+		}
+	}
+	if got := truncateSubjectValue(strings.Repeat("x", 70), 64); len([]rune(got)) != 64 ||
+		!strings.HasSuffix(got, "…") {
+		t.Fatalf("truncateSubjectValue() = %q", got)
 	}
 }
 

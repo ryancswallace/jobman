@@ -167,8 +167,11 @@ Command notifier executables must be absolute and receive a versioned JSON
 payload on standard input. HTTP defaults to HTTPS, rejects local/private hosts
 unless explicitly allowed, and requires sensitive headers to use a named
 secret. SMTP supports `starttls` and `implicit` TLS modes and requires a secret
-reference when a username is configured. Delivery attempts are bounded and
-recorded for inspection; notification failure never changes the job outcome.
+reference when a username is configured. SMTP subjects identify the result,
+optional job name, and short job ID; plain-text bodies contain a bounded
+non-secret lifecycle summary without commands, environment values, or logs.
+Delivery attempts are bounded and recorded for inspection; notification
+failure never changes the job outcome.
 Subscribed lifecycle events are queued in the same SQLite transaction as their
 state snapshot and event record, before external delivery. A later per-job
 supervisor can reclaim an expired delivery lease, but there is no resident

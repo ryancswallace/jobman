@@ -77,6 +77,15 @@ $ jobman doctor --repair
 
 Inspect delivery and attempt records with `jobman show --json JOB`.
 
+SMTP messages use a plain-text summary suitable for ordinary mail clients. The
+subject includes the event result, optional job name, and a short job ID. The
+body includes the canonical job and event IDs, lifecycle times, terminal
+outcome, bounded run counts, and applicable run, exit, retry, and diagnostic
+details. Commands, arguments, working directories, environment values, and
+captured output are deliberately excluded. Command and HTTP notifiers continue
+to receive the versioned JSON event; its optional `detail.summary` object
+contains the same non-secret summary fields.
+
 ## Redaction boundary
 
 Configured sensitive names and bounded RE2 patterns redact Jobman diagnostics

@@ -266,6 +266,96 @@ func TestRunDurablyCompletesSubscribedNotifications(t *testing.T) {
 	}
 }
 
+func TestTerminalNotificationEventIncludesSafeJobAndRunSummary(t *testing.T) {
+	fixture := submitSupervisorFixture(t, true)
+	if err := Run(
+		t.Context(), fixture.stateDir, fixture.jobID.String(),
+		bytes.NewReader(fixture.credential), new(closingBuffer),
+	); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	database := openSupervisorStore(t, fixture.stateDir)
+	defer closeSupervisorStore(t, database)
+	job, err := database.GetJob(t.Context(), fixture.jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transition, err := database.TransitionEvent(
+		t.Context(), model.EntityJob, job.ID.String(), job.Revision,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := notificationEvent(t.Context(), database, job, store.NotificationDelivery{
+		JobID: job.ID, EventID: transition.ID, EventType: "job_succeeded",
+		OccurredAt: transition.OccurredAt,
+	})
+	summary, found := event.Summary()
+	if !found || summary.JobOutcome != "success" || summary.SubmittedAt == nil ||
+		summary.StartedAt == nil || summary.CompletedAt == nil {
+		t.Fatalf("terminal summary = (%+v, %t)", summary, found)
+	}
+	if summary.RunCount == nil || *summary.RunCount != 1 || summary.SuccessCount == nil ||
+		*summary.SuccessCount != 1 || summary.FailureCount == nil || *summary.FailureCount != 0 {
+		t.Fatalf("terminal run counts = %+v", summary)
+	}
+	if summary.RunNumber != 1 || summary.RunID == "" || summary.RunOutcome != "success" ||
+		summary.ExitCode == nil || *summary.ExitCode != 0 {
+		t.Fatalf("terminal run summary = %+v", summary)
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), job.Spec.Executable()) || strings.Contains(string(payload), targetEnvironment) {
+		t.Fatalf("notification payload contains execution details: %s", payload)
+	}
+}
+
+func TestNotificationEventTerminalClassification(t *testing.T) {
+	t.Parallel()
+
+	jobEvents := map[string]model.JobOutcome{
+		"job_succeeded":         model.JobOutcomeSuccess,
+		"job_failed":            model.JobOutcomeFailure,
+		"job_timed_out":         model.JobOutcomeTimedOut,
+		"job_cancelled":         model.JobOutcomeCancelled, //nolint:misspell // Stable event spelling.
+		"job_aborted":           model.JobOutcomeAborted,
+		"job_lost":              model.JobOutcomeLost,
+		"job_submission_failed": model.JobOutcomeSubmissionFailed,
+	}
+	for eventType, outcome := range jobEvents {
+		if !terminalJobNotification(eventType) {
+			t.Errorf("terminalJobNotification(%q) = false", eventType)
+		}
+		if got := notificationJobOutcome(eventType, "", model.JobOutcomeNone); got != string(outcome) {
+			t.Errorf("notificationJobOutcome(%q) = %q, want %q", eventType, got, outcome)
+		}
+	}
+	if terminalJobNotification("job_started") || notificationJobOutcome("job_started", "", model.JobOutcomeNone) != "" {
+		t.Fatal("nonterminal job event classified as terminal")
+	}
+	if got := notificationJobOutcome("job_failed", "persisted", model.JobOutcomeSuccess); got != "persisted" {
+		t.Fatalf("persisted outcome = %q", got)
+	}
+	if got := notificationJobOutcome("job_failed", "", model.JobOutcomeSuccess); got != "success" {
+		t.Fatalf("current outcome = %q", got)
+	}
+
+	for _, eventType := range []string{
+		"run_succeeded", "run_failed", "run_timed_out", "run_cancelled", //nolint:misspell // Stable event spelling.
+		"run_lost",
+	} {
+		if !terminalRunNotification(eventType) {
+			t.Errorf("terminalRunNotification(%q) = false", eventType)
+		}
+	}
+	if terminalRunNotification("run_started") {
+		t.Fatal("run_started classified as terminal")
+	}
+}
+
 func TestWholeJobTimeoutBoundsNotificationRetrySchedule(t *testing.T) {
 	missingRoot := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
 	configuration := model.DefaultExecutionPolicy()

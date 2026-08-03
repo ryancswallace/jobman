@@ -8,6 +8,12 @@ semantic-release.
 
 ## [Unreleased]
 
+### Changed
+
+- Made SMTP notification subjects identify the event result, job name when
+  present, and a short job ID, and replaced the JSON-only message part with a
+  human-readable, non-secret job and run summary.
+
 ## [1.2.0] - 2026-08-03
 
 ### Added
