@@ -1174,13 +1174,8 @@ notifiers:
 		if removed.err != nil || !strings.HasPrefix(removed.stdout, "removed 1 runs") {
 			t.Fatalf("forced clean = %q/%v: %s", removed.stdout, removed.err, removed.stderr)
 		}
-		detail := showJob(t, binary, stateDir, jobID)
-		if len(detail.Runs) != 1 || detail.Runs[0].Logs.Available || detail.Runs[0].Logs.PrunedAt == nil {
-			t.Fatalf("pruned logs = %+v", detail.Runs)
-		}
-		purged := invokeWithTimeout(t, binary, stateDir, "clean", "--all", "--force")
-		if purged.err != nil || !strings.Contains(purged.stdout, "1 jobs") {
-			t.Fatalf("purge completed metadata = %q/%v: %s", purged.stdout, purged.err, purged.stderr)
+		if !strings.Contains(removed.stdout, "1 jobs") {
+			t.Fatalf("forced clean did not remove selected job metadata: %q", removed.stdout)
 		}
 		listed := invokeWithTimeout(t, binary, stateDir, "list")
 		if listed.err != nil || strings.Contains(listed.stdout, jobID) {
@@ -1262,9 +1257,11 @@ func TestAssembledBinaryCrashBoundaries(t *testing.T) {
 		if crashed.err == nil {
 			t.Fatalf("cleanup fault point %s did not terminate the client", point)
 		}
+		// Resume through age-based cleanup so the job metadata remains available
+		// for verifying that the interrupted log pruning was durably recorded.
 		resumed := invokeWithTimeout(
 			t, binary, stateDir,
-			"clean", jobID, "--older-than", "0s", "--dry-run=false", "--force",
+			"clean", "--older-than", "0s", "--dry-run=false", "--force",
 		)
 		if resumed.err != nil {
 			t.Fatalf("resume cleanup after crash: %v: %s", resumed.err, resumed.stderr)

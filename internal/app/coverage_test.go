@@ -679,7 +679,7 @@ func TestServiceReconciliationAndLogSelectionEdges(t *testing.T) {
 	}
 
 	completedJob, completedRun, _ := completeCapturedRun(t, service, clock)
-	if _, err := service.Clean(t.Context(), CleanRequest{Selector: completedJob.ID.String()}); err != nil {
+	if _, err := service.Clean(t.Context(), CleanRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.ReadRunLogs(t.Context(), completedJob.ID.String(), LogBoth, completedRun.Number); !errors.Is(err, ErrNotFound) {

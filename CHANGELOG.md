@@ -8,6 +8,20 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Added dynamic job ID completion for command arguments and flags that accept
+  job selectors.
+
+### Fixed
+
+- Made `clean JOB --force` remove the selected eligible completed job and its
+  logs independently of retention policy.
+- Made `clean JOB` return a conflict error when the explicitly selected job is
+  not completed instead of reporting an empty successful cleanup.
+
+## [1.1.5] - 2026-07-30
+
 ## [1.1.4] - 2026-07-26
 
 ## [1.1.3] - 2026-07-26
@@ -325,7 +339,8 @@ Release version.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ryancswallace/jobman/compare/v1.1.4...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman/compare/v1.1.5...HEAD
+[1.1.5]: https://github.com/ryancswallace/jobman/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/ryancswallace/jobman/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/ryancswallace/jobman/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/ryancswallace/jobman/compare/v1.1.1...v1.1.2

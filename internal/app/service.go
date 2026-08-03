@@ -1233,8 +1233,9 @@ func (service *Service) FollowLogs(
 }
 
 // Clean safely removes completed log sets selected explicitly, by effective
-// retention policy, or by an all-completed request. Policy and age cleanup
-// retain tombstone metadata; all-completed cleanup also prunes eligible history.
+// retention policy, or by an all-completed request. Unscoped age cleanup
+// retains tombstone metadata; explicitly selected and all-completed cleanup
+// also prune eligible history.
 //
 //nolint:gocognit,cyclop,maintidx // Cleanup keeps policy planning, state rechecks, deletion, and tombstoning together.
 func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanResult, error) {
@@ -1243,6 +1244,9 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		job, err := service.store.ResolveJob(ctx, request.Selector)
 		if err != nil {
 			return CleanResult{}, translateStoreError("resolve cleanup job", err)
+		}
+		if err := validateSelectedCleanupJob(job); err != nil {
+			return CleanResult{}, err
 		}
 		jobs = []model.JobState{job}
 	} else {
@@ -1296,7 +1300,7 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		for _, item := range all {
 			selected[cleanupCandidateKey(item.candidate.JobID, item.candidate.RunNumber)] = struct{}{}
 		}
-	case request.UsePolicy:
+	case request.UsePolicy && request.Selector == "":
 		candidates := make([]logstore.RetentionCandidate, len(all))
 		for index, item := range all {
 			candidates[index] = item.candidate
@@ -1381,9 +1385,12 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		result.Bytes += cleaned.Bytes
 	}
 	metadataCutoff := time.Time{}
+	if request.Selector != "" {
+		metadataCutoff = now.Add(-request.OlderThan)
+	}
 	if request.All {
 		metadataCutoff = now
-	} else if request.UsePolicy {
+	} else if request.UsePolicy && request.Selector == "" {
 		if maximumAge, finite := service.retention.CompletedMetadataMaxAge.Value(); finite {
 			metadataCutoff = now.Add(-maximumAge)
 		}
@@ -1410,6 +1417,19 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 	}
 
 	return result, nil
+}
+
+func validateSelectedCleanupJob(job model.JobState) error {
+	if job.Phase == model.JobPhaseCompleted {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"clean job %s: job is not completed (phase %s): %w",
+		job.ID,
+		job.Phase,
+		ErrConflict,
+	)
 }
 
 func cleanupCandidateKey(jobID string, runNumber uint64) string {

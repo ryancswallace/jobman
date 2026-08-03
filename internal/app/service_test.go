@@ -154,7 +154,7 @@ func TestServiceCleanPersistsPrunedLogMetadata(t *testing.T) {
 
 	service, clock := newTestService(t)
 	job, run, paths := completeCapturedRun(t, service, clock)
-	result, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()})
+	result, err := service.Clean(t.Context(), CleanRequest{})
 	if err != nil {
 		t.Fatalf("Clean() error = %v", err)
 	}
@@ -184,12 +184,22 @@ func TestServiceCleanPersistsPrunedLogMetadata(t *testing.T) {
 	); !errors.Is(readErr, ErrNotFound) {
 		t.Fatalf("ReadRunLogs(pruned) error = %v, want ErrNotFound", readErr)
 	}
-	repeated, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()})
+	repeated, err := service.Clean(t.Context(), CleanRequest{})
 	if err != nil {
 		t.Fatalf("repeated Clean() error = %v", err)
 	}
 	if repeated != (CleanResult{}) {
 		t.Errorf("repeated Clean() result = %+v, want no already-pruned runs", repeated)
+	}
+	selected, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()})
+	if err != nil {
+		t.Fatalf("selected Clean() error = %v", err)
+	}
+	if selected.Runs != 0 || selected.Jobs != 1 {
+		t.Fatalf("selected Clean() result = %+v, want one metadata-only removal", selected)
+	}
+	if _, inspectErr := service.Inspect(t.Context(), job.ID.String()); !errors.Is(inspectErr, ErrNotFound) {
+		t.Fatalf("Inspect(after selected cleanup) error = %v, want not found", inspectErr)
 	}
 }
 
@@ -197,11 +207,11 @@ func TestServiceCleanDoesNotRecordFailedFilesystemRemoval(t *testing.T) {
 	t.Parallel()
 
 	service, clock := newTestService(t)
-	job, run, paths := completeCapturedRun(t, service, clock)
+	_, run, paths := completeCapturedRun(t, service, clock)
 	if err := os.WriteFile(filepath.Join(paths.Directory, "unexpected"), []byte("keep"), 0o600); err != nil {
 		t.Fatalf("write unexpected log entry: %v", err)
 	}
-	if _, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()}); err == nil {
+	if _, err := service.Clean(t.Context(), CleanRequest{}); err == nil {
 		t.Fatal("Clean() error = nil, want unsafe-content failure")
 	}
 	persisted, err := service.store.GetRun(t.Context(), run.ID)
@@ -228,7 +238,7 @@ func TestServiceCleanResumesFilesystemRemovalBeforeMetadataCommit(t *testing.T) 
 	if err != nil {
 		t.Fatalf("simulate cleanup crash boundary: %v", err)
 	}
-	result, err := service.Clean(t.Context(), CleanRequest{Selector: job.ID.String()})
+	result, err := service.Clean(t.Context(), CleanRequest{})
 	if err != nil {
 		t.Fatalf("Clean(resume) error = %v", err)
 	}

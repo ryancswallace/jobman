@@ -138,4 +138,7 @@ func populateCompleteStaticInputs(t *testing.T, root string) {
 	for _, name := range []string{"logo.svg", "logo-dark.svg", "logo-dark-transparent.svg", "favicon.svg", "favicon-dark.svg"} {
 		writeTestFile(t, filepath.Join(root, "assets", name), "<svg></svg>")
 	}
+	for _, name := range demoRecordings {
+		writeTestFile(t, filepath.Join(root, "docs", "screencaps", "webm", name), "video")
+	}
 }

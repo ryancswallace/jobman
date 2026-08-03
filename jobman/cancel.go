@@ -34,6 +34,16 @@ func newCancelCommand(dependencies dependencies, root *rootOptions) *cobra.Comma
 		},
 	}
 	runCommand.Flags().SetInterspersed(false)
+	runCommand.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
+	jobCommand := &cobra.Command{
+		Use:   "job JOB",
+		Short: "Cancel a managed job and prevent future runs",
+		Args:  usageArgs(cobra.ExactArgs(1)),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return cancelJob(command, dependencies, root, arguments[0])
+		},
+	}
+	jobCommand.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 	command := &cobra.Command{
 		Use:   "cancel JOB",
 		Short: "Cancel a managed job",
@@ -42,15 +52,9 @@ func newCancelCommand(dependencies dependencies, root *rootOptions) *cobra.Comma
 			return cancelJob(command, dependencies, root, arguments[0])
 		},
 	}
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 	command.AddCommand(
-		&cobra.Command{
-			Use:   "job JOB",
-			Short: "Cancel a managed job and prevent future runs",
-			Args:  usageArgs(cobra.ExactArgs(1)),
-			RunE: func(command *cobra.Command, arguments []string) error {
-				return cancelJob(command, dependencies, root, arguments[0])
-			},
-		},
+		jobCommand,
 		runCommand,
 	)
 

@@ -53,6 +53,8 @@ var publishedPages = []publishedPage{
 	{source: "CHANGELOG.md", destination: "project/changelog.md", title: "Changelog", parent: projectParent, permalink: "/project/changelog/", navOrder: 6},
 }
 
+var demoRecordings = []string{"basic.webm", "dependencies.webm", "input.webm", "retries.webm", "timeouts.webm"}
+
 var canonicalLinkReplacements = map[string]string{
 	"(UPGRADING.md)":                     "({{ site.baseurl }}/operations/upgrading/)",
 	"(CODE_OF_CONDUCT.md)":               "({{ site.baseurl }}/project/code-of-conduct/)",
@@ -99,6 +101,14 @@ func generateSite(repositoryRoot, outputRoot string) error {
 			filepath.Join(outputRoot, "assets", "images", name),
 		); err != nil {
 			return fmt.Errorf("publish site image %s: %w", name, err)
+		}
+	}
+	for _, name := range demoRecordings {
+		if err := copyFile(
+			filepath.Join(repositoryRoot, "docs", "screencaps", "webm", name),
+			filepath.Join(outputRoot, "assets", "videos", name),
+		); err != nil {
+			return fmt.Errorf("publish demo recording %s: %w", name, err)
 		}
 	}
 	if err := generateCommandReference(filepath.Join(outputRoot, "reference", "commands")); err != nil {
@@ -416,6 +426,12 @@ func validateRequiredPages(siteRoot *os.Root, permalinks map[string]string) erro
 		"assets/images/favicon.svg",
 		"assets/images/favicon-dark.svg",
 	} {
+		if _, err := siteRoot.Stat(asset); err != nil {
+			return fmt.Errorf("required asset %s is missing: %w", asset, err)
+		}
+	}
+	for _, name := range demoRecordings {
+		asset := filepath.Join("assets", "videos", name)
 		if _, err := siteRoot.Stat(asset); err != nil {
 			return fmt.Errorf("required asset %s is missing: %w", asset, err)
 		}

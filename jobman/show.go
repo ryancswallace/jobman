@@ -25,6 +25,16 @@ func newShowCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 		},
 	}
 	runCommand.Flags().SetInterspersed(false)
+	runCommand.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
+	jobCommand := &cobra.Command{
+		Use:   "job JOB",
+		Short: "Show a job and its run history",
+		Args:  usageArgs(cobra.ExactArgs(1)),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return showJob(command, dependencies, root, arguments[0], jsonOutput)
+		},
+	}
+	jobCommand.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 	command := &cobra.Command{
 		Use:   "show JOB",
 		Short: "Show a job and its run history",
@@ -34,15 +44,9 @@ func newShowCommand(dependencies dependencies, root *rootOptions) *cobra.Command
 		},
 	}
 	command.PersistentFlags().BoolVar(&jsonOutput, "json", false, "emit versioned JSON")
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 	command.AddCommand(
-		&cobra.Command{
-			Use:   "job JOB",
-			Short: "Show a job and its run history",
-			Args:  usageArgs(cobra.ExactArgs(1)),
-			RunE: func(command *cobra.Command, arguments []string) error {
-				return showJob(command, dependencies, root, arguments[0], jsonOutput)
-			},
-		},
+		jobCommand,
 		runCommand,
 	)
 
