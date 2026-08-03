@@ -8,6 +8,11 @@ semantic-release.
 
 ## [Unreleased]
 
+### Added
+
+- Added dynamic job ID completion for command arguments and flags that accept
+  job selectors.
+
 ## [1.1.5] - 2026-07-30
 
 ## [1.1.4] - 2026-07-26

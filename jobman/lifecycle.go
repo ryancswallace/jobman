@@ -66,7 +66,7 @@ func lifecycleCommand(
 	root *rootOptions,
 	operation func(*cobra.Command, app.LifecycleBackend, string) error,
 ) *cobra.Command {
-	return &cobra.Command{
+	command := &cobra.Command{
 		Use:   use + " JOB",
 		Short: short,
 		Args:  usageArgs(cobra.ExactArgs(1)),
@@ -81,6 +81,9 @@ func lifecycleCommand(
 			})
 		},
 	}
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
+
+	return command
 }
 
 func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Command {
@@ -109,6 +112,7 @@ func newInputCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 		},
 	}
 	command.Flags().BoolVar(&sendEOF, "eof", false, "close the target's standard input")
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 
 	return command
 }
@@ -167,6 +171,7 @@ func newRerunCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 	}
 	command.Flags().StringVar(&name, "name", "", "override the new job's display name")
 	command.Flags().BoolVar(&waitForCompletion, "wait", false, "wait for the terminal job outcome")
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 
 	return command
 }
@@ -227,6 +232,7 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 	command.Flags().BoolVar(&all, "all", false, "select every completed job and its logs")
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "report eligible logs without removing them")
 	command.Flags().BoolVar(&force, "force", false, "apply cleanup instead of the default dry run")
+	command.ValidArgsFunction = jobIDArgumentCompletion(dependencies, root)
 
 	return command
 }
