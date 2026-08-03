@@ -392,6 +392,20 @@ func TestCleanForceHonorsExplicitDryRun(t *testing.T) {
 	}
 }
 
+func TestCleanWithoutForceSuggestsForce(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend(t)
+
+	stdout, err := executeCommand(t, dependenciesFor(backend), []string{"clean"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expected = "would remove 1 runs, 3 files, 12 bytes, 0 jobs; run with `--force` to remove\n"
+	if stdout != expected {
+		t.Fatalf("clean output = %q, want %q", stdout, expected)
+	}
+}
+
 func TestForegroundAndWaitHelpers(t *testing.T) {
 	t.Parallel()
 

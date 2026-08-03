@@ -198,14 +198,19 @@ func newCleanCommand(dependencies dependencies, root *rootOptions) *cobra.Comman
 				if request.DryRun {
 					mode = "would remove"
 				}
+				suffix := ""
+				if !force {
+					suffix = "; run with `--force` to remove"
+				}
 				_, err = fmt.Fprintf(
 					command.OutOrStdout(),
-					"%s %d runs, %d files, %d bytes, %d jobs\n",
+					"%s %d runs, %d files, %d bytes, %d jobs%s\n",
 					mode,
 					result.Runs,
 					result.Files,
 					result.Bytes,
 					result.Jobs,
+					suffix,
 				)
 				return err
 			}
