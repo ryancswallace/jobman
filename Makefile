@@ -49,6 +49,8 @@ DOCKER_PROGRESS ?= plain
 
 GO_VERSION := $(shell tr -d '[:space:]' < go.version)
 GOLANGCI_LINT_VERSION ?= v2.12.2
+LINT_GOOS ?= linux
+LINT_CGO_ENABLED ?= 0
 GORELEASER_VERSION ?= v2.17.0
 ACTIONLINT_VERSION ?= v1.7.12
 GOVULNCHECK_VERSION ?= v1.6.0
@@ -209,8 +211,8 @@ format-check: tool-golangci-lint ## Check formatting without changing files.
 	$(GOLANGCI_LINT) fmt --diff
 
 .PHONY: lint
-lint: tool-golangci-lint ## Run the configured Go linters.
-	$(GOLANGCI_LINT) run ./...
+lint: tool-golangci-lint ## Run the configured Go linters against the CI target.
+	GOOS=$(LINT_GOOS) CGO_ENABLED=$(LINT_CGO_ENABLED) $(GOLANGCI_LINT) run ./...
 
 .PHONY: workflow-check
 workflow-check: tool-actionlint ## Validate all GitHub Actions workflows.

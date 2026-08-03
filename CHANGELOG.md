@@ -8,6 +8,11 @@ semantic-release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made local and CI linting use the same pinned Linux-targeted command, avoiding
+  stale path-sensitive results from the GitHub Actions linter cache.
+
 ## [1.3.0] - 2026-08-04
 
 ### Added
