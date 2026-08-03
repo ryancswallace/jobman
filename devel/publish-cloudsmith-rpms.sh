@@ -9,8 +9,13 @@ if [[ $# -ne 1 ||
   echo "usage: $0 vMAJOR.MINOR.PATCH" >&2
   exit 2
 fi
-if [[ -z "${GH_TOKEN:-}" || -z "${CLOUDSMITH_API_KEY:-}" ]]; then
-  echo "GH_TOKEN and CLOUDSMITH_API_KEY are required" >&2
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "GH_TOKEN is required" >&2
+  exit 2
+fi
+if [[ -z "${CLOUDSMITH_API_KEY:-}" &&
+      ( -z "${CLOUDSMITH_ORG:-}" || -z "${CLOUDSMITH_SERVICE_SLUG:-}" ) ]]; then
+  echo "Cloudsmith authentication requires CLOUDSMITH_API_KEY or both CLOUDSMITH_ORG and CLOUDSMITH_SERVICE_SLUG" >&2
   exit 2
 fi
 

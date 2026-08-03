@@ -2,6 +2,7 @@ package devel_test
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -135,9 +136,14 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 		t,
 		"../.github/workflows/publish-cloudsmith-rpms.yml",
 	)
+	recoveryWorkflow := readRepositoryFile(
+		t,
+		"../.github/workflows/publish-staged-release.yml",
+	)
 	for name, contents := range map[string]string{
-		"release": releaseWorkflow,
-		"repair":  repairWorkflow,
+		"release":  releaseWorkflow,
+		"repair":   repairWorkflow,
+		"recovery": recoveryWorkflow,
 	} {
 		for _, required := range []string{
 			"id-token: write",
@@ -147,6 +153,7 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 			"oidc-audience: https://github.com/ryancswallace",
 			"oidc-namespace: jobman",
 			"oidc-service-slug: github-actions-m651",
+			`verify-auth: "true"`,
 			"publish-cloudsmith-rpms.sh",
 		} {
 			if !strings.Contains(contents, required) {
@@ -160,6 +167,9 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 
 	helper := readRepositoryFile(t, "publish-cloudsmith-rpms.sh")
 	for _, required := range []string{
+		"CLOUDSMITH_API_KEY",
+		"CLOUDSMITH_ORG",
+		"CLOUDSMITH_SERVICE_SLUG",
 		"gh release view",
 		"cosign verify-blob",
 		"sha256sum --check",
@@ -176,6 +186,86 @@ func TestCloudsmithPublicationIsOIDCAuthenticatedAndRepairable(t *testing.T) {
 	}
 	if info.Mode().Perm()&0o111 == 0 {
 		t.Error("Cloudsmith publication helper is not executable")
+	}
+}
+
+func TestCloudsmithPublicationAcceptsAPIKeyOrOIDCAuthentication(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		environment map[string]string
+		wantExit    int
+		wantMessage string
+	}{
+		{
+			name: "missing GitHub token",
+			environment: map[string]string{
+				"CLOUDSMITH_ORG":          "jobman",
+				"CLOUDSMITH_SERVICE_SLUG": "service",
+			},
+			wantExit:    2,
+			wantMessage: "GH_TOKEN is required",
+		},
+		{
+			name:        "missing Cloudsmith authentication",
+			environment: map[string]string{"GH_TOKEN": "test-token"},
+			wantExit:    2,
+			wantMessage: "Cloudsmith authentication requires",
+		},
+		{
+			name: "API key",
+			environment: map[string]string{
+				"CLOUDSMITH_API_KEY": "test-key",
+				"GH_TOKEN":           "test-token",
+			},
+			wantExit: 23,
+		},
+		{
+			name: "OIDC",
+			environment: map[string]string{
+				"CLOUDSMITH_ORG":          "jobman",
+				"CLOUDSMITH_SERVICE_SLUG": "service",
+				"GH_TOKEN":                "test-token",
+			},
+			wantExit: 23,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			binDirectory := t.TempDir()
+			writeExecutableFixture(t, filepath.Join(binDirectory, "gh"), "#!/bin/sh\nexit 23\n")
+			environment := map[string]string{
+				"CLOUDSMITH_API_KEY":      "",
+				"CLOUDSMITH_ORG":          "",
+				"CLOUDSMITH_SERVICE_SLUG": "",
+				"GH_TOKEN":                "",
+				"PATH":                    binDirectory + string(os.PathListSeparator) + os.Getenv("PATH"),
+			}
+			for key, value := range testCase.environment {
+				environment[key] = value
+			}
+
+			command := exec.CommandContext( // #nosec G204 -- The command and arguments are repository-controlled.
+				t.Context(),
+				"bash",
+				"./devel/publish-cloudsmith-rpms.sh",
+				"v1.2.3",
+			)
+			command.Dir = ".."
+			command.Env = testEnvironment(environment)
+			output, err := command.CombinedOutput()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != testCase.wantExit {
+				t.Fatalf("exit error = %v, want status %d\n%s", err, testCase.wantExit, output)
+			}
+			if testCase.wantMessage != "" && !strings.Contains(string(output), testCase.wantMessage) {
+				t.Fatalf("output = %q, want %q", output, testCase.wantMessage)
+			}
+		})
 	}
 }
 

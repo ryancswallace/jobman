@@ -630,6 +630,7 @@ jobs:
           oidc-audience: https://github.com/ryancswallace
           oidc-namespace: jobman
           oidc-service-slug: github-actions-m651
+          verify-auth: "true"
 
       - name: Publish verified RPMs
         env:
