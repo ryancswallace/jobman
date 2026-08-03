@@ -40,7 +40,8 @@ forward migrations for the SQLite state schema.
   completed job and its logs independently of retention policy, while retaining
   dependency, notification, admission, and active-state safety checks. A job
   selector applies the same behavior to one completed job and may be combined
-  with `--older-than`.
+  with `--older-than`; selecting a nonterminal job returns a conflict error in
+  both dry-run and forced modes.
 - `doctor` is configuration-independent. `--repair` authorizes WAL checkpoint,
   stale lifecycle reconciliation, and due-notification recovery; `--backup`
   writes a new consistent SQLite snapshot.

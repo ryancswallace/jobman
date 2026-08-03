@@ -63,10 +63,12 @@ job limits, and total log bytes. It prunes completed-run logs before deleting
 eligible metadata and never removes active state. Metadata remains while an
 unresolved dependency, notification, or admission needs it.
 
-`--force` applies the selected plan instead of the default dry run. Use
+`--force` applies the selected plan instead of the default dry run.
 `clean JOB --force` removes one eligible completed job and its logs regardless
 of retention policy; `--all --force` applies that behavior to every eligible
-completed job. Omit `--force` to preview either operation.
+completed job. Omit `--force` to preview either operation. An explicit job
+selector that resolves to a nonterminal job returns a conflict error instead
+of an empty cleanup summary.
 
 Explicitly selected and `--older-than` cleanup do not require valid
 configuration. Do not delete files below the state root directly.

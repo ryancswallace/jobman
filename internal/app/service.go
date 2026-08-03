@@ -1245,6 +1245,9 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 		if err != nil {
 			return CleanResult{}, translateStoreError("resolve cleanup job", err)
 		}
+		if err := validateSelectedCleanupJob(job); err != nil {
+			return CleanResult{}, err
+		}
 		jobs = []model.JobState{job}
 	} else {
 		var err error
@@ -1414,6 +1417,19 @@ func (service *Service) Clean(ctx context.Context, request CleanRequest) (CleanR
 	}
 
 	return result, nil
+}
+
+func validateSelectedCleanupJob(job model.JobState) error {
+	if job.Phase == model.JobPhaseCompleted {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"clean job %s: job is not completed (phase %s): %w",
+		job.ID,
+		job.Phase,
+		ErrConflict,
+	)
 }
 
 func cleanupCandidateKey(jobID string, runNumber uint64) string {

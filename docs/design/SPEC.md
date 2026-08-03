@@ -389,11 +389,12 @@ does not prompt when input may be non-interactive.
 `clean` is a policy-based dry run by default. `--force` applies the selected
 plan without requiring the redundant `--dry-run=false`. `clean JOB` selects
 that completed job and its logs independently of retention policy or
-configuration, and `--older-than` may restrict that selection. `--all` selects
-every completed job and its logs independently of retention policy or
-configuration; it cannot be combined with a job selector or `--older-than`.
-Dependency, notification, admission, and active-state safety checks still
-apply.
+configuration, and `--older-than` may restrict that selection. If an explicit
+job selector resolves to a nonterminal job, cleanup MUST return a conflict
+error in both dry-run and forced modes. `--all` selects every completed job and
+its logs independently of retention policy or configuration; it cannot be
+combined with a job selector or `--older-than`. Dependency, notification,
+admission, and active-state safety checks still apply.
 
 ### 4.13 `jobman config`
 

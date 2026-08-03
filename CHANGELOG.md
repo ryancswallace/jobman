@@ -17,6 +17,8 @@ semantic-release.
 
 - Made `clean JOB --force` remove the selected eligible completed job and its
   logs independently of retention policy.
+- Made `clean JOB` return a conflict error when the explicitly selected job is
+  not completed instead of reporting an empty successful cleanup.
 
 ## [1.1.5] - 2026-07-30
 

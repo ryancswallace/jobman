@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -262,5 +263,72 @@ func TestServiceCleanSelectedJobPrunesCompletedMetadata(test *testing.T) {
 	}
 	if _, inspectErr := service.Inspect(test.Context(), job.ID.String()); !errors.Is(inspectErr, ErrNotFound) {
 		test.Fatalf("Inspect(selected prune) error = %v, want not found", inspectErr)
+	}
+}
+
+func TestServiceCleanSelectedPausedJobReturnsConflict(test *testing.T) {
+	test.Parallel()
+	service, clock := newTestService(test)
+	job, err := service.Submit(test.Context(), SubmitRequest{
+		Executable: "true", WorkingDirectory: test.TempDir(),
+	})
+	if err != nil {
+		test.Fatal(err)
+	}
+	clock.now = clock.now.Add(time.Second)
+	if _, moveErr := service.store.MoveJob(
+		test.Context(), job.ID, model.JobPhaseQueued, clock.now, "ready",
+	); moveErr != nil {
+		test.Fatalf("MoveJob(queued) error = %v", moveErr)
+	}
+	paused, err := service.Pause(test.Context(), job.ID.String())
+	if err != nil {
+		test.Fatalf("Pause() error = %v", err)
+	}
+
+	for _, dryRun := range []bool{true, false} {
+		_, cleanErr := service.Clean(test.Context(), CleanRequest{
+			Selector: paused.ID.String(),
+			DryRun:   dryRun,
+		})
+		if !errors.Is(cleanErr, ErrConflict) {
+			test.Errorf("Clean(paused, dry run %t) error = %v, want ErrConflict", dryRun, cleanErr)
+		}
+		if cleanErr != nil && !strings.Contains(cleanErr.Error(), "job is not completed (phase paused)") {
+			test.Errorf("Clean(paused, dry run %t) error = %q, want paused phase", dryRun, cleanErr)
+		}
+	}
+
+	after, err := service.store.GetJob(test.Context(), paused.ID)
+	if err != nil {
+		test.Fatalf("GetJob() error = %v", err)
+	}
+	if after.Phase != model.JobPhasePaused {
+		test.Fatalf("job phase after refused cleanup = %s, want paused", after.Phase)
+	}
+}
+
+func TestValidateSelectedCleanupJobRejectsEveryNonterminalPhase(test *testing.T) {
+	test.Parallel()
+	job := model.JobState{ID: model.JobID("019fc515-8b13-7e9f-9f69-649cf89e2f84")}
+	for _, phase := range []model.JobPhase{
+		model.JobPhaseSubmitting,
+		model.JobPhaseWaiting,
+		model.JobPhaseQueued,
+		model.JobPhaseStarting,
+		model.JobPhaseRunning,
+		model.JobPhaseBackoff,
+		model.JobPhasePaused,
+		model.JobPhaseStopping,
+	} {
+		job.Phase = phase
+		if err := validateSelectedCleanupJob(job); !errors.Is(err, ErrConflict) {
+			test.Errorf("validateSelectedCleanupJob(%s) error = %v, want ErrConflict", phase, err)
+		}
+	}
+
+	job.Phase = model.JobPhaseCompleted
+	if err := validateSelectedCleanupJob(job); err != nil {
+		test.Fatalf("validateSelectedCleanupJob(completed) error = %v", err)
 	}
 }
