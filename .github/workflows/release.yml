@@ -615,7 +615,7 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Authenticate to Cloudsmith with GitHub OIDC
-        uses: cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16 # v2.0.3
+        uses: cloudsmith-io/cloudsmith-cli-action@db783de9f6e7a445e5e31d94f4210303b48a10a3 # v3.0.1
         with:
           oidc-audience: https://github.com/ryancswallace
           oidc-namespace: jobman
