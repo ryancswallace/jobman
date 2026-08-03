@@ -14,8 +14,9 @@ input, and notifications in one local CLI.
 
 ## Get productive quickly
 
-- [Install Jobman]({{ site.baseurl }}/getting-started/installation/) from a
-  release archive, Linux package, container image, or source.
+- [Install Jobman]({{ site.baseurl }}/getting-started/installation/) using the
+  recommended package or archive for your operating system. The guide also
+  covers Go, source, and container-based installation.
 - Follow [Your first job]({{ site.baseurl }}/getting-started/first-job/) to
   submit a command and inspect its result.
 - Read [Core concepts]({{ site.baseurl }}/getting-started/concepts/) to

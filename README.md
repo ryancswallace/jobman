@@ -69,17 +69,25 @@ See the [configuration reference], [sample configuration], and
 
 ## Installation
 
-| Method | Starting point |
-| --- | --- |
-| RPM repository | Configure the signed repository, then run `sudo dnf install jobman` |
-| Release archive or Linux package | Download an artifact from [GitHub Releases] |
-| Go toolchain | `go install github.com/ryancswallace/jobman@latest` |
-| Source checkout | Clone the repository, then run `make install` |
-| Container | Pull `ghcr.io/ryancswallace/jobman:vX.Y.Z` |
+Start with the package or archive that fits your operating system:
+
+| Environment | Recommended for most users | Other available methods |
+| --- | --- | --- |
+| macOS | Homebrew: `brew install ryancswallace/tap/jobman` | `.tar.gz`, Go toolchain, source |
+| Fedora, RHEL, Rocky, AlmaLinux, Amazon Linux | Signed RPM repository, then `sudo dnf install jobman` | Downloaded `.rpm`, `.tar.gz`, Go toolchain, source |
+| Debian or Ubuntu | Downloaded `.deb`, then `sudo apt install ./jobman_X.Y.Z_linux_amd64.deb` | `.tar.gz`, Go toolchain, source |
+| Alpine Linux | Downloaded `.apk`, then `sudo apk add --allow-untrusted ./jobman_X.Y.Z_linux_amd64.apk` | `.tar.gz`, Go toolchain, source |
+| Other Linux | Portable `.tar.gz` release archive | Go toolchain, source |
+| Windows | Portable `.zip` release archive installed with PowerShell | Go toolchain, source |
 
 Release artifacts include signed checksums, provenance, SBOMs, man pages, and
-shell completions. Follow the [installation guide] for copy-paste installation
-and verification commands.
+shell completions. Follow the [installation guide] for repository setup,
+copy-paste installation and verification commands, architecture selection, and
+upgrade instructions.
+
+Jobman also publishes a Linux container image for containerized workloads. It
+is not the recommended way to install the CLI on a host because detached jobs
+cannot outlive their container.
 
 Supported operating systems, architectures, lifecycle primitives, and known
 platform differences are documented in the [platform support reference].

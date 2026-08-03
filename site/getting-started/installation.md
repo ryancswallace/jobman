@@ -8,12 +8,29 @@ permalink: /getting-started/installation/
 
 # Install and verify Jobman
 
-Use an immutable release artifact for normal installation. Source builds are
-most useful for development or evaluation of the current `main` branch.
+Use the recommended package or archive for your operating system unless you
+have a specific reason to build from source. Package-manager installations are
+usually easiest because they also install Jobman's manual page, sample
+configuration, and shell completions.
 
-Pin an exact version in automation and review the release notes and
-[upgrade guide]({{ site.baseurl }}/operations/upgrading/) before opening an
-existing state directory with a newer binary.
+Pin an exact version in automation. Before opening an existing state directory
+with a newer binary, review the release notes and the
+[upgrade guide]({{ site.baseurl }}/operations/upgrading/).
+
+## Choose an installation method
+
+| Environment | Recommended for most users | Other supported methods |
+| --- | --- | --- |
+| macOS | [Homebrew](#install-with-homebrew-on-macos) | Portable `.tar.gz`, Go toolchain, source |
+| Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux, Amazon Linux | [Signed RPM repository](#install-from-the-rpm-repository) | Downloaded `.rpm`, portable `.tar.gz`, Go toolchain, source |
+| Debian or Ubuntu | [Downloaded `.deb` package](#install-a-deb-package-on-debian-or-ubuntu) | Portable `.tar.gz`, Go toolchain, source |
+| Alpine Linux | [Downloaded `.apk` package](#install-an-apk-package-on-alpine-linux) | Portable `.tar.gz`, Go toolchain, source |
+| Other Linux distributions | [Portable `.tar.gz`](#install-a-portable-linux-or-macos-archive) | Go toolchain, source |
+| Windows | [Portable `.zip`](#install-a-windows-zip) | Go toolchain, source |
+
+The [container image](#container-image) is available for containerized
+workloads, but it is not a normal host installation. A detached Jobman job
+cannot outlive its container.
 
 ## Supported systems
 
@@ -22,139 +39,161 @@ Jobman v1 adopts the
 Linux kernel 3.2 or later, macOS 12 Monterey or later, and Windows 10 or
 Windows Server 2016 or later.
 
-| Operating system | Release architectures | Distribution |
+| Operating system | Release architectures | Release formats |
 | --- | --- | --- |
-| Linux | `amd64`, `arm64` | `.tar.gz`, `.rpm`, container (`amd64`/`arm64`) |
-| macOS | `amd64`, `arm64` | Homebrew formula, portable `.tar.gz` |
-| Windows | `amd64`, `arm64`, `386` | portable `.zip` |
+| Linux | `amd64`, `arm64`, `386` | `.apk`, `.deb`, `.rpm`, `.tar.gz`; container for `amd64`/`arm64` |
+| macOS | `amd64`, `arm64` | Homebrew formula, `.tar.gz` |
+| Windows | `amd64`, `arm64`, `386` | `.zip` |
 
 Every listed target receives a release-style compile check. Lifecycle and race
 tests run natively on the current GitHub-hosted runner for each operating
 system; cross-compiled architectures do not receive identical native evidence.
 The state directory must be on a local filesystem with reliable SQLite WAL
-locking. Jobs are scoped to the current OS user session even though they can
-survive closing the submitting terminal or SSH connection.
+locking. Jobs are scoped to the current operating-system user session even
+though they can survive closing the submitting terminal or SSH connection.
 
-## Install with Homebrew on macOS
+## macOS
 
-Install Jobman from its project-maintained tap:
+### Install with Homebrew on macOS
+
+Homebrew is the recommended macOS installation method:
 
 ```sh
 brew install ryancswallace/tap/jobman
+jobman --version
 ```
 
-The formula selects the Intel or Apple Silicon release archive and installs the
-binary, man pages, sample configuration, and Bash and Zsh completions. Start a
-new shell after installation so it discovers the completions. Upgrade with
-`brew upgrade ryancswallace/tap/jobman` and remove it with
-`brew uninstall jobman`.
+The project-maintained formula selects the Intel or Apple Silicon release and
+installs the binary, manual pages, sample configuration, and Bash and Zsh
+completions. Start a new shell after installation so it discovers the
+completions.
+
+Upgrade or uninstall with:
+
+```sh
+brew upgrade ryancswallace/tap/jobman
+brew uninstall jobman
+```
 
 The formula uses the same checksummed release archives described below. The
 macOS executable is not yet Apple Developer ID signed or notarized, so
-Gatekeeper may require the explicit per-application approval described under
-the archive installation instructions. The formula does not remove quarantine
-attributes or disable Gatekeeper.
+Gatekeeper may require explicit per-application approval. The formula does not
+remove quarantine attributes or disable Gatekeeper.
 
-## Release archives and Linux packages
+If Gatekeeper blocks the first launch, verify the release, attempt the launch
+once, then open **System Settings → Privacy & Security** and select **Open
+Anyway** for Jobman. Authenticate and confirm the next launch. Do not bypass
+organization policy or disable Gatekeeper globally. See
+[Apple's guidance for safely opening an unnotarized app](https://support.apple.com/en-us/102445).
 
-Download the archive for your operating system and architecture from
-[GitHub Releases](https://github.com/ryancswallace/jobman/releases). Portable
-archives use names such as:
+For an installation without Homebrew, use the
+[portable archive](#install-a-portable-linux-or-macos-archive).
 
-```text
-jobman_<version>_linux_amd64.tar.gz
-jobman_<version>_darwin_arm64.tar.gz
-jobman_<version>_windows_amd64.zip
-```
-
-Linux releases also include `.apk`, `.deb`, and `.rpm` packages. Every release
-includes a checksum manifest, a Sigstore bundle, SBOMs, and provenance.
+## Linux
 
 ### Install from the RPM repository
 
-On Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux, Amazon Linux, and other
-DNF-compatible systems, configure Jobman's public Cloudsmith repository:
+The signed Cloudsmith repository is recommended on Fedora, RHEL, CentOS
+Stream, Rocky Linux, AlmaLinux, Amazon Linux, and other DNF-compatible systems.
+Configure it once, then install Jobman:
 
 ```sh
-$ curl -1sLf \
+curl -1sLf \
   'https://dl.cloudsmith.io/public/jobman/stable/cfg/setup/bash.rpm.sh' |
   sudo -E bash
-$ sudo dnf install jobman
+sudo dnf install jobman
+jobman --version
 ```
 
-The setup script configures Cloudsmith's distribution-neutral repository and
-its signing key. Review the script before running it if local policy prohibits
-piping a network response to a privileged shell. Subsequent stable releases
-are available through `sudo dnf upgrade jobman`.
-
-Verify the signed checksum manifest before trusting an archive:
-
-```console
-$ cosign verify-blob \
-    --bundle jobman_<version>_checksums.txt.sigstore.json \
-    --certificate-identity \
-      'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
-    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    jobman_<version>_checksums.txt
-$ sha256sum --check jobman_<version>_checksums.txt --ignore-missing
-```
-
-On macOS, use `shasum -a 256` to compare an individual archive if GNU
-`sha256sum` is unavailable. See the [release process]({{ site.baseurl }}/project/releasing/#verifying-a-release)
-for attestation and SLSA verification.
-
-### Install a Linux or macOS archive
-
-After verification, set `VERSION`, `OS`, and `ARCH` to the downloaded artifact.
-Use `OS=linux` or `OS=darwin`; use `ARCH=amd64`, `arm64`, or, on Linux only,
-`386`:
+The setup script configures the distribution-neutral repository and its
+signing key. If local policy prohibits piping a network response to a
+privileged shell, download and review the script before running it. Install
+future stable releases with:
 
 ```sh
-VERSION=1.0.0
-OS=linux
+sudo dnf upgrade jobman
+```
+
+### Install a DEB package on Debian or Ubuntu
+
+Jobman does not currently publish an APT repository. The easiest installation
+on Debian and Ubuntu is the native `.deb` package from
+[GitHub Releases](https://github.com/ryancswallace/jobman/releases). Download
+the file matching your version and architecture, verify it as described under
+[Verify a manual download](#verify-a-manual-download), then run:
+
+```sh
+VERSION=X.Y.Z
 ARCH=amd64
-ARCHIVE="jobman_${VERSION}_${OS}_${ARCH}.tar.gz"
-EXTRACT_DIR="$(mktemp -d)"
-tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
-install -d -m 0755 "$HOME/.local/bin"
-install -m 0755 "$EXTRACT_DIR/jobman" "$HOME/.local/bin/jobman"
-"$HOME/.local/bin/jobman" --version
+sudo apt install "./jobman_${VERSION}_linux_${ARCH}.deb"
+jobman --version
 ```
 
-Ensure the per-user binary directory is on `PATH`. Add this line to the startup
-file for your shell (for example, `~/.profile`), then start a new shell:
+Use `ARCH=arm64` or `ARCH=386` where appropriate. To upgrade, download the new
+package, verify it, and run the same `apt install` command with its version.
+
+### Install an APK package on Alpine Linux
+
+Download the `.apk` matching your version and architecture from
+[GitHub Releases](https://github.com/ryancswallace/jobman/releases), then
+verify it as described under
+[Verify a manual download](#verify-a-manual-download). The release package is
+not signed with a locally trusted Alpine packaging key, so explicitly authorize
+the verified local file:
 
 ```sh
-export PATH="$HOME/.local/bin:$PATH"
+VERSION=X.Y.Z
+ARCH=amd64
+sudo apk add --allow-untrusted "./jobman_${VERSION}_linux_${ARCH}.apk"
+jobman --version
 ```
 
-For a system-wide installation, replace the two `install` commands with:
+Use `ARCH=arm64` or `ARCH=386` where appropriate. To upgrade, verify the newer
+package and install it with the same command.
+
+### Install a downloaded RPM package
+
+If you cannot configure the Cloudsmith repository, download and verify a
+release RPM, then install the local package directly:
 
 ```sh
-sudo install -m 0755 "$EXTRACT_DIR/jobman" /usr/local/bin/jobman
+VERSION=X.Y.Z
+ARCH=amd64
+sudo dnf install "./jobman_${VERSION}_linux_${ARCH}.rpm"
+jobman --version
 ```
 
-The archive also contains the man page, shell completions, sample
-configuration, changelog, project license, third-party notices, and citation
-file. Copy those optional files to the locations used by your operating system
-or shell.
+Repository installation is preferable when available because `dnf upgrade`
+can discover new Jobman versions automatically.
 
-On macOS, Gatekeeper may block the first launch because the v1 executable is
-not notarized. Only after verifying the signed checksum above, attempt the
-launch once, open **System Settings → Privacy & Security**, select **Open
-Anyway** for Jobman, authenticate, and confirm the next launch. This is Apple's
-per-application approval path; it does not disable Gatekeeper globally. If the
-control is unavailable or organization policy forbids an exception, do not
-bypass that policy—build from reviewed source or wait for a notarized release.
-See [Apple's guidance for safely opening an unnotarized app](https://support.apple.com/en-us/102445).
+### What native Linux packages install
 
-### Install a Windows archive
+The `.apk`, `.deb`, and `.rpm` packages install:
 
-Download and verify the ZIP, then run native PowerShell. Set the version and
-architecture to the downloaded artifact:
+- the `jobman` binary and manual page;
+- Bash and Zsh completion scripts and their runtime dependencies;
+- project and third-party license notices; and
+- a preserved sample configuration at `/etc/jobman/jobman.yml`.
+
+The packaged system configuration contains safe defaults. Per-user
+configuration takes precedence, and Jobman's runtime state remains per-user by
+default. Start a new shell after installation so it discovers the completion
+scripts.
+
+For Linux distributions without a matching package manager, use the
+[portable archive](#install-a-portable-linux-or-macos-archive).
+
+## Windows
+
+### Install a Windows ZIP
+
+The release ZIP is the recommended Windows installation. Download the ZIP,
+checksum manifest, and Sigstore bundle for the desired version from
+[GitHub Releases](https://github.com/ryancswallace/jobman/releases). Then open
+PowerShell and set the version and architecture to match the downloaded file:
 
 ```powershell
-$Version = '1.0.0'
+$Version = 'X.Y.Z'
 $Arch = 'amd64'
 $Archive = "jobman_${Version}_windows_${Arch}.zip"
 $Manifest = "jobman_${Version}_checksums.txt"
@@ -188,59 +227,113 @@ if ($PathEntries -notcontains $InstallDir) {
     )
 }
 $env:Path = "$InstallDir;$env:Path"
-& (Join-Path $InstallDir 'jobman.exe') --version
+jobman --version
 ```
 
-The `PATH` update applies automatically to new terminals; the final assignment
-makes the binary available in the current PowerShell session. The ZIP is
-portable and does not create a Windows service or machine-wide state. The
-packaged PowerShell completion is at
-`docs\completions\powershell\jobman.ps1` inside the installation directory.
+The persistent `PATH` update applies to new terminals; the final assignment
+makes Jobman available in the current PowerShell session. The ZIP does not
+create a Windows service or machine-wide state. Its PowerShell completion file
+is `docs\completions\powershell\jobman.ps1` inside the installation directory.
 
-The v1 Windows executable is not Authenticode signed. Its signed checksum and
-provenance establish the downloaded bytes and Jobman release workflow, but do
-not display a verified Windows publisher. Microsoft Defender SmartScreen may
-therefore show **Windows protected your PC**, and Windows 11 Smart App Control
-or enterprise policy may block the executable entirely. Proceed only after the
-verification steps above and only where local policy permits; do not weaken a
-managed device's security controls. See [Microsoft's SmartScreen reputation
-guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
+The Windows executable is not Authenticode signed. Its signed checksum and
+provenance establish the release bytes, but they do not display a verified
+Windows publisher. Microsoft Defender SmartScreen may show **Windows protected
+your PC**, and Windows 11 Smart App Control or enterprise policy may block the
+executable. Proceed only after verification and where local policy permits; do
+not weaken a managed device's security controls. See
+[Microsoft's SmartScreen reputation guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
 
-### Install a Linux package
+## Manual release downloads
 
-Use the command matching the target system after verifying the package. The
-package installs the binary, man page, Bash/Zsh completions, project and
-third-party license notices, and a preserved sample configuration at
-`/etc/jobman/jobman.yml`. It also installs the Bash completion framework and
-Zsh so both completion scripts are usable:
+### Verify a manual download
 
-```sh
-sudo dnf install ./jobman_1.0.0_linux_amd64.rpm
-```
-
-The packaged system configuration contains safe defaults; a user's configuration
-overrides it, and runtime state remains per-user by default. Start a new shell
-after installation so it discovers the new completion script.
-
-## Container image
-
-Images are published to GitHub Container Registry:
+Portable archives and downloaded Linux packages come from
+[GitHub Releases](https://github.com/ryancswallace/jobman/releases). Each
+release also includes a checksum manifest, Sigstore bundle, SBOMs, and
+provenance. Before installing a downloaded artifact, verify the manifest and
+the artifact checksum:
 
 ```console
-$ docker pull ghcr.io/ryancswallace/jobman:vX.Y.Z
-$ docker run --rm ghcr.io/ryancswallace/jobman:vX.Y.Z --version
+$ cosign verify-blob \
+    --bundle jobman_X.Y.Z_checksums.txt.sigstore.json \
+    --certificate-identity \
+      'https://github.com/ryancswallace/jobman/.github/workflows/release.yml@refs/heads/main' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    jobman_X.Y.Z_checksums.txt
+$ sha256sum --check jobman_X.Y.Z_checksums.txt --ignore-missing
 ```
 
-The image contains Jobman and basic runtime utilities, not arbitrary target
-commands. Read the [container contract]({{ site.baseurl }}/guides/containers/)
-before submitting work; a detached job cannot outlive a short-lived container.
+On macOS, use `shasum -a 256 <archive>` to compare an individual archive if
+GNU `sha256sum` is unavailable. See the
+[release process]({{ site.baseurl }}/project/releasing/#verifying-a-release)
+for attestation and SLSA verification.
 
-## Build from source
+Release artifacts use names such as:
 
-Source builds require Go 1.26.5. Reproducible development and release checks
-use the exact toolchain recorded in
+```text
+jobman_X.Y.Z_linux_amd64.deb
+jobman_X.Y.Z_linux_arm64.tar.gz
+jobman_X.Y.Z_darwin_arm64.tar.gz
+jobman_X.Y.Z_windows_amd64.zip
+```
+
+### Install a portable Linux or macOS archive
+
+Set `VERSION`, `OS`, and `ARCH` to match the verified `.tar.gz`. Use
+`OS=linux` or `OS=darwin` and a supported architecture from the table above:
+
+```sh
+VERSION=X.Y.Z
+OS=linux
+ARCH=amd64
+ARCHIVE="jobman_${VERSION}_${OS}_${ARCH}.tar.gz"
+EXTRACT_DIR="$(mktemp -d)"
+tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
+install -d -m 0755 "$HOME/.local/bin"
+install -m 0755 "$EXTRACT_DIR/jobman" "$HOME/.local/bin/jobman"
+"$HOME/.local/bin/jobman" --version
+```
+
+Ensure the per-user binary directory is on `PATH`. Add this line to your shell
+startup file, such as `~/.profile`, then start a new shell:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+For a system-wide installation, replace the two `install` commands with:
+
+```sh
+sudo install -m 0755 "$EXTRACT_DIR/jobman" /usr/local/bin/jobman
+```
+
+The archive also contains the manual pages, shell completions, sample
+configuration, changelog, project license, third-party notices, and citation
+file. Unlike native packages and Homebrew, the binary-only commands above do
+not install those supporting files automatically.
+
+## Other installation methods
+
+### Install with the Go toolchain
+
+If Go 1.26.5 is already installed, install the latest tagged module without
+downloading a release archive:
+
+```sh
+go install github.com/ryancswallace/jobman@latest
+jobman --version
+```
+
+Ensure `$(go env GOPATH)/bin` or `GOBIN` is on `PATH`. This method builds the
+binary locally and does not install manual pages, shell completions, or sample
+configuration.
+
+### Build from source
+
+Source builds are intended for development or evaluation of the current
+`main` branch. Reproducible project checks use the exact Go version recorded in
 [`go.version`](https://github.com/ryancswallace/jobman/blob/main/go.version).
-Then run:
+On Linux or macOS:
 
 ```console
 $ git clone https://github.com/ryancswallace/jobman.git
@@ -248,13 +341,33 @@ $ cd jobman
 $ make install
 ```
 
-For the latest tagged module without cloning:
+On Windows, clone the repository and build with the Go toolchain:
 
-```console
-$ go install github.com/ryancswallace/jobman@latest
+```powershell
+git clone https://github.com/ryancswallace/jobman.git
+Set-Location jobman
+go build -o jobman.exe .
+.\jobman.exe --version
 ```
 
+### Container image
+
+Jobman publishes `linux/amd64` and `linux/arm64` images to GitHub Container
+Registry:
+
+```console
+$ docker pull ghcr.io/ryancswallace/jobman:vX.Y.Z
+$ docker run --rm ghcr.io/ryancswallace/jobman:vX.Y.Z --version
+```
+
+The image contains Jobman and basic runtime utilities, not arbitrary target
+commands. Read the
+[container contract]({{ site.baseurl }}/guides/containers/) before submitting
+work. A detached job cannot outlive a short-lived container.
+
 ## Verify the installation
+
+Run these commands after installing Jobman by any method:
 
 ```console
 $ jobman --version
