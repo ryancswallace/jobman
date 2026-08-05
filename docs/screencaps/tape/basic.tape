@@ -21,39 +21,37 @@ Enter
 Show
 
 Type `jobman --version`
-Sleep 500ms
+Sleep 400ms
 Enter
-Sleep 500ms
+Sleep 100ms
 Enter
 Sleep 3s
 
-Type `jobman run --name demo -- sh -c 'echo sleeping...; sleep 10; echo done'`
-Sleep 500ms
+Type `jobman run --name demo -- sh -c 'echo sleeping...; sleep 10; echo done!'`
+Sleep 400ms
 Enter
-Sleep 500ms
+Sleep 100ms
 Enter
 Sleep 3s
 
 Type `jobman list`
-Sleep 500ms
+Sleep 400ms
 Enter
-Sleep 500ms
+Sleep 100ms
 Enter
 Sleep 3s
 
 Type `jobman logs -f demo`
-Sleep 500ms
-Enter
-Sleep 500ms
+Sleep 400ms
 Enter
 Sleep 3s
+Enter
+Sleep 100ms
 
 Type `jobman show demo`
-Sleep 500ms
+Sleep 400ms
 Enter
-Sleep 500ms
-Enter
-Sleep 3s
+Sleep 14s
 
 Hide
 Type `jobman clean --all --force`
