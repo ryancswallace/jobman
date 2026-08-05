@@ -132,7 +132,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 [design documentation]: docs/design/README.md
 [first-job guide]: https://jobman.tech/getting-started/first-job/
 [getting started]: https://jobman.tech/getting-started/
-[GitHub Releases]: https://github.com/ryancswallace/jobman/releases
 [install-apk]: https://jobman.tech/getting-started/installation/#install-an-apk-package-on-alpine-linux
 [install-archive]: https://jobman.tech/getting-started/installation/#install-a-portable-linux-or-macos-archive
 [install-deb]: https://jobman.tech/getting-started/installation/#install-a-deb-package-on-debian-or-ubuntu
