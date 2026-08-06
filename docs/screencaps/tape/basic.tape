@@ -1,5 +1,6 @@
 Output gif/basic.gif
 Output webm/basic.webm
+Output mp4/basic.mp4
 
 Set Shell "zsh"
 Set FontSize 18
